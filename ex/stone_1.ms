@@ -1,3 +1,4 @@
+## first milestone of the compiler
 mod stone_1;
 
 pub main := fn() => u32 {

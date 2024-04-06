@@ -161,7 +161,7 @@ fn nxttk(f: *src_file) (tok | eof | CMP_ERR) = {
                     f.lin += 1;
                     f.end = 0;
 
-                    f.ptr += finda(toutf(f.src, f)?, "\n", f.ptr)!;
+                    f.ptr += finda(toutf(f.src, f)?, "\n", f.ptr)! + 1;
                     f.lst = f.ptr;
                     return eol;
                 };
