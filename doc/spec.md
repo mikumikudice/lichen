@@ -79,54 +79,10 @@ there's no global state. [imperatively functional](#imperative-functionalism).
 idea borrowed from Flix, demonstrated on [this](https://www.youtube.com/watch?v=2LSOqikNqxM&t=1237s) talk. it means all side effects are bounded in the type system in such a way that is predictable and enforced by the compiler where and by what a specific kind of side effect may occur. this also means that outside a function, no side effect can occur. no global state, no runtime-evaluated data. only constant, immutable data.
 
 ## linear types
-linear types are a underused concept from linear logic. in this case, the linear/lollipop arrow operator that, in simpler terms, says that things can be used once, at least once and only once. all heap-allocated data is a linear type. that means once you return a record or a list from a function, it is read from the original stack frame of the source function and then copied to the current stack frame. it only lives in that stack, unless its returned and, consequentially copied in a new frame. it also applies slightly differently to scopes. inner scopes must explicitly require external namespaces to be able to read them. the only exception are if/else blocks that their defined, local variables only exist to them.
+TODO
 
 ## EBNF language description
-```
-program = 'named', namespace, ';', { 'using', namespace, ';'}, { constant definition } ;
-
-definition = { encapsulated keyword }, namespace, operator, keyword, { expression }, ';' ;
-parameter definition = namespace, operator, keyword, { expression } ;
-
-expression = { namespace }, operator, expression | namespace | literal, ';'
-           | peimitive type keyword, literal | namespace, ';'
-           | statement keyword, { expresison }, scope
-           | user-defined keyword, scope
-           | namespace, '(', { expression }, ')'
-           | 'fn', { '{', namespace, '=', type notation , '}' }, '(', { parameter definition }, ')', { effect notation }, type notation, scope
-           | definition
-           | expression ;
-
-type notation = '{', 'nil' | definition | primitive type keyword, '}' ;
-
-effect notation = effect type keyword, { '>' effect type keyword } ;
-
-scope = '{', { expression } , '}', ';'
-
-literal = number | string | built-in constant ;
-
-operator =  '?'  |  '!'  |  '~'  | '&' | '|'  | '<<' | '>>'
-         | '=='  | '/='  |  '>'  | '<' | '>=' | '<='
-         | '+='  | '-='  |  '='  | '+' | '-'  | '*'  | '/'  | '%'
-         | 'and' | 'or'  | 'not' |
-         | '..'  | '...' | 'in'  ;
-
-encapsulated keyword = 'extrn' | 'immut' ;
-
-primitive type keyword = 'bool'
-                       | 'str'  | 'cstr'
-                       | 'int'  | 'u16' | 'u32' | 'u64'
-                       | 'i16'  | 'i32' | 'i64'
-                       | 'rat'  | 'r64' ;
-
-user-defined keyword =  'fn' | 'rec' | 'enu' ;
-
-statement keyword = 'if' | 'else' | 'for' | 'match' ;
-
-effect type keyword = 'IO' | 'FS' | 'BM' ;
-
-built-in constant = 'T' | 'F' | 'nil' ;
-```
+TODO
 
 ## destructive read
 when assigning something to something else, the expression itself returns the old value of the assigned variable. this is called _destructive read_ and is borrowed from [pony][3].
