@@ -261,7 +261,7 @@ fn parse(from: (str | *file), within: (*func | void) = void) ((str, nmsp_t) | CM
                 case let n: num =>
                     ret_tp = num_t;
                     if(ismain){
-                        out = fmt::asprintf("{}    exit({})\n", out, n: u64);
+                        out = fmt::asprintf("{}    exit {}\n", out, n: u64);
                     } else {
                         out = fmt::asprintf("{}    %0 = {}\n    ret\n", out, n: u64);
                     };
@@ -293,7 +293,7 @@ fn parse(from: (str | *file), within: (*func | void) = void) ((str, nmsp_t) | CM
                             }: GENERIC;
                         };
                         if(ismain){
-                            out = fmt::asprintf("{}    exit({})\n", out, i: str);
+                            out = fmt::asprintf("{}    exit {}\n", out, i: str);
                         } else {
                             out = fmt::asprintf("{}    %0 = {}\n    ret\n", out, i: str);
                         };
