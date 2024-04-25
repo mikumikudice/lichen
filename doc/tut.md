@@ -119,11 +119,11 @@ these are the control flow blocks that can be used in moss.
 ## if-else blocks
 ```rust
 if x = 5 * 5; x > 64 {
-    io::putl("5^2 is bigger than 8^2")!;
+    fmt::putl("5^2 is bigger than 8^2")!;
 } else if x > 16 {
-    io::putfl("5 squared is greater than 4 squared by a factor of {} units", x - 16)!;
+    fmt::putfl("5 squared is greater than 4 squared by a factor of {} units", x - 16)!;
 } else {
-    io::putfl("5 squared is {}", x)!;
+    fmt::putfl("5 squared is {}", x)!;
 };
 ```
 * note that all blocks must have a body with brackets, but there's no parenthesis enclosing the evaluated portion.
@@ -135,18 +135,18 @@ def my_uni = uni u32 | str | nil;
 ...
 x = 55: my_uni;
 match x {
-    u32 => io::putl("x is an integer!")!;
-    str => io::putl("x is a string!")!;
-    nil => io::putl("x is nothing!")!;
+    u32 => fmt::putl("x is an integer!")!;
+    str => fmt::putl("x is a string!")!;
+    nil => fmt::putl("x is nothing!")!;
 };
 ```
 a match block can also be use ranges when matching values.
 ```rust
 x = 4;
 match x {
-    0       => io::putl("x is zero")!;
-    1 ..= 9 => io::putl("x is under 10")!;
-    _       => io::putl("x is bigger or equal to 10")!;   // nil means any case
+    0       => fmt::putl("x is zero")!;
+    1 ..= 9 => fmt::putl("x is under 10")!;
+    _       => fmt::putl("x is bigger or equal to 10")!;   // nil means any case
 };
 ```
 * note that there's no need to use break in either of these uses.
@@ -155,14 +155,14 @@ or even, match can be used as a long sequence of if-else blocks:
 ```rust
 x = 'v';                                                            // literal chars are u8 values
 match {                                                             // empty match stands for "match true"
-    x == 'a' .. 'z' => io::putl("x is a lowercase rune")!;          // comparison can be used with ranges
-    x == 'A' .. 'Z' => io::putl("x is a uppercase rune")!;
-    x == '0' .. '9' => io::putl("x is a numeral")!;
+    x == 'a' .. 'z' => fmt::putl("x is a lowercase rune")!;          // comparison can be used with ranges
+    x == 'A' .. 'Z' => fmt::putl("x is a uppercase rune")!;
+    x == '0' .. '9' => fmt::putl("x is a numeral")!;
     nil => {
         if x == '.' {
-            io::putl("x is a dot!")!;
+            fmt::putl("x is a dot!")!;
         } else if x == ',' {
-            io::putl("x is a comma!")!;
+            fmt::putl("x is a comma!")!;
         };
     };
 };
@@ -173,7 +173,7 @@ for loops are the only available kind of loop in moss. they work as a normal for
 ```rust
 // no incrementing or decrementing, we use ranges
 for i = 2..=20 {
-    io::putfl("{}", i)!;
+    fmt::putfl("{}", i)!;
 };
 
 mut r = 0;
@@ -188,7 +188,7 @@ for r < 100 {
 
 num = [ 2, 3, 5, 7, 11, 13, 17, 23 ];
 for n ... num {
-    io::putfl("{}", n)!;
+    fmt::putfl("{}", n)!;
 };
 ```
 * note that, contextually, `next` is more logical than `continue`, once you want skip to the next interaction, not continue on the current one.
