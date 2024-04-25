@@ -3,12 +3,12 @@ moss is a strongly typed, imperatively functional, AOT compiled programming lang
 ## code example
 this is a demo code for printing a hello world (in a mossy way):
 ```rust
-    use lime;
-    fmt = lime::fmt;
+use lime;
+fmt = lime::fmt;
 
-    pub main = fn() : lime => nil {
-        fmt::putl("mornin' sailor!")!;
-    };
+pub main = fn() : lime => nil {
+    fmt::putl("mornin' sailor!")!;
+};
 ```
 ## special features
 - memory safe through linear types. no GC, no borrow checker.
