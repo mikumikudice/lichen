@@ -33,9 +33,8 @@ moss is directly inspired by [hare](https://harelang.org), [Flix](https://flix.d
 
 # disclaimer
 moss is still heavily in development. not only the compiler, but everything related to the project. despite it being not very likely to change during _implementation_, it still can change. currently we're at:
-- [x] brainstorming.
 - [x] language specification && compiler implementation.
-- [ ] language peripherals/dev environment.
+- [ ] language peripherals/development tools.
 - [ ] self-hosting.
 
 # roadmap

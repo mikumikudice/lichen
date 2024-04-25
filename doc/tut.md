@@ -25,13 +25,13 @@ moss supports single and multiple commented lines of code, including nested bloc
 ```
 
 ## reserved names
-this is a list of the 30 tokens used as keywords for the language and as such cannot be used as variable names:
-| encapsulation | primitive types     | control flow       | miscellany |
-| ------------- | ------------------- | ------------------ | ---------- |
-| `use`         | `u8, u16, u32, u64` | `if, else, match`  | `def, mut` |
-| `pub`         | `i8, i16, i32, i64` | `for, next, break` | `test`     |
-|               | `fn, rec, uni, err` | `eval, ret`        | `is`       |
-|               | `rat, str, nil`     | `defer`            |            |
+this is a list of the 32 tokens used as keywords for the language and as such cannot be used as variable names:
+| encapsulation | primitive types     | control flow       | miscellany    |
+| ------------- | ------------------- | ------------------ | ------------- |
+| `use`         | `u8, u16, u32, u64` | `if, else, match`  | `def, mut`    |
+| `pub`         | `i8, i16, i32, i64` | `for, next, break` | `test`        |
+|               | `rat, str, nil`     | `eval, ret`        | `is, and, or` |
+|               | `fn, rec, uni, err` | `defer`            |               |
 
 # types and variables
 these are all primitive and composite types in moss.
@@ -59,7 +59,7 @@ moss doesn't support floats by default, but instead ratios. that means your divi
 ```
 
 ## strings
-strings in moss caries its length within its bites and not null terminated. strings are also immutable by default and UTF-8 encoded.
+strings in moss caries its length within its bites and are not null terminated. strings are also immutable by default and UTF-8 encoded.
 ```rust
 use core;
 
@@ -79,7 +79,7 @@ and these are the only supported escape-characters in moss.
 - `\\` backslash
 - `\'` single quote
 - `\"` double quote
-* note that there are no backwards compatibility with legacy stuff like vertical tab. formated printing have its own special set of scape chars (that also includes these listed above).
+* note that there are no backwards compatibility with legacy stuff like vertical tab. formated printing have its own special set of escape chars (that also includes these listed above).
 
 ## declaration, definition assignment and type casting
 ```rust
@@ -101,16 +101,16 @@ foo = egg: u32;     // casting from bigger to lower size means modulo dividing t
 a = 42 + 7 - 1;                 // the type was inferred (u32)
 c = 5 * (42 + 3): u16;          // no operator precedence, use parenthesis to enclose an expression
 ```
-* note the casting affects the whole expression. if you need to cast only one value, do `{foo : type}`
+* note the casting affects the whole expression. if you need to cast only one value, do `(foo : type)`
 
 # records
 also called "structs" by other languages, these are collections of data whithin fields of a single data structure.
 ```rust
 def dog = rec {
-    age: u8,
-    name: str,
-    breed: str,
-    owner: str,
+    age   : u8,
+    name  : str,
+    breed : str,
+    owner : str,
 };
 ```
 
@@ -155,10 +155,10 @@ or even, match can be used as a long sequence of if-else blocks:
 ```rust
 x = 'v';                                                            // literal chars are u8 values
 match {                                                             // empty match stands for "match true"
-    x == 'a' .. 'z' => fmt::putl("x is a lowercase rune")!;          // comparison can be used with ranges
-    x == 'A' .. 'Z' => fmt::putl("x is a uppercase rune")!;
-    x == '0' .. '9' => fmt::putl("x is a numeral")!;
-    nil => {
+    x == 'a' ..= 'z' => fmt::putl("x is a lowercase rune")!;          // comparison can be used with ranges
+    x == 'A' ..= 'Z' => fmt::putl("x is a uppercase rune")!;
+    x == '0' ..= '9' => fmt::putl("x is a numeral")!;
+    _ => {
         if x == '.' {
             fmt::putl("x is a dot!")!;
         } else if x == ',' {
@@ -172,7 +172,7 @@ match {                                                             // empty mat
 for loops are the only available kind of loop in moss. they work as a normal for loop, a while loop and a foreach loop in other languages. here's all its uses:
 ```rust
 // no incrementing or decrementing, we use ranges
-for i = 2..=20 {
+for i = 2 ..= 20 {
     fmt::putfl("{}", i)!;
 };
 
@@ -187,7 +187,7 @@ for r < 100 {
 };
 
 num = [ 2, 3, 5, 7, 11, 13, 17, 23 ];
-for n ... num {
+for n ..= num {
     fmt::putfl("{}", n)!;
 };
 ```
@@ -195,21 +195,21 @@ for n ... num {
 
 you even can use parallel assignment for a shorthand for nested loops.
 ```rust
-for c = 0..<128; r = 0..<128 {
+for c = 0 ..< 128; r = 0 ..< 128 {
     nil; // empty statement
 };
 ```
 the previous example is tha same as:
 ```rust
-for c = 0..<128 {
-    for r = 0..<128 {
+for c = 0 ..< 128 {
+    for r = 0 ..< 128 {
         nil;
     };
 };
 ```
 
 # unions, error handling and pattern matching
-moss has no exception handling. everything that can go wrong is dealt simply as another kind of return value. these types are a special kind called error types. these can be defined by marking an type with a bang. when a function can return an error or a value, it must be handled by a union type (usually `return_val | err`) or handled by the propagation operator `?`.
+moss has no exception handling. everything that can go wrong is dealt simply as another kind of return value. these types are a special kind called error types. these can be defined using the `err` keyword. when a function can return an error or a value, it must be handled by a union type (usually `return_val | err`) or handled by the propagation operator `?`.
 ```rust
 use lime;
 fmt = lime::fmt;
@@ -218,7 +218,7 @@ def nan = err nil;
 def int = uni i32 | nan;
 
 pub main = fn() lime => nil {
-    res = myfn(7, 2);
+    mut res = myfn(7, 2);
 
     match res {
         int => fmt::putfl("7 divided by 2 is {}", r: i32)!;
@@ -235,7 +235,7 @@ myfn = fn(n, d: i32) int {
     };
 };
 ```
-you can also use the bang as an assertion operator on `nil` values. i.e. `nil!` will make the program crash. if the function can return nil, you can aswell use the `?` operator to short-circuit and return `nil` on one of these assertions, e.g. `foo?` becomes a `ret nil` if `foo == nil`.
+you can also use a bang for an assertion  on `nil` or `err` values. i.e. `nil!` will make the program crash. if the function can return nil, you can as well use the `?` operator to short-circuit and return `nil` on one of these assertions, e.g. `foo?` becomes a `ret nil` if `foo == nil`.
 
 # named returns
 functions, just as can receive multiple parammeters, can return multiple values. this is achieved with named returns.
@@ -256,7 +256,7 @@ you can have more return values than receivers, but not the opposite. declaring 
 you can set default attributions for your parameters when creating functions.
 ```rust
 div = fn(n, d = 1, 1: i64) i64 { // both parameters will be set to 1 if no argument is given
-    return n / d;
+    ret n / d;
 };
 
 def person = {
@@ -301,4 +301,4 @@ TODO
 TODO
 
 # trivia
-- the `putf` function from the io submodule of the lime library, when called with no arguments, prints "fox!" for both quick debugging and because of a joke I saw once on internet and I can't find again (probably on twitter or social.linux.pizza).
+- the `putf` function from the `fmt` submodule of the lime library, when called with no arguments, prints "fox!" for both quick debugging and because of a joke I saw once on internet and I can't find again (probably on twitter or social.linux.pizza).
