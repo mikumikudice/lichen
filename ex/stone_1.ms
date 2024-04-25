@@ -1,10 +1,9 @@
-## first milestone of the compiler
-mod stone_1;
+// first milestone of the compiler
+pub main = fn() : u32 {
+    x = 6 : u32;
+    y = 7 : u32;
 
-pub main := fn() => u32 {
-    x: u32 = 6;
-    y: u32 = 7;
-
-    z := x * y * z;
+    z : u64;
+    z = x * y;
     ret z;
 };

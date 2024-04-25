@@ -1,6 +1,6 @@
-mod demo;
-io := use lime.io;
+use lime;
+fmt = lime::fmt;
 
-pub main := fn() io::cli => nil {
-    io::putl("mornin' sailor!")!;
+pub main = fn() : lime => nil {
+    fmt::putl("mornin' sailor!")!;
 };

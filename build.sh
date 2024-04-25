@@ -1,3 +1,3 @@
 mkdir -p bin
 cd ./src/
-hare build -o ./../bin/mossy
+mold -run hare build -o ./../bin/mossy
