@@ -48,7 +48,7 @@ these are the current goals of this project.
 - [ ] FFI specification.
 
 # building moss
-moss is written in the [hare programming language](https://hare-lang.org) and uses the mio IR as a backend to generate the binaries. once both are installed, you're ready to both build the compiler and use it with no other dependencies. note that each of moss' dependencies have theirs own dependencies.
+moss is written in the [hare programming language](https://hare-lang.org), uses the [mio](https://git.sr.ht/~mikaela-md/miolo) IR as a backend to generate the binaries and [mold](https://github.com/rui314/mold) as a linker. once both are installed, you're ready to both build the compiler and use it with no other dependencies. note that each of moss' dependencies have theirs own dependencies.
 
 once you installed both, simply run the `build.sh`. it will generate the compiler binary by the name `mossy`. by running it, you'll get the help needed to get started on compiling your code.
 
