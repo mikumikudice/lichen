@@ -12,16 +12,16 @@ pub main = fn() : lime => nil {
 ```
 ## special features
 - memory safe through linear types. no GC, no borrow checker.
-- effect system and encapsulated state within semantically-controlled function purity.
-- modern and clever casting system for convenient (smart) conversions.
+- effect system and encapsulated state within in-practice pure functions.
+- modern and clever casting system for convenient (smart) type conversions.
 - simple, small and concise syntax semantics. new and yet familiar.
-- no dependence on libc and rich (yet simple) core libraries.
-- no command line setting for the compiler. flags are in-code.
-- no floats, but ratio types.
-- extremely concise syntax. if it does the same thing, you write the same way.
+- no dependencies on libc and rich (yet simple) core libraries, producing statically linked, stand-alone binary files.
+- no command line settings for the compile, compilation flags are set in-code.
+- no floats, but instead ratio types.
+- extremely concise syntax. if it does the same thing, you write it in the same way.
 
 ## uncommon but already known features
-- union types for error handling (no exceptions).
+- tagged unions for error handling (no runtime exceptions).
 - lazy evaluation.
 - no undefined behavior.
 - memory and type safety.
