@@ -4,7 +4,7 @@ a simple demonstration hello world code in moss.
 use lime;
 fmt = lime::fmt;
 
-pub main = fn() : lime => nil {
+pub main = fn() : nil \ IO {
     fmt::putl("mornin' sailor!")!;
 };
 ```
@@ -30,8 +30,8 @@ this is a list of the 32 tokens used as keywords for the language and as such ca
 | ------------- | ------------------- | ------------------ | ------------- |
 | `use`         | `u8, u16, u32, u64` | `if, else, match`  | `def, mut`    |
 | `pub`         | `i8, i16, i32, i64` | `for, next, break` | `test`        |
-|               | `rat, str, nil`     | `eval, ret`        | `is, and, or` |
-|               | `fn, rec, uni, err` | `defer`            |               |
+|               | `rat, str uni, rec` | `yield, return`    | `is, and, or` |
+|               | `fn, err, nil`      | `defer`            |               |
 
 # types and variables
 these are all primitive and composite types in moss.
@@ -229,9 +229,9 @@ pub main = fn() lime => nil {
 
 myfn = fn(n, d: i32) int {
     if d == 0 {
-        ret nan;
+        return nan;
     } else {
-        ret n / d;
+        return n / d;
     };
 };
 ```
@@ -243,7 +243,9 @@ functions, just as can receive multiple parammeters, can return multiple values.
 myfn = fn(x, y: i64) p, q: i64 {
     p = x * x + y;
     q = y * y - x;
-    ret;            // the empty return statement makes the function halt and return p and q with the current values
+    // the empty return statement makes the function halt
+    // and return p and q with the current values
+    return;
 };
 ```
 when receiving these multiple return values, just assign them.
@@ -256,7 +258,7 @@ you can have more return values than receivers, but not the opposite. declaring 
 you can set default attributions for your parameters when creating functions.
 ```rust
 div = fn(n, d = 1, 1: i64) i64 { // both parameters will be set to 1 if no argument is given
-    ret n / d;
+    return n / d;
 };
 
 def person = {

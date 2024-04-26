@@ -5,5 +5,5 @@ pub main = fn() : u32 {
 
     z : u64;
     z = x * y;
-    ret z;
+    return z;
 };
