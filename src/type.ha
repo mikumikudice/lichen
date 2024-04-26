@@ -63,15 +63,15 @@ type kwd = enum int
     , KWRD_END, NOT_KWRD, NUMBER_T
 };
 const kwdv =
-    [ "use"  , "pub" , "test"
-    , "if"   , "else", "match"
-    , "for"  , "next", "break"
-    , "defer", "eval", "ret"
-    , "u8"   , "u16" , "u32", "u64"
-    , "i8"   , "i16" , "i32", "i64"
-    , "rat"  , "str" , "nil"
-    , "rec"  , "uni" , "err"
-    , "fn"   , "is"  , "mut"
+    [ "use"  , "pub"  , "test"
+    , "if"   , "else" , "match"
+    , "for"  , "next" , "break"
+    , "defer", "yield", "return"
+    , "u8"   , "u16"  , "u32", "u64"
+    , "i8"   , "i16"  , "i32", "i64"
+    , "rat"  , "str"  , "nil"
+    , "rec"  , "uni"  , "err"
+    , "fn"   , "is"   , "mut"
     ];
 static assert(kwd::KWRD_END: size == len(kwdv), "keyword values not updated");
 
