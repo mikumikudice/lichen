@@ -194,11 +194,13 @@ fn parse(from: (str | *file), within: (*func | void) = void) ((str, nmsp_t) | CM
     };
     free(dupf);
 
-    let (out, scope) =
+    let out = "";
+    let head = "";
+    const scope =
         if(global){
-            yield ("; moss 0.0.1 => mio 0.0.1\n", &glob_ns);
+            yield &glob_ns;
         } else {
-            yield ("", alloc([]: []nmsp));
+            yield alloc([]: []nmsp);
         };
     const ret_tp = kwd::NOT_KWRD: nmsp_t;
     const ident =
@@ -238,7 +240,8 @@ fn parse(from: (str | *file), within: (*func | void) = void) ((str, nmsp_t) | CM
                 expct(oper is opr && oper: opr == opr::ASSIGNMT,
                     oper, src, void: EXPECTD, "assignment operator")?;
 
-                out = fmt::asprintf("{}pub {}", out,
+                head = fmt::asprintf("{}pub {}\n", head, name: idt: str);
+                out = fmt::asprintf("{}fun {}", out,
                     parse_asg(src, name: idt: str, scope, global)?);
 
             case kwd::RETURNTO =>
@@ -331,8 +334,14 @@ fn parse(from: (str | *file), within: (*func | void) = void) ((str, nmsp_t) | CM
         case eol => void;
         };
     };
-    if(!global) free(scope);
-    return (out, ret_tp);
+    const raw =
+        if(global){
+            yield fmt::asprintf("; moss 0.0.1 => mio 0.0.1\n{}\n{}", head, out);
+        } else {
+            free(scope);
+            yield fmt::asprintf("{}{}", head, out);
+        };
+    return (raw, ret_tp);
 };
 
 fn parse_fn(fname: str, lin: size, cln: size, f: *file) (*func | CMP_ERR) = {
@@ -427,7 +436,7 @@ fn parse_asg(f: *file, dest: str, scp: (*[]nmsp | void), global: bool) (str | CM
             };
             const args = gen_args(fndef);
             const rets = gen_rets(fndef);
-            out = fmt::asprintf("{} {} = {}\n{}\n", dest, args, rets, body);
+            out = fmt::asprintf("{} {} = {}\n{}", dest, args, rets, body);
 
         case kwd::NIL_TYPE => void; // TODO
         case =>
