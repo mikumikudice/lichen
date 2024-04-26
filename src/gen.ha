@@ -1,4 +1,5 @@
 use fmt;
+use strlib;
 use strings;
 use strconv;
 use encoding::utf8;
@@ -131,7 +132,7 @@ fn get_idt(name: str, scp: (*[]nmsp | void) = void) (*nmsp | void) = {
 let defd_fn: []*func = [];
 fn get_func(name: str, f: *file) (*func | void) = {
     const max = len(defd_fn);
-    for(let i = 0: size; i < max; i += 1){
+    for(let i = 0z; i < max; i += 1){
         if(strings::compare(defd_fn[i].fnname, name) == 0){
             return defd_fn[i];
         };
@@ -747,9 +748,14 @@ fn nxttk(f: *file, rev: bool = false) (tok | eof | CMP_ERR) = {
                     f.lin += 1;
                     f.end = 0;
 
-                    f.ptr += finda(tostr(f.src), "\n", f.ptr)! + 1;
-                    f.lst = f.ptr;
-                    return eol;
+                    match(strlib::finda(tostr(f.src), "\n", f.ptr)){
+                    case let i: size =>
+                        f.ptr = i + 1;
+                        f.lst = f.ptr;
+                        f.lin += 1;
+                        return eol;
+                    case => return eof;
+                    };
                 };
                 // just text
                 if(istxt(chr)){
@@ -765,7 +771,7 @@ fn nxttk(f: *file, rev: bool = false) (tok | eof | CMP_ERR) = {
                             };
                         };
                         // TODO: handle different numerical bases
-                        match(strconv::stou64(replace(val, "_", ""))){
+                        match(strconv::stou64(strlib::replace(val, "_", ""))){
                         case let n: u64 =>
                             incptr(f, false);
                             return n: num;
@@ -785,7 +791,7 @@ fn nxttk(f: *file, rev: bool = false) (tok | eof | CMP_ERR) = {
                     assert(idx > f.ptr);
 
                     const slc = tostr(f.src[f.ptr..(idx)]);
-                    let last = 0: size;
+                    let last = 0z;
 
                     let oprc = opr::NOT_OPER;
                     for(let o = 0; o < opr::OPER_END; o += 1){
@@ -984,11 +990,11 @@ fn solve(this: nmsp_t) []kwd = {
 };
 
 fn setptr(f: *file, reset: bool = false) void = {
-    static let safe_l = 0: size;
-    static let safe_p = 0: size;
-    static let safe_c = 0: size;
-    static let safe_e = 0: size;
-    static let safels = 0: size;
+    static let safe_l = 0z;
+    static let safe_p = 0z;
+    static let safe_c = 0z;
+    static let safe_e = 0z;
+    static let safels = 0z;
 
     if(!reset){
         safe_l = f.lin;
@@ -1014,9 +1020,9 @@ fn incptr(f: *file, onstr: bool) void = {
     for(f.ptr < max){
         const chr = f.src[f.ptr];
         if(chr == '\n'){
-            f.lst = f.ptr + 1;
             f.lin += 1;
             f.ptr += 1;
+            f.lst = f.ptr;
             f.end = 0;
         } else if(iswsp(chr)){
             f.end += 1;

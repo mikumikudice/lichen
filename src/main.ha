@@ -1,7 +1,6 @@
 use os;
 use fmt;
-use math;
-use time;
+use strlib;
 use strings;
 
 fn errstr(e: CMP_ERR) (str, (*file | void), (str | void)) = {
@@ -72,7 +71,12 @@ fn cmperr(e: CMP_ERR) never = {
     } else {
         const pos = ptr: *file;
         const txt = tostr(pos.src);
-        const src = strings::sub(txt, pos.lst, finda(txt, "\n", pos.lst)!);
+        const end =
+            match(strlib::finda(txt, "\n", pos.lst)){
+            case let i: size => yield i;
+            case => yield len(txt);
+            };
+        const src = strings::sub(txt, pos.lst, end);
         const num = fmt::asprintf("{} ", pos.lin + 1);
 
         fmt::errorfln("{} {}", col(fmt::asprintf("error at {}:{}:{}:",
@@ -167,7 +171,7 @@ export fn main() void = {
         return;
     };
     let name = os::args[1];
-    let outf = replace(name, ".ms", "");
+    let outf = strlib::replace(name, ".ms", "");
 
     let raw = match(parse(name)){
         case let err: CMP_ERR => cmperr(err);
