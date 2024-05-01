@@ -15,11 +15,11 @@ export type match_err = !(unmatched | index_oob);
     assert(finda("boba tea", "a", 5)! == 7);
     assert(finda("boba tea", "boba", 1) is unmatched);
 
-    assert(strings::compare(replace("boba tea", "tea", "coffee"), "boba coffee") == 0);
-    assert(strings::compare(replace("boba tea", "cofee", "banana"), "boba tea") == 0);
+    assert(replace("boba tea", "tea", "coffee") == "boba coffee");
+    assert(replace("boba tea", "cofee", "banana") == "boba tea");
 
-    assert(strings::compare(uppercase("HellopE!"), "HELLOPE!") == 0);
-    assert(strings::compare(lowercase("hELLOPe!"), "hellope!") == 0);
+    assert(uppercase("HellopE!") == "HELLOPE!");
+    assert(lowercase("hELLOPe!") == "hellope!");
 };
 
 // searches for the first occurance of ``pat`` in ``src`` and returns its
@@ -30,12 +30,12 @@ export fn find(src: str, pat: str) (size | match_err) = {
     const plen = len(pat);
 
     if(slen == plen){
-        if(strings::compare(src, pat) == 0) return 0;
+        if(src == pat) return 0;
     };
     // loop until the end
     for(let c = 0z; c + plen <= slen; c += 1){
         const sub = strings::sub(src, c, c + plen);
-        if(strings::compare(sub, pat) == 0){
+        if(sub == pat){
             return c;
         };
     };
@@ -53,12 +53,12 @@ export fn finda(src: str, pat: str, aft: size) (size | match_err) = {
     if(aft > slen) return index_oob;
 
     if(slen == plen){
-        if(strings::compare(src, pat) == 0) return 0;
+        if(src == pat) return 0;
     };
     // loop until the end
     for(let c = aft; c + plen <= slen; c += 1){
         const sub = strings::sub(src, c, c + plen);
-        if(strings::compare(sub, pat) == 0){
+        if(sub == pat){
             return c;
         };
     };
@@ -73,10 +73,10 @@ export fn replace(src: str, pat: str, sub: str) str = {
     const plen = len(pat);
     const blen = len(sub);
 
-    if(strings::compare(src, sub) == 0){
+    if(src == sub){
         return src;
     };
-    if(strings::compare(src, pat) == 0){
+    if(src == pat){
         return sub;
     };
     // loop until the end
@@ -92,7 +92,7 @@ export fn replace(src: str, pat: str, sub: str) str = {
                 yield "";
             };
 
-        if(strings::compare(mid, pat) == 0){
+        if(mid == pat){
             src = strings::concat(pre, sub, pst);
             // update length
             c += len(src) - slen + blen;
@@ -129,7 +129,7 @@ export fn lowercase(s: str) str = {
 export fn strlfind(haystack: []str, needle: str) (size | void) = {
     let max = len(haystack);
     for(let i = 0z; i < max; i += 1){
-        if(strings::compare(haystack[i], needle) == 0) return i;
+        if(haystack[i] == needle) return i;
     };
     return void;
 };
