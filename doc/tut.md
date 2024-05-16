@@ -1,10 +1,9 @@
 # hello world!
 a simple demonstration hello world code in moss.
 ```rust
-use lime;
-fmt = lime::fmt;
+use fmt;
 
-pub main = fn() : nil \ IO {
+pub main = fn() : unit \ fmt {
     fmt::putl("mornin' sailor!")!;
 };
 ```
@@ -15,23 +14,23 @@ moss supports single and multiple commented lines of code, including nested bloc
 ```rust
 // this is a comment
 /*
-    this is a multiple line comment
-    and the fallowing
+    and this is a multi-lined
+    comment and the fallowing
     /*
-        is a nested commented block
-        of text in moss
+        is a nested-commented
+        block of text in moss
     */
 */
 ```
 
 ## reserved names
-this is a list of the 32 tokens used as keywords for the language and as such cannot be used as variable names:
-| encapsulation | primitive types     | control flow       | miscellany    |
-| ------------- | ------------------- | ------------------ | ------------- |
-| `use`         | `u8, u16, u32, u64` | `if, else, match`  | `def, mut`    |
-| `pub`         | `i8, i16, i32, i64` | `for, next, break` | `test`        |
-|               | `rat, str uni, rec` | `yield, return`    | `is, and, or` |
-|               | `fn, err, nil`      | `defer`            |               |
+this is a list of the 30 tokens used as keywords for the language and as such cannot be used as variable names:
+| encapsulation | types                | control flow       | miscellany    |
+| ------------- | -------------------- | ------------------ | ------------- |
+| `use`         | `u8, u16, u32, u64`  | `if, else, match`  | `mut`         |
+| `pub`         | `i8, i16, i32, i64`  | `for, next, break` | `test`        |
+|               | `rat, unit`          | `yield, return`    | `is, and, or` |
+|               | `fn, uni, rec, type` | `defer`            |               |
 
 # types and variables
 these are all primitive and composite types in moss.
@@ -39,11 +38,9 @@ these are all primitive and composite types in moss.
 u8, u16, u32, u64       // unsigned integers
 i8, i16, i32, i64       // signed integers
 rat                     // ratios
-str                     // strings
-nil                     // void, null, empty, you choose
 rec                     // records
 uni                     // tagged unions
-err                     // error types
+unit                    // "nothing" type
 ```
 
 ## numbers and ratios
@@ -59,15 +56,12 @@ moss doesn't support floats by default, but instead ratios. that means your divi
 ```
 
 ## strings
-strings in moss caries its length within its bites and are not null terminated. strings are also immutable by default and UTF-8 encoded.
+moss has no special type for strings. they are represented as `[]u8`, once they are an array of bytes. string literals, ion the other hand, are quite unique. they are not null terminated and are UTF-8 encoded. they can't be operated on, but are mutable values.
 ```rust
-use core;
-
 foo = "mornin'";            // immutable value and namespace
-mut bar = " sailor!";       // immutable value but mutable namespace
+mut bar = " sailor!!";      // mutable value and namespace
 
-len = core::len(foo);       // returns 7: u64
-all = foo + bar;            // results in "mornin' sailor!" (length of 15)
+bar[bar.len - 1] = '\n';    // all arrays have a `len` field indicating their length
 ```
 
 and these are the only supported escape-characters in moss.
@@ -76,10 +70,19 @@ and these are the only supported escape-characters in moss.
 - `\a` for bell
 - `\r` for carriage return
 - `\n` for line feed
+- `\f` for form feed
 - `\\` backslash
 - `\'` single quote
 - `\"` double quote
 * note that there are no backwards compatibility with legacy stuff like vertical tab. formated printing have its own special set of escape chars (that also includes these listed above).
+
+## unit type
+in constrast with the already known type `void` from other languages, which caries no value and usually is found as a return type for functions that return nothing, the unit type actually has one and only one value, `_`, which is implicitly returned by all functions without a return statement or named return.
+```rust
+nothing = fn() : unit { };
+
+test nothing() == _; // succeeds
+```
 
 ## declaration, definition assignment and type casting
 ```rust
@@ -88,7 +91,7 @@ mut bar = 42: u64;  // declaration and definition
 
 foo = 6742;         // assignment
 
-bar = foo;          // u32 is a subset of u64, no need to explicit casting
+bar = foo;          // u32 is a subset of u64, no need for explicit casting
 foo = bar: u32;     // explicit casting because an u64 value can overflow an u32
 
 egg = -55: i64;     // immutable value
@@ -106,11 +109,10 @@ c = 5 * (42 + 3): u16;          // no operator precedence, use parenthesis to en
 # records
 also called "structs" by other languages, these are collections of data whithin fields of a single data structure.
 ```rust
-def dog = rec {
+type dog = rec {
     age   : u8,
-    name  : str,
-    breed : str,
-    owner : str,
+    name  : []u8,
+    owner : []u8,
 };
 ```
 
@@ -131,33 +133,32 @@ if x = 5 * 5; x > 64 {
 ## match blocks
 match blocks works both as a switch block and a pattern matching block. it can check the value or the type of a given variable. the distinction is done by checking if the argument is a tagged union and if the match cases are values or types.
 ```rust
-def my_uni = uni u32 | str | nil;
+type my_uni = uni u32 | []u8;
 ...
 x = 55: my_uni;
 match x {
     u32 => fmt::putl("x is an integer!")!;
     str => fmt::putl("x is a string!")!;
-    nil => fmt::putl("x is nothing!")!;
 };
 ```
 a match block can also be use ranges when matching values.
 ```rust
 x = 4;
 match x {
-    0       => fmt::putl("x is zero")!;
-    1 ..= 9 => fmt::putl("x is under 10")!;
-    _       => fmt::putl("x is bigger or equal to 10")!;   // nil means any case
+    0     => fmt::putl("x is zero")!;
+    1..10 => fmt::putl("x is under 10")!;
+    _    => fmt::putl("x is bigger or equal to 10")!; // `_` means any case
 };
 ```
 * note that there's no need to use break in either of these uses.
 
 or even, match can be used as a long sequence of if-else blocks:
 ```rust
-x = 'v';                                                            // literal chars are u8 values
-match {                                                             // empty match stands for "match true"
-    x == 'a' ..= 'z' => fmt::putl("x is a lowercase rune")!;          // comparison can be used with ranges
-    x == 'A' ..= 'Z' => fmt::putl("x is a uppercase rune")!;
-    x == '0' ..= '9' => fmt::putl("x is a numeral")!;
+x = 'v';                                                        // literal chars are u8 values
+match {                                                         // empty match stands for "match true"
+    x == 'a'..'z' => fmt::putl("x is a lowercase rune")!;       // comparison can be used with ranges
+    x == 'A'..'Z' => fmt::putl("x is a uppercase rune")!;
+    x == '0'..'9' => fmt::putl("x is a numeral")!;
     _ => {
         if x == '.' {
             fmt::putl("x is a dot!")!;
@@ -172,7 +173,7 @@ match {                                                             // empty mat
 for loops are the only available kind of loop in moss. they work as a normal for loop, a while loop and a foreach loop in other languages. here's all its uses:
 ```rust
 // no incrementing or decrementing, we use ranges
-for i = 2 ..= 20 {
+for i = 2 .. 20 {
     fmt::putfl("{}", i)!;
 };
 
@@ -187,7 +188,7 @@ for r < 100 {
 };
 
 num = [ 2, 3, 5, 7, 11, 13, 17, 23 ];
-for n ..= num {
+for n .. num {
     fmt::putfl("{}", n)!;
 };
 ```
@@ -195,73 +196,66 @@ for n ..= num {
 
 you even can use parallel assignment for a shorthand for nested loops.
 ```rust
-for c = 0 ..< 128; r = 0 ..< 128 {
-    nil; // empty statement
+for c = 0 .. 127; r = 0 .. 127 {
+    z = c + r;
 };
 ```
 the previous example is tha same as:
 ```rust
-for c = 0 ..< 128 {
-    for r = 0 ..< 128 {
-        nil;
+for c = 0 .. 127 {
+    for r = 0 .. 127 {
+        z = c + r;
     };
 };
 ```
 
 # unions, error handling and pattern matching
-moss has no exception handling. everything that can go wrong is dealt simply as another kind of return value. these types are a special kind called error types. these can be defined using the `err` keyword. when a function can return an error or a value, it must be handled by a union type (usually `return_val | err`) or handled by the propagation operator `?`.
+moss has no exception handling. everything that can go wrong is dealt simply as another kind of return value. these types are a special kind called error types. these can be defined defining unions with an error option using a bang. when a function can return an union tagged as an option, it must be handled with a match block, the propagation operator `?` or by the assertion operator `!`.
 ```rust
-use lime;
-fmt = lime::fmt;
+use fmt;
 
-def nan = err nil;
-def int = uni i32 | nan;
+type int = uni i32 ! u8;
 
-pub main = fn() lime => nil {
+pub main = fn() u32 \ fmt {
     mut res = myfn(7, 2);
 
     match res {
         int => fmt::putfl("7 divided by 2 is {}", r: i32)!;
         nan => fmt::panic("error! division by zero");
     };
-    res = myfn(6, 2)!; // the exclamation operator guarantees that the result will be not an error. if it happens, the program crashes
+    res = myfn(6, 2)!;
+    return 0;
 };
 
-myfn = fn(n, d: i32) int {
+myfn = fn(n, d: i32) : int {
     if d == 0 {
-        return nan;
+        return !0;
     } else {
         return n / d;
     };
 };
 ```
-you can also use a bang for an assertion  on `nil` or `err` values. i.e. `nil!` will make the program crash. if the function can return nil, you can as well use the `?` operator to short-circuit and return `nil` on one of these assertions, e.g. `foo?` becomes a `ret nil` if `foo == nil`.
 
 # named returns
-functions, just as can receive multiple parammeters, can return multiple values. this is achieved with named returns.
+functions, just as can have named parammeters, can a named return value.
 ```rust
-myfn = fn(x, y: i64) p, q: i64 {
-    p = x * x + y;
-    q = y * y - x;
-    // the empty return statement makes the function halt
-    // and return p and q with the current values
+myfn = fn(x, y: i64) r: i64 {
+    r = x * x + y;
+    if r < 0 {
+        r = y * y - x;
+    };
     return;
 };
 ```
-when receiving these multiple return values, just assign them.
-```rust
-foo, bar = myfn(6, 2);
-```
-you can have more return values than receivers, but not the opposite. declaring two variables with one return value is consired a syntax error.
 
 # default values
 you can set default attributions for your parameters when creating functions.
 ```rust
-div = fn(n, d = 1, 1: i64) i64 { // both parameters will be set to 1 if no argument is given
+div = fn(n, d = 1, 1: i64) : i64 { // both parameters will be set to 1 if no argument is given
     return n / d;
 };
 
-def person = {
+type person = rec {
     name = "bob",   // these will be the default values of these fields when instantiating the `person` record
     age  = 18: u32
 };
@@ -286,11 +280,11 @@ you can also define ranges when assigning to lists or even set default values to
 ```rust
 all_ones = [1...]: [32]u32;                 // fill all 32
 mytenths = [10...; 5]: [10]u32;             // every 5th number, starting from 10
-all_even = [0..=10; %2 == 0];               // all numbers from 0 up to 10 that are even
+all_even = [0 .. 10; %2 == 0];              // all numbers from 0 up to 10 that are even
 ```
 * note that in `all_even`, the `%2 == 0` is a rule for the filling. only n % 2 == 0 will be assigned (up to 10).
 
-# effect system
+# effect system and modules
 TODO
 
 # linear types

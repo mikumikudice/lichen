@@ -3,10 +3,9 @@ moss is a strongly typed, imperatively functional, AOT compiled programming lang
 ## code example
 this is a demo code for printing a hello world (in a mossy way):
 ```rust
-use lime;
-fmt = lime::fmt;
+use fmt;
 
-pub main = fn() : lime => nil {
+pub main = fn() : unit \ fmt {
     fmt::putl("mornin' sailor!")!;
 };
 ```
@@ -33,23 +32,54 @@ moss is directly inspired by [hare](https://harelang.org), [Flix](https://flix.d
 
 # disclaimer
 moss is still heavily in development. not only the compiler, but everything related to the project. despite it being not very likely to change during _implementation_, it still can change. currently we're at:
-- [x] language specification && compiler implementation.
-- [ ] language peripherals/development tools.
-- [ ] self-hosting.
 
-# roadmap
+## roadmap
 these are the current goals of this project.
 - [x] lexer.
 - [ ] parser and code gen.
+    - [ ] expressions
+        - [x] operators on primitives
+        - [ ] operators on records
+        - [ ] expressions within parenthesis
+        - [ ] destructive read
+    - [ ] mutability checking
+    - [ ] multi-line, nestable comments
+    - [ ] type system
+        - [ ] type checking
+        - [ ] ratios
+        - [ ] records
+        - [ ] unions
+        - [ ] error tags
+        - [ ] error assertion and bubble operator
+        - [ ] linear types
+        - [ ] generics
+    - [ ] control flow
+        - [ ] if/else
+        - [ ] for loop
+            - [ ] for each
+            - [ ] for range
+        - [ ] match
+        - [ ] defer
+    - [ ] modules
+    - [ ] FFI
+    - [ ] effect system
+- [ ] compile-time tests
 - [ ] improve helpfulness of error messages.
 - [ ] code optimizations.
+    - [ ] compile-time constant values are optmized-out in the final code
+    - [ ] runtime constant values evaluated at compile time
 - [ ] core lib.
-- [ ] FFI specification.
+    - [ ] io
+    - [ ] os
+    - [ ] rt
+    - [ ] fmt
+    - [ ] mem
+    - [ ] str
+    - [ ] fun
+    - [ ] time
 
 # building moss
-moss is written in the [hare programming language](https://hare-lang.org), uses the [mio](https://git.sr.ht/~mikaela-md/miolo) IR as a backend to generate the binaries and [mold](https://github.com/rui314/mold) as a linker. once both are installed, you're ready to both build the compiler and use it with no other dependencies. note that each of moss' dependencies have theirs own dependencies.
-
-once you installed both, simply run the `build.sh`. it will generate the compiler binary by the name `mossy`. by running it, you'll get the help needed to get started on compiling your code.
+moss is written in the [hare programming language](https://hare-lang.org), uses the [QBE](https://c9x.me/compile/) IR as a backend to generate the binaries and [mold](https://github.com/rui314/mold) as a linker. once all dependencies are installed, you're ready to both build the compiler and use it with no other dependencies. note that each of moss' dependencies have theirs own dependencies. once everything is set, simply run the `build.sh`. it will generate the compiler binary by the name `mossy`.
 
 # learning moss
 you can learn moss in a course of one to three days. [this](doc/tut.md) is the tutorial.

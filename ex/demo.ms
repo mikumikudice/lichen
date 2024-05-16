@@ -1,6 +1,5 @@
-use lime;
-fmt = lime::fmt;
+use fmt;
 
-pub main = fn() : lime => nil {
+pub main = fn() : unit \ fmt {
     fmt::putl("mornin' sailor!")!;
 };
