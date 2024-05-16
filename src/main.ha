@@ -48,9 +48,9 @@ fn errstr(e: CMP_ERR) (str, (*file | void), (str | void)) = {
         return (msg, err.ptr, err.tip);
 
     case let uni: IDTCDUP =>
-        const err = uni as unimsg;
-        const msg = fmt::asprintf("the identifier {} is already in use",
-            col(err.msg, cmd::BLU));
+        const err = uni as bi_msg;
+        const msg = fmt::asprintf("the identifier {} is already in use. it was previously defined at {}",
+            col(err.lft, cmd::BLU), col(err.rgt, cmd::BLU));
         return (msg, err.ptr, err.tip);
 
     case let uni: GENERIC =>
@@ -73,7 +73,7 @@ fn cmperr(e: CMP_ERR) never = {
         const txt = tostr(pos.src);
         const end =
             match(strlib::finda(txt, "\n", pos.lst)){
-            case let i: size => yield i;
+            case let e: size => yield e;
             case => yield len(txt);
             };
         const src = strings::sub(txt, pos.lst, end);
@@ -173,9 +173,13 @@ export fn main() void = {
     let name = os::args[1];
     let outf = strlib::replace(name, ".ms", "");
 
-    let raw = match(parse(name)){
-        case let err: CMP_ERR => cmperr(err);
-        case let src: (str, nmsp_t) => yield src.0;
+    let global = scope {
+        over = void,
+        defs = []
     };
-    fmt::println(raw)!;
+    let qbe_ir = match(parse(name, &global)){
+        case let err: CMP_ERR => cmperr(err);
+        case let src: str => yield src;
+    };
+    fmt::printfln("# moss 0.0.1\n{}", qbe_ir)!;
 };

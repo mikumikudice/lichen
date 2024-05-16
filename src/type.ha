@@ -18,7 +18,7 @@ type EXPECTD = !(void | bi_msg);
 type UNDEFNS = !(void | unimsg);
 type MISMTCH = !(void | unimsg);
 type CANT_DO = !(void | unimsg);
-type IDTCDUP = !(void | unimsg);
+type IDTCDUP = !(void | bi_msg);
 type GENERIC = !(void | unimsg);
 type GENTODO = !(void | unimsg);
 type CMP_ERR = !
@@ -34,7 +34,6 @@ type CMP_ERR = !
     | GENERIC
     | GENTODO
     );
-
 // --- parser types ---
 type file = struct {
     lin: size,
@@ -57,10 +56,10 @@ type kwd = enum int
     , DEFERSTT, EVAL_STT, RETURNTO
     , U8__TYPE, U16_TYPE, U32_TYPE, U64_TYPE
     , I8__TYPE, I16_TYPE, I32_TYPE, I64_TYPE
-    , RATIO__T, STRING_T, NIL_TYPE
-    , RECORD_T, TUNION_T, ERROR__T
-    , FUNCTION, IS__OPER, DMUTABLE
-    , KWRD_END, NOT_KWRD, NUMBER_T
+    , RATIO__T, UNITTYPE
+    , RECORD_T, TUNION_T, FUNCTION
+    , IS__OPER, DMUTABLE
+    , KWRD_END, NOT_KWRD, NUMBER_T, LIST_LIT
 };
 const kwdv =
     [ "use"  , "pub"  , "test"
@@ -69,44 +68,41 @@ const kwdv =
     , "defer", "yield", "return"
     , "u8"   , "u16"  , "u32", "u64"
     , "i8"   , "i16"  , "i32", "i64"
-    , "rat"  , "str"  , "nil"
-    , "rec"  , "uni"  , "err"
-    , "fn"   , "is"   , "mut"
+    , "rat"  , "unit"
+    , "rec"  , "uni"  , "fn"
+    , "is"   , "mut"
     ];
+const stou = kwd::I8__TYPE - kwd::U8__TYPE;
 static assert(kwd::KWRD_END: size == len(kwdv), "keyword values not updated");
 
 type opr = enum int
-    { PROPAGTN, ASSERTER
-    , LOGICNOT, LOGICAND, LOGIC_OR, BITSHFTR, BITSHFTL
+    { LOGICNOT, LOGICAND, LOGIC_OR, BITSHFTR, BITSHFTL
     , BOOL_EQL, BOOL_DIF, BOOL_LSS, BOOL_GRT, BOOL_LEQ, BOOL_GEQ
-    , INCREMNT, DECREMNT, MULTIPLY, DIVIDEBY, ASSIGNMT, MAP_CASE
     , ARTH_PLS, ARTH_MIN, ARTH_MUL, ARTH_DIV, ARTH_MOD
-    , RANGE_EX, RANGE_IN, COMPLETE
-    , BOOL_AND, BOOL__OR
+    , INCREMNT, DECREMNT, MULTIPLY, DIVIDEBY, ASSIGNMT, MAP_CASE
+    , RANGE_OP, COMPLETE, EFFCTTAG, CASTTOTP
+    , BOOL_AND, BOOL__OR, PROPAGTN, ASSERTER
     , OPER_END, NOT_OPER
 };
 const oprv =
-    [ "?"  , "!"
-    , "~"  , "&"  , "|"  , "<<", ">>" 
-    , "==" , "!=" , ">"  , "<" , ">=", "<="
-    , "+=" , "-=" , "*=" , "/=", "=", "=>"
+    [ "~"  , "&"  , "|"  , "<<", ">>" 
+    , "==" , "!=" , "<"  , ">" , "<=", ">="
     , "+"  , "-"  , "*"  , "/" , "%"
-    , "..<", "..=", "..."
-    , "and", "or"
+    , "+=" , "-=" , "*=" , "/=", "=", "=>"
+    , ".." , "...", "\\" , ":"
+    , "and", "or" , "?"  , "!"
     ];
 static assert(opr::OPER_END: size == len(oprv), "operator values not updated");
 
 type sym = enum int
     { OPN_CRLY, CLS_CRLY, OPN_SQRB, CLS_SQRB
-    , OPEN_PAR, CLOSEPAR
-    , CASTTOTP, MODFIELD, RECFIELD
+    , OPEN_PAR, CLOSEPAR , MODFIELD, RECFIELD
     , SEMICLNS, SYMCOMMA, SYMB_ANY
     , SYMB_END, NOT_SYMB
 };
 const symv =
     [ "{" , "}", "[", "]", "(", ")"
-    , ":" , "::", "."
-    , ";" , "," , "_"
+    , "::", ".", ";", ",", "_"
     ];
 static assert(sym::SYMB_END: size == len(symv), "symbol values not updated");
 
@@ -114,18 +110,28 @@ type eol = void;
 type eof = void;
 type tok = ( num | txt | idt | kwd | opr | sym | eol );
 
-type num_t = void;
-type nmsp_t = ( kwd | num_t ); // TODO: add composite types
 type func = struct {
-    fnname: str,
-    params: []nmsp_t,
-    retrns: [](nmsp | nmsp_t),
-    atline: size,
-    atcoln: size,
+    fname: str,
+    param: []kwd,
+    retrn: kwd,
+    ret_n: str,
+    lin: size,
+    cln: size,
 };
 type nmsp = struct {
-    idntfr: str,
-    nstype: nmsp_t,
-    atline: size,
-    atcoln: size,
+    ident: str,
+    vtype: kwd,
+    mutbl: bool,
+    asgnd: bool,
+    orign: str,
+    lin: size,
+    cln: size,
+};
+type ref = struct {
+    idt: str,
+    vtp: kwd,
+};
+type scope = struct {
+    over : (*scope | void),
+    defs : []*nmsp
 };
