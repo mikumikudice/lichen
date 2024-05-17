@@ -54,12 +54,12 @@ type kwd = enum int
     , IF___BLK, ELSE_BLK, MATCHBLK
     , FOR_LOOP, NEXT_STT, BREAKSTT
     , DEFERSTT, EVAL_STT, RETURNTO
-    , U8__TYPE, U16_TYPE, U32_TYPE, U64_TYPE
-    , I8__TYPE, I16_TYPE, I32_TYPE, I64_TYPE
-    , RATIO__T, UNITTYPE
-    , RECORD_T, TUNION_T, FUNCTION
+    , U8__TYPE, U16_TYPE, U32_TYPE, U64_TYPE    // 12
+    , I8__TYPE, I16_TYPE, I32_TYPE, I64_TYPE    // 16
+    , RATIO__T, UNITTYPE                        // 20
+    , RECORD_T, TUNION_T, FUNCTION              // 22
     , IS__OPER, DMUTABLE
-    , KWRD_END, NOT_KWRD, NUMBER_T, LIST_LIT
+    , KWRD_END, NOT_KWRD, NUMBER_T, STRING_T, ARRAY__T // 27
 };
 const kwdv =
     [ "use"  , "pub"  , "test"
