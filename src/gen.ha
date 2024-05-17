@@ -320,11 +320,11 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) (str | CMP_ERR) = {
 };
 
 fn parse_asg(f: *file, dest: str, scp: *scope, defn: bool = false) ((str, kwd) | CMP_ERR) = {
-    const dup = alloc(*f);
     let next = nxttk(f)?;
     let defn = false;
     const oper = expct(next is opr, next,
             f, void: EXPECTD, "assigment")?: opr;
+    const dup = alloc(*f);
     switch(oper){
         case opr::ASSIGNMT =>
             defn = true;
@@ -370,8 +370,8 @@ fn parse_asg(f: *file, dest: str, scp: *scope, defn: bool = false) ((str, kwd) |
         out = fmt::asprintf("    %.val =l {}\n", idx);
 
         finsh(f, void: CANT_DO, "perform operations on string literals")?;
-        expct(is_subt(dest_t, kwd::ARRAY__T), vall, f, void: MISMTCH, "member types",
-            cast_err(dest_t, kwd::ARRAY__T))?;
+        expct(is_subt(kwd::STRING_T, dest_t), vall, dup, void: MISMTCH, "member types",
+            cast_err(kwd::STRING_T, dest_t))?;
         return (out, kwd::ARRAY__T);
 
     case let i: idt => void;

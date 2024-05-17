@@ -114,10 +114,11 @@ fn nxttk(f: *file, rev: bool = false) (tok | eof | CMP_ERR) = {
                 f.end = 0;
                 match(strlib::finda(tostr(f.src), "\n", f.ptr)){
                 case let i: size =>
-                    f.ptr = i + 1;
-                    f.lst = f.ptr;
+                    f.ptr = i + 1;        
                     f.lin += 1;
+                    f.lst = f.ptr;
                     f.end = 0;
+                    f.cln = f.end;
                     return eol;
                 case => return eof;
                 };
@@ -308,6 +309,9 @@ fn jmpto(t: tok, f: *file) (void | CMP_ERR) = {
 
 // checks if it is end of line
 fn iseol(f: *file) (bool | CMP_ERR) = {
+    if(f.ptr >= len(f.src)) return true;
+    if(f.src[f.ptr] == ';' || f.src[f.ptr - 1] == ';') return true;
+
     const dummy = nxttk(f, true)?;
     if(dummy is eof || dummy is eol) return true;
     setptr(f, true);
@@ -501,6 +505,7 @@ fn setptr(f: *file, reset: bool = false) void = {
 
 fn incptr(f: *file, onstr: bool = false) void = {
     const max = len(f.src);
+    const lst = f.src[f.ptr];
     f.end += 1;
     f.ptr += 1;
 
@@ -512,6 +517,7 @@ fn incptr(f: *file, onstr: bool = false) void = {
             f.ptr += 1;
             f.lst = f.ptr;
             f.end = 0;
+            f.cln = f.end;
         } else if(iswsp(chr)){
             f.end += 1;
             f.ptr += 1;
