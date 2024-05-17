@@ -45,7 +45,7 @@ these are the current goals of this project.
     - [ ] mutability checking
     - [ ] multi-line, nestable comments
     - [ ] type system
-        - [ ] type checking
+        - [x] type checking
         - [ ] ratios
         - [ ] records
         - [ ] unions
