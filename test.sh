@@ -1,2 +1,2 @@
 cd src/
-hare test
+mold -run hare test

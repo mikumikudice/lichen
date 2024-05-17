@@ -8,6 +8,50 @@ use strings;
 use strconv;
 use encoding::utf8;
 
+fn tktostr(tk: (tok | eof), verb: bool = false) str = {
+    if(tk is eof) return "end of source file";
+    match(tk: tok){
+        case num =>
+            if(verb){
+                return fmt::asprintf("a number ({})", tk: num: u64);
+            } else {
+                return "a number";
+            };
+        case idt =>
+            if(verb){
+                return fmt::asprintf("an identifier ({})", tk: idt: str);
+            } else {
+                return "an identifier";
+            };
+        case txt =>
+            if(verb){
+                return fmt::asprintf("a string literal ({})", tostr(tk: txt: []u8));
+            } else {
+                return "a string literal";
+            };
+        case kwd =>
+            if(verb){
+                return fmt::asprintf("a keyword ({})", kwdv[tk: kwd]);
+            } else {
+                return "a keyword";
+            };
+        case opr =>
+            if(verb){
+                return fmt::asprintf("an operator ({})", oprv[tk: opr]);
+            } else {
+                return "an operator";
+            };
+        case sym =>
+            if(verb){
+                return fmt::asprintf("a symbol ({})", symv[tk: sym]);
+            } else {
+                return "a symbol";
+            };
+        case eol =>
+            return "end of line";
+    };
+};
+
 fn tostr(src: []u8) str = {
     // TODO: handle this more elegantly
     return strings::fromutf8(src)!;
@@ -61,7 +105,7 @@ fn load(fname: str) (*file | CMP_ERR) = {
         case let f: io::file => yield f;
         case => //let e: fs::error =>
             // TODO: specific messages for different filesystem errors
-            return LDDFAIL;
+            return fname: LDDFAIL;
     };
     defer io::close(fsrc)!;
 

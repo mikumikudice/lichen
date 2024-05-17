@@ -10,8 +10,8 @@ type bi_msg = struct {
     tip: (str | void),
     ptr: *file,
 };
-type LDDFAIL = !void;
-type CRTFAIL = !void;
+type LDDFAIL = !str;
+type CRTFAIL = !str;
 type UNREACH = !*file;
 type INVALID = !(void | unimsg);
 type EXPECTD = !(void | bi_msg);
