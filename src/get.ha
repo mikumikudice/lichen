@@ -98,9 +98,12 @@ fn nxttk(f: *file, rev: bool = false) (tok | eof | CMP_ERR) = {
 
         if(iswsp(chr)){
             continue;
-        } else if(chr == '"' || chr == '\''){
+        } else if(chr == '"'){
             incptr(f);
-            return parse_str(f, chr)?;
+            return parse_str(f)?;
+        } else if(chr == '\''){
+            incptr(f);
+            return parsechar(f)?;
         } else if(chr == ';'){
             incptr(f);
             return eol;
@@ -333,8 +336,8 @@ fn noeol(f: *file, msg: str, tip: (str | void) = void) (void | CMP_ERR) = {
     };
 };
 
-// parses a string or character literal
-fn parse_str(f: *file, open: u8) (num | txt | CMP_ERR) = {
+// parses a string
+fn parse_str(f: *file) (num | txt | CMP_ERR) = {
     let onstr = true;
     let escpd = false;
     let tkv: []u8 = [];
@@ -343,17 +346,13 @@ fn parse_str(f: *file, open: u8) (num | txt | CMP_ERR) = {
     for(onstr && f.ptr < max; incptr(f, onstr)){
         const chr = f.src[f.ptr];
         switch(chr){
-            case '"', '\'' =>
-                if(chr == open){
-                    if(!escpd){
-                        onstr = !onstr;
-                        escpd = false;
-                    } else {
-                        append(tkv, chr);
-                        escpd = false;
-                    };
+            case '"' =>
+                if(!escpd){
+                    onstr = !onstr;
+                    escpd = false;
                 } else {
                     append(tkv, chr);
+                    escpd = false;
                 };
             case '\\' =>
                 if(escpd){
@@ -379,7 +378,94 @@ fn parse_str(f: *file, open: u8) (num | txt | CMP_ERR) = {
                 append(tkv, chr);
         };
     };
-    if(open == '"') return tkv: txt;
+    return tkv: txt;
+};
+
+// parses a character literal
+fn parsechar(f: *file) (num | CMP_ERR) = {
+    let onstr = true;
+    let escpd = false;
+    let tkv: []u8 = [];
+
+    const max = len(f.src);
+    for(onstr && f.ptr < max; incptr(f, onstr)){
+        const chr = f.src[f.ptr];
+        switch(chr){
+            case '\'' =>
+                if(!escpd){
+                    onstr = !onstr;
+                    escpd = false;
+                } else {
+                    append(tkv, chr);
+                    escpd = false;
+                };
+            case '\\' =>
+                if(escpd){
+                    append(tkv, '\\');
+                    escpd = false;
+                } else {
+                    escpd = true;
+                };
+            case 't' =>
+                if(escpd){
+                    append(tkv, '\t');
+                    escpd = false;
+                } else {
+                    append(tkv, chr);
+                };
+            case 'b' =>
+                if(escpd){
+                    append(tkv, '\b');
+                    escpd = false;
+                } else {
+                    append(tkv, chr);
+                };
+            case 'a' =>
+                if(escpd){
+                    append(tkv, '\a');
+                    escpd = false;
+                } else {
+                    append(tkv, chr);
+                };
+            case 'r' =>
+                if(escpd){
+                    append(tkv, '\r');
+                    escpd = false;
+                } else {
+                    append(tkv, chr);
+                };
+            case 'n' =>
+                if(escpd){
+                    append(tkv, '\n');
+                    escpd = false;
+                } else {
+                    append(tkv, chr);
+                };
+            case 'f' =>
+                if(escpd){
+                    append(tkv, '\f');
+                    escpd = false;
+                } else {
+                    append(tkv, chr);
+                };
+            case '0' =>
+                if(escpd){
+                    append(tkv, '\0');
+                    escpd = false;
+                } else {
+                    append(tkv, chr);
+                };
+            case =>
+                if(escpd){
+                    return unimsg {
+                        msg = fmt::asprintf("invalid escape char {}", chr: rune),
+                        tip = void,
+                        ptr = f,
+                    }: GENERIC;
+                };
+                append(tkv, chr);
+        };
+    };
     if(len(tkv) == 1){
         return tkv[0]: u32: num;
     } else {
