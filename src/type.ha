@@ -139,7 +139,16 @@ type scope = struct {
     defs : []*nmsp,
     funs : []*func,
 };
-
+type tkind = enum {
+    PRIMITIVE,
+    COMPOSITE,
+    TAGGEDUNI,
+};
+type moss_t = struct {
+    tdef: []kwd,
+    kind: tkind,
+    orign: str,
+};
 const krnls = [ "IO", "MEM" ];
 type kernel = enum size
     { IO, MEM
