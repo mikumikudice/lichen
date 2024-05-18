@@ -34,11 +34,13 @@ moss is directly inspired by [hare](https://harelang.org), [Flix](https://flix.d
 moss is still heavily in development. not only the compiler, but everything related to the project. despite it being not very likely to change during _implementation_, it still can change. currently we're at:
 
 ## roadmap
-these are the current goals of this project.
-- [x] lexer.
-- [ ] parser and code gen.
+these are the current goals of this project:
+- [x] lexer
+- [ ] parser and code gen
     - [ ] expressions
         - [x] operators on primitives
+        - [ ] global reference to functions at any position
+        - [ ] expressions on function call arguments
         - [ ] operators on records
         - [ ] expressions within parenthesis
         - [ ] destructive read
@@ -49,7 +51,8 @@ these are the current goals of this project.
             - [x] on expressions
             - [x] on function calls
             - [ ] on record assignments
-        - [ ] casting for function arguments
+            - [ ] casting for function arguments
+        - [ ] lists
         - [ ] ratios
         - [ ] records
         - [ ] unions
@@ -68,11 +71,11 @@ these are the current goals of this project.
     - [ ] FFI
     - [ ] effect system
 - [ ] compile-time tests
-- [ ] improve helpfulness of error messages.
+- [ ] improve helpfulness of error messages
 - [ ] code optimizations.
     - [ ] compile-time constant values are optmized-out in the final code
     - [ ] runtime constant values evaluated at compile time
-- [ ] core lib.
+- [ ] core lib and kernels
     - [ ] io
     - [ ] os
     - [ ] rt
