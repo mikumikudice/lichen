@@ -80,7 +80,7 @@ fn peek(proc: * exec::process) void = {
 };
 
 fn rem_path(f: str) (str, str) = {
-    let name = "";
+    let name = f;
     let path = "";
     let i = strlib::find(f, "/"); 
     for(!(i is strlib::match_err); i = strlib::finda(f, "/", i: size + 1)){
@@ -102,9 +102,9 @@ fn errstr(e: CMP_ERR) (str, (*file | void), (str | void)) = {
         return (msg, void, void);
 
     case let ptr: UNREACH =>
-        const msg = fmt::asprintf("{}", col("compiler stuck in a unreachable path",
-            cmd::BOX_BLK));
-        return (msg, ptr: *file, void);
+        const msg = fmt::asprintf("compiler stuck in a unreachable path: {}",
+            col(ptr.0, cmd::BOX_BLK));
+        return (msg, ptr.1, void);
 
     case let uni: INVALID =>
         const err = uni as unimsg;
