@@ -102,6 +102,7 @@ export fn replace(src: str, pat: str, sub: str) str = {
     return src;
 };
 
+// returns a new instance of `s` in uppercase
 export fn uppercase(s: str) str = {
     const src = strings::toutf8(s);
     const max = len(src);
@@ -114,6 +115,7 @@ export fn uppercase(s: str) str = {
     return strings::fromutf8(src)!;
 };
 
+// returns a new instance of `s` in lowercase
 export fn lowercase(s: str) str = {
     const src = strings::toutf8(s);
     const max = len(src);
@@ -126,10 +128,11 @@ export fn lowercase(s: str) str = {
     return strings::fromutf8(src)!;
 };
 
-export fn strlfind(haystack: []str, needle: str) (size | void) = {
+// searches for `needle` in `haystack`. returns the index
+// if found, otherwise returnd void
+export fn findl(haystack: []str, needle: str) (size | void) = {
     let max = len(haystack);
     for(let i = 0z; i < max; i += 1){
         if(haystack[i] == needle) return i;
     };
-    return void;
 };

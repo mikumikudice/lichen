@@ -56,10 +56,10 @@ type kwd = enum int
     , DEFERSTT, EVAL_STT, RETURNTO
     , U8__TYPE, U16_TYPE, U32_TYPE, U64_TYPE    // 12
     , I8__TYPE, I16_TYPE, I32_TYPE, I64_TYPE    // 16
-    , RATIO__T, UNITTYPE                        // 20
-    , RECORD_T, TUNION_T, FUNCTION              // 22
+    , RATIO__T, STRING_T, RAW_TYPE, UNITTYPE    // 20
+    , RECORD_T, TUNION_T, FUNCTION              // 24
     , IS__OPER, DMUTABLE
-    , KWRD_END, NOT_KWRD, NUMBER_T, STRING_T, ARRAY__T // 27
+    , KWRD_END, NOT_KWRD, NUMBER_T, ARRAY__T    // 29
 };
 const kwdv =
     [ "use"  , "pub"  , "test"
@@ -68,7 +68,7 @@ const kwdv =
     , "defer", "yield", "return"
     , "u8"   , "u16"  , "u32", "u64"
     , "i8"   , "i16"  , "i32", "i64"
-    , "rat"  , "unit"
+    , "rat"  , "str"  , "raw", "unit"
     , "rec"  , "uni"  , "fn"
     , "is"   , "mut"
     ];
@@ -80,7 +80,7 @@ type opr = enum int
     , BOOL_EQL, BOOL_DIF, BOOL_LSS, BOOL_GRT, BOOL_LEQ, BOOL_GEQ
     , ARTH_PLS, ARTH_MIN, ARTH_MUL, ARTH_DIV, ARTH_MOD
     , INCREMNT, DECREMNT, MULTIPLY, DIVIDEBY, ASSIGNMT, MAP_CASE
-    , RANGE_OP, COMPLETE, EFFCTTAG, CASTTOTP
+    , RANGE_OP, COMPLETE, EFFCTTAG, CASTTOTP, MODFIELD, RECFIELD
     , BOOL_AND, BOOL__OR, PROPAGTN, ASSERTER
     , OPER_END, NOT_OPER
 };
@@ -89,20 +89,19 @@ const oprv =
     , "==" , "!=" , "<"  , ">" , "<=", ">="
     , "+"  , "-"  , "*"  , "/" , "%"
     , "+=" , "-=" , "*=" , "/=", "=", "=>"
-    , ".." , "...", "\\" , ":"
+    , ".." , "...", "\\" , ":", "::", "."
     , "and", "or" , "?"  , "!"
     ];
 static assert(opr::OPER_END: size == len(oprv), "operator values not updated");
 
 type sym = enum int
     { OPN_CRLY, CLS_CRLY, OPN_SQRB, CLS_SQRB
-    , OPEN_PAR, CLOSEPAR , MODFIELD, RECFIELD
-    , SEMICLNS, SYMCOMMA, SYMB_ANY
-    , SYMB_END, NOT_SYMB
+    , OPEN_PAR, CLOSEPAR, SEMICLNS, SYMCOMMA
+    , SYMB_ANY, SYMB_END, NOT_SYMB
 };
 const symv =
     [ "{" , "}", "[", "]", "(", ")"
-    , "::", ".", ";", ",", "_"
+    , ";", ",", "_"
     ];
 static assert(sym::SYMB_END: size == len(symv), "symbol values not updated");
 
@@ -123,15 +122,26 @@ type nmsp = struct {
     vtype: kwd,
     mutbl: bool,
     asgnd: bool,
-    orign: str,
+    orign: (str | kernel),
     lin: size,
     cln: size,
 };
-type ref = struct {
+type idref = struct {
     idt: str,
     vtp: kwd,
+    mod: bool,
 };
 type scope = struct {
     over : (*scope | void),
     defs : []*nmsp
+};
+
+const krnls = [ "IO", "MEM" ];
+type kernel = enum size
+    { IO, MEM
+    };
+type module = struct {
+    name : str,
+    funs : []func,
+    vars : []nmsp,
 };

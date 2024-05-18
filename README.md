@@ -45,7 +45,11 @@ these are the current goals of this project.
     - [ ] mutability checking
     - [ ] multi-line, nestable comments
     - [ ] type system
-        - [x] type checking
+        - [ ] type checking
+            - [x] on expressions
+            - [x] on function calls
+            - [ ] on record assignments
+        - [ ] casting for function arguments
         - [ ] ratios
         - [ ] records
         - [ ] unions

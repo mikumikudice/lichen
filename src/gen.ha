@@ -21,8 +21,15 @@ fn build(src: str, dest: str) void = {
     const root = "./bin";
     const temp = "./bin/tmp";
     const (objf, _) = rem_path(dest);
-    const stdl = fmt::asprintf("{}/../src/lib/std.asm", root);
-    const stdo = fmt::asprintf("{}/std.o", temp);
+    
+    const rt_src = fmt::asprintf("{}/../src/lib/rt.asm", root);
+    const rt_out = fmt::asprintf("{}/rt.o", root);
+
+    const io_mod = fmt::asprintf("{}/../src/lib/io.asm", root);
+    const io_out = fmt::asprintf("{}/io.o", temp);
+
+    const mem_mod = fmt::asprintf("{}/../src/lib/mem.asm", root);
+    const mem_out = fmt::asprintf("{}/mem.o", temp);
 
     const qbe_out = fmt::asprintf("{}/{}.ssa", temp, objf);
     const bin_src = fmt::asprintf("{}/{}.asm", temp, objf);
@@ -40,8 +47,10 @@ fn build(src: str, dest: str) void = {
 
     runc("qbe", "-o", bin_src, qbe_out);
     runc("as" , "-o", bin_out, bin_src);
-    runc("nasm", "-felf64", "-o", stdo, stdl);
-    runc("mold", "-o", dest, bin_out, stdo);
+    runc("nasm", "-felf64", "-o", rt_out, rt_src);
+    runc("nasm", "-felf64", "-o", io_out, io_mod);
+    runc("nasm", "-felf64", "-o", mem_out, mem_mod);
+    runc("mold", "-o", dest, bin_out, rt_out, io_out, mem_out);
 
     //runc("rm", qbe_out, bin_src, bin_out);
 };

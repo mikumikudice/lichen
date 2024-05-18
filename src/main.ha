@@ -3,6 +3,8 @@ use fmt;
 use strlib;
 use strings;
 
+const stacktrace = false;
+
 export fn main() void = {
     const abt = "mossy is the compiler for the moss programming language.";
     const tut = "not-implemented-yet";

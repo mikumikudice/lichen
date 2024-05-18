@@ -24,13 +24,13 @@ moss supports single and multiple commented lines of code, including nested bloc
 ```
 
 ## reserved names
-this is a list of the 30 tokens used as keywords for the language and as such cannot be used as variable names:
-| encapsulation | types                | control flow       | miscellany    |
-| ------------- | -------------------- | ------------------ | ------------- |
-| `use`         | `u8, u16, u32, u64`  | `if, else, match`  | `mut`         |
-| `pub`         | `i8, i16, i32, i64`  | `for, next, break` | `test`        |
-|               | `rat, unit`          | `yield, return`    | `is, and, or` |
-|               | `fn, uni, rec, type` | `defer`            |               |
+this is a list of the 32 tokens used as keywords for the language and as such cannot be used as variable names:
+| encapsulation | types                 | control flow       | miscellany    |
+| ------------- | --------------------- | ------------------ | ------------- |
+| `use`         | `u8, u16, u32, u64`   | `if, else, match`  | `mut`         |
+| `pub`         | `i8, i16, i32, i64`   | `for, next, break` | `test`        |
+|               | `rat, str, raw, unit` | `yield, return`    | `is, and, or` |
+|               | `fn, uni, rec, type`  | `defer`            |               |
 
 # types and variables
 these are all primitive and composite types in moss.
@@ -40,6 +40,8 @@ i8, i16, i32, i64       // signed integers
 rat                     // ratios
 rec                     // records
 uni                     // tagged unions
+str                     // string types
+raw                     // untyped raw 64-bit data
 unit                    // "nothing" type
 ```
 
@@ -56,7 +58,7 @@ moss doesn't support floats by default, but instead ratios. that means your divi
 ```
 
 ## strings
-moss has no special type for strings. they are represented as `[]u8`, once they are an array of bytes. string literals, ion the other hand, are quite unique. they are not null terminated and are UTF-8 encoded. they can't be operated on, but are mutable values.
+strings in moss are not null terminated, in contrast with C-like `char*` strings and are UTF-8 encoded. they can't be operated on, but are mutable values.
 ```rust
 foo = "mornin'";            // immutable value and namespace
 mut bar = " sailor!!";      // mutable value and namespace
@@ -111,8 +113,8 @@ also called "structs" by other languages, these are collections of data whithin 
 ```rust
 type dog = rec {
     age   : u8,
-    name  : []u8,
-    owner : []u8,
+    name  : str,
+    owner : str,
 };
 ```
 
@@ -133,7 +135,7 @@ if x = 5 * 5; x > 64 {
 ## match blocks
 match blocks works both as a switch block and a pattern matching block. it can check the value or the type of a given variable. the distinction is done by checking if the argument is a tagged union and if the match cases are values or types.
 ```rust
-type my_uni = uni u32 | []u8;
+type my_uni = uni u32 | str;
 ...
 x = 55: my_uni;
 match x {

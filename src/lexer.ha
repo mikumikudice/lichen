@@ -100,6 +100,9 @@ fn iswsp(c: u8) bool = {
 // loads the file `fname` and instantiates
 // a file parsing object
 fn load(fname: str) (*file | CMP_ERR) = {
+    // debug info
+    if(stacktrace)
+        fmt::printfln("loading file \"{}\"", fname)!;
     // open file or rise an error
     let fsrc = match(os::open(fname)){
         case let f: io::file => yield f;
@@ -129,6 +132,17 @@ fn load(fname: str) (*file | CMP_ERR) = {
 // returns the next token or end of file
 // returns a compilation error on invalid tokens
 fn nxttk(f: *file, rev: bool = false) (tok | eof | CMP_ERR) = {
+    // debug info
+    if(stacktrace){
+        const txt = tostr(f.src);
+        const end =
+            match(strlib::finda(txt, "\n", f.ptr)){
+            case let e: size => yield e;
+            case => yield len(txt);
+            };
+        const src = strings::sub(txt, f.ptr, end);
+        fmt::printfln("reading token at \"{}\"", src)!;
+    };
     if(rev) setptr(f);
 
     let tkv: []u8 = [];
