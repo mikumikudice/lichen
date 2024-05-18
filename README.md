@@ -15,7 +15,7 @@ pub main = fn() : unit \ fmt {
 - modern and clever casting system for convenient (smart) type conversions.
 - simple, small and concise syntax semantics. new and yet familiar.
 - no dependencies on libc and rich (yet simple) core libraries, producing statically linked, stand-alone binary files.
-- no command line settings for the compile, compilation flags are set in-code.
+- no command line settings for the compiler; compilation flags are set in-code.
 - no floats, but instead ratio types.
 - extremely concise syntax. if it does the same thing, you write it in the same way.
 
@@ -39,12 +39,18 @@ these are the current goals of this project:
 - [ ] parser and code gen
     - [ ] expressions
         - [x] operators on primitives
-        - [ ] global reference to functions at any position
+        - [x] global reference to functions at any position
         - [ ] expressions on function call arguments
         - [ ] operators on records
         - [ ] expressions within parenthesis
         - [ ] destructive read
+        - [ ] defer
+        - [ ] yield and statements as expressions
+        - [ ] allow functions as first class objects
+        - [ ] parallel assignment
     - [ ] mutability checking
+    - [ ] hex, oct and bin literals
+    - [ ] prime notation
     - [ ] multi-line, nestable comments
     - [ ] type system
         - [ ] type checking
@@ -55,6 +61,7 @@ these are the current goals of this project:
         - [ ] lists
         - [ ] ratios
         - [ ] records
+            - [] default values for record fields
         - [ ] unions
         - [ ] error tags
         - [ ] error assertion and bubble operator
@@ -67,6 +74,8 @@ these are the current goals of this project:
             - [ ] for range
         - [ ] match
         - [ ] defer
+    - [ ] local functions
+    - [ ] default values for function arguments
     - [ ] modules
     - [ ] FFI
     - [ ] effect system
