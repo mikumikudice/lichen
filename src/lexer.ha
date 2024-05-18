@@ -98,6 +98,10 @@ fn iswsp(c: u8) bool = {
     return c == ' ' || c == '\n' || c == '\t';
 };
 
+fn gen_pos(f: *file) str = {
+    return fmt::asprintf( "{}:{}:{}", f.name, f.lin + 1, f.cln + 1);
+};
+
 // loads the file `fname` and instantiates
 // a file parsing object
 fn load(fname: str) (*file | CMP_ERR) = {
@@ -143,7 +147,7 @@ fn nxttk(f: *file, rev: bool = false) (tok | eof | CMP_ERR) = {
             case => yield len(txt);
             };
         const src = strings::sub(txt, f.ptr, end);
-        fmt::printfln("reading token at \"{}\"", src)!;
+        fmt::printfln("reading token at {}", gen_pos(f))!;
     };
     if(rev) setptr(f);
 
@@ -218,6 +222,7 @@ fn nxttk(f: *file, rev: bool = false) (tok | eof | CMP_ERR) = {
 
                 const slc = tostr(f.src[f.ptr..(idx)]);
                 let last = 0z;
+                let lst_l = 0z;
 
                 let oprc = opr::NOT_OPER;
                 for(let o = 0; o < opr::OPER_END; o += 1){
@@ -225,9 +230,10 @@ fn nxttk(f: *file, rev: bool = false) (tok | eof | CMP_ERR) = {
                     if(olen > len(slc)) continue;
 
                     const sub = strings::sub(slc, 0, len(oprv[o]));
-                    if(sub == oprv[o]){
+                    if(sub == oprv[o] && lst_l < olen){
                         oprc = o: opr;
                         last = olen;
+                        lst_l = olen;
                     };
                 };
                 if(oprc != opr::NOT_OPER){
@@ -236,16 +242,17 @@ fn nxttk(f: *file, rev: bool = false) (tok | eof | CMP_ERR) = {
                     incptr(f);
                     return oprc;
                 };
-
+                lst_l = 0;
                 let symc = sym::NOT_SYMB;
                 for(let s = 0; s < sym::SYMB_END; s += 1){
                     const slen = len(symv[s]);
                     if(slen > len(slc)) continue;
 
                     const sub = strings::sub(slc, 0, slen);
-                    if(sub == symv[s]){
+                    if(sub == symv[s] && lst_l < slen){
                         symc = s: sym;
                         last = slen;
+                        lst_l = slen;
                     };
                 };
                 if(symc != sym::NOT_SYMB){
@@ -327,7 +334,7 @@ fn expct(eql: bool, tk: (tok | eof), f: *file, e: CMP_ERR, msg: str, tip: (str |
 
 fn mtchs(s: sym, f: *file, restore: bool = true) (u64 | CMP_ERR) = {
     if(stacktrace)
-        fmt::printfln("matching symbol \"{}\"", symv[s])!;
+        fmt::printfln("matching symbol \"{}\" at {}", symv[s], gen_pos(f))!;
 
     noeol(f, "matching symbol")?;
     if(restore) setptr(f);
