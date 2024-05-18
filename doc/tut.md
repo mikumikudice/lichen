@@ -88,7 +88,7 @@ test nothing() == _; // succeeds
 
 ## declaration, definition assignment and type casting
 ```rust
-mut foo : u32;      // delcaration of a mutable value
+mut foo : u32;      // declaration of a mutable value
 mut bar = 42: u64;  // declaration and definition
 
 foo = 6742;         // assignment
@@ -103,8 +103,8 @@ foo = egg: u32;     // casting from bigger to lower size means modulo dividing t
 
 # expressions and operators
 ```rust
-a = 42 + 7 - 1;                 // the type was inferred (u32)
-c = 5 * (42 + 3): u16;          // no operator precedence, use parenthesis to enclose an expression
+a = 42 + 7 - 1 : u32;   // the whole expression is casted to u32
+c = 5 * (42 + 3): u16;  // no operator precedence, use parenthesis to enclose an expression
 ```
 * note the casting affects the whole expression. if you need to cast only one value, do `(foo : type)`
 
@@ -202,7 +202,7 @@ for c = 0 .. 127; r = 0 .. 127 {
     z = c + r;
 };
 ```
-the previous example is tha same as:
+the previous example is the same as:
 ```rust
 for c = 0 .. 127 {
     for r = 0 .. 127 {
@@ -218,7 +218,7 @@ use fmt;
 
 type int = uni i32 ! u8;
 
-pub main = fn() u32 \ fmt {
+pub main = fn() : u32 \ fmt {
     mut res = myfn(7, 2);
 
     match res {
@@ -239,7 +239,7 @@ myfn = fn(n, d: i32) : int {
 ```
 
 # named returns
-functions, just as can have named parammeters, can a named return value.
+functions, just as it can have named parammeters, can have a named return value.
 ```rust
 myfn = fn(x, y: i64) r: i64 {
     r = x * x + y;
@@ -265,9 +265,11 @@ type person = rec {
 
 # zero values
 all unassigned variables will start with its zero corresponding value depending on its type:
+
 - u8, u16, u32, u64, i8, i16, i32, i64, rat: 0
 - str: ""
-records fields are set to their respective zero values as well or the default value if set. unions are the only objects that must be initialized, once there is no objectively correct type to inherit the zeroed value.
+
+record fields are set to their respective zero values as well or the default value if set. unions are the only objects that must be initialized, once there is no objectively correct type to inherit the zeroed value.
 
 # lists and ranges
 ## syntax

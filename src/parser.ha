@@ -32,6 +32,8 @@ fn getdefval(vtp: kwd) str = {
     case kwd::U64_TYPE, kwd::I64_TYPE,
         kwd::RATIO__T =>
         return "0";
+    case kwd::STRING_T, kwd::ARRAY__T =>
+        return "0";
     case kwd::UNITTYPE =>
         return "0xcafe0000";
     case =>
@@ -99,16 +101,16 @@ fn pushref(id: str, f: *file, scp: *scope, add: *[]idref) (void | CMP_ERR) = {
         fmt::printfln("pushing new reference to \"{}\" at {}:{}:{}", id, f.name, f.lin + 1, f.cln + 1)!;
     const max = len(add);
     const nm =
-        match(get_idt(id, scp)){
+        match(get_idt(id, f, scp)?){
         case let i: *nmsp =>
             yield i;
-        case void =>
-            return unimsg {
-                msg = id,
-                tip = void,
-                ptr = f,
-            }: UNDEFNS;
+        case =>
+            const err = fmt::asprintf("namespace \"{}\" should be defined", id);
+            return (err, f): UNREACH;
         };
+    // value is already loaded
+    if(nm.param) return;
+
     for(let i = 0z; i < max; i += 1){
         if(add[i].idt == id){
             return;
@@ -147,56 +149,126 @@ fn solve_ref(refs: *[]idref) str = {
                 hdr, refs[i].idt, tptob(refs[i].vtp));
         };
     };
-    free(refs);
     return hdr;
 };
 
-fn get_idtp(id: *nmsp) str = {
-    const orign =
-        match(id.orign){
-        case let fname: str =>
-            yield fname;
-        case let kid: kernel =>
-            yield krnls[kid];
-        };
-    return fmt::asprintf("{}:{}:{}", orign, id.lin + 1, id.cln + 1);
+fn get_idpos(id: (*nmsp | *func)) str = {
+    match(id){
+    case let var: *nmsp =>
+        const orign =
+            match(var.orign){
+            case let fname: str =>
+                yield fname;
+            case let kid: kernel =>
+                yield krnls[kid];
+            };
+        return fmt::asprintf("{}:{}:{}", orign, var.lin + 1, var.cln + 1);
+    case let fun: *func =>
+        const orign =
+            match(fun.orign){
+            case let fname: str =>
+                yield fname;
+            case let kid: kernel =>
+                yield krnls[kid];
+            };
+        return fmt::asprintf("{}:{}:{}", orign, fun.lin + 1, fun.cln + 1);
+    };
 };
 
-fn push_idt(nm: str, mut: bool, f: *file, scp: *scope) (*nmsp | IDTCDUP) = {
+fn push_idt(nm: idt, mut: bool, f: *file, scp: *scope) ((*nmsp | *func) | IDTCDUP) = {
     if(stacktrace)
         fmt::printfln("pushing identifier \"{}\"", nm)!;
-    match(get_idt(nm, scp)){
-    case void =>
+    match(get_idt(nm, f, scp, true)){
+    case let var: *nmsp =>
+        return bi_msg {
+            lft = nm: str,
+            rgt = get_idpos(var),
+            tip = void,
+            ptr = f,
+        }: IDTCDUP;
+    case let fun: *func =>
+        // only push_fun effectively pushes functions
+        return fun;
+    case =>
         const new = alloc(nmsp {
-            ident = nm,
+            ident = nm: str,
             vtype = kwd::NOT_KWRD,
             mutbl = mut,
             asgnd = false,
+            param = false,
             orign = f.name,
             lin = f.lin,
             cln = f.cln,
         });
         append(scp.defs, new);
         return new;
-    case let dup: *nmsp =>
-        return bi_msg {
-            lft = nm,
-            rgt = get_idtp(dup),
-            tip = void,
-            ptr = f,
-        }: IDTCDUP;
     };
 };
 
-fn get_idt(nm: str, scp: *scope) (*nmsp | void) = {
+fn get_idt(nm: idt, f: *file, scp: *scope, notmod: bool = false) (*nmsp | *func | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("getting identifier \"{}\"", nm)!;
 
+    if(!notmod){
+        let next = nxttk(f, true)?;
+        if(cmp_tok(next, opr::MODFIELD)){
+            return parse_field(nm, f, scp)?;
+        } else {
+            setptr(f, true);
+        };
+    };
+
     for(let n ..& scp.defs){
-        if(n.ident == nm) return n;
+        if(n.ident == nm: str) return n;
+    };
+    for(let f ..& scp.funs){
+        if(f.fname == nm: str) return f;
     };
     if(!(scp.over is void)){
-        return get_idt(nm, scp.over: *scope);
+        return get_idt(nm, f, scp.over: *scope, true)?;
+    };
+
+    return unimsg {
+        msg = nm: str,
+        tip = void,
+        ptr = f,
+    }: UNDEFNS;
+};
+
+fn push_fun(name: idt, f: *file, parm_l: []kwd, parm_n : []idt, retrn: kwd, scp: *scope) (*func | CMP_ERR) = {
+    if(stacktrace)
+        fmt::printfln("pushing function \"{}\" at {}:{}:{}", name, f.name, f.lin + 1, f.cln + 1)!;
+    assert(scp.over is void);
+    match(get_idt(name, f, scp, true)){
+    case let var: *nmsp =>
+        return bi_msg {
+            lft = name: str,
+            rgt = get_idpos(var),
+            tip = void,
+            ptr = f,
+        }: IDTCDUP;
+
+    case let fun: *func =>
+        return bi_msg {
+            lft = name: str,
+            rgt = get_idpos(fun),
+            tip = void,
+            ptr = f,
+        }: IDTCDUP;
+
+    case =>
+        const fun = alloc(func {
+            fname = name: str,
+            param = parm_l,
+            prm_n = parm_n,
+            retrn = retrn,
+            ret_n = "",
+            orign = f.name,
+            lin = f.lin,
+            cln = f.cln,
+        });
+        append(scp.funs, fun);
+        return fun;
     };
 };
 
@@ -208,14 +280,18 @@ let ldd_mods = []: []module;
 // itself, parses a new scope withih `within`. returns a header containing global definitions,
 // the parsed source itself in the QBE IR and the final type of return, in the case of parsing
 // a function body. in case of any parsing error, returns a compilation error
-fn parse(from: (str | *file), scp: *scope, stop: size = 0) (str | CMP_ERR) = {
+fn parse(from: (str | *file), scp: *scope, stop: size = 0) ((str, kwd) | CMP_ERR) = {
     let out = "";
+    let ret_tp = kwd::UNITTYPE;
     let f =
         match(from){
         case let fname: str =>
             if(stacktrace)
                 fmt::printfln("parsing file \"{}\"", fname)!;
-            yield load(fname)?;
+
+            const _f =  load(fname)?;
+            parse_globl(_f, scp)?;
+            yield _f;
         case let _f: *file =>
             if(stacktrace)
                 fmt::printfln("parsing function at {}:{}:{}",
@@ -223,9 +299,14 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) (str | CMP_ERR) = {
             yield _f;
         };
     const max = len(f.src);
+
     for(f.ptr < max){
         let next = nxttk(f)?;
         if(next is eol) continue;
+        if(next is eof) break;
+
+        //fmt::println(tktostr(next: tok, true))!;
+
         match(next: tok){
         case let k: kwd =>
             switch(k){
@@ -261,7 +342,13 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) (str | CMP_ERR) = {
                 const i = expct(next is idt,
                     next, f, void: EXPECTD, "variable definition")?: idt;
 
-                const nm = push_idt(i: str, false, f, scp)!;
+                const nm =
+                    match(push_idt(i: str, false, f, scp)?){
+                        case let var: *nmsp =>
+                            yield var;
+                        case *func =>
+                            return ("unhandled mutable function case", f): UNREACH;
+                    };
                 nm.mutbl = true;
                 next = nxttk(f, true)?;
                 const oper = expct(next is opr, next, f, void: EXPECTD,
@@ -318,6 +405,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) (str | CMP_ERR) = {
                                     param = [ kwd::U32_TYPE, kwd::U32_TYPE ],
                                     retrn = kwd::STRING_T, // TODO: this should be an union (@str ! u32)
                                     ret_n = "",
+                                    orign = kernel::IO,
                                     ...
                                 }
                                 , func { // write = fn(handle : u32, data : str) : u32
@@ -325,6 +413,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) (str | CMP_ERR) = {
                                     param = [ kwd::U32_TYPE, kwd::STRING_T ],
                                     retrn = kwd::UNITTYPE,  // TODO: this should be an union (unit ! u32)
                                     ret_n = "",
+                                    orign = kernel::IO,
                                     ...
                                 }
                                 ],
@@ -365,6 +454,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) (str | CMP_ERR) = {
                                     param = [ kwd::U32_TYPE ],
                                     retrn = kwd::RAW_TYPE,
                                     ret_n = "",
+                                    orign = kernel::MEM,
                                     ...
                                 }
                                 , func { // free = fn(obj : @raw) : unit
@@ -372,6 +462,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) (str | CMP_ERR) = {
                                     param = [ kwd::RAW_TYPE ],
                                     retrn = kwd::UNITTYPE,
                                     ret_n = "",
+                                    orign = kernel::MEM,
                                     ...
                                 }
                                 , func { // copy = fn(dest : @raw, src : raw, size : u32) : @raw
@@ -379,32 +470,45 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) (str | CMP_ERR) = {
                                     param = [ kwd::RAW_TYPE, kwd::RAW_TYPE, kwd::U32_TYPE ],
                                     retrn = kwd::RAW_TYPE,
                                     ret_n = "",
+                                    orign = kernel::MEM,
                                     ...
                                 }
                                 ],
                             vars = [],
                         };
                         append(ldd_mods, mod_mem);
-                    case => return f: UNREACH;
+                    case =>
+                        const err = fmt::asprintf("module {} not matched", mod: str);
+                        return (err, f): UNREACH;
                     };
                 case void =>
                     todo(f, "local modules not implemented yet")?;
                 };
+            case kwd::RETURNTO =>
+                let add = []: []idref;
+                const dup = alloc(*f);
+                const (exp, expr_t) = parse_exp(f, "", scp, &add)?;
+                
+                if(ret_tp == kwd::UNITTYPE){
+                    ret_tp = expr_t;
+                } else {
+                    expct(is_subt(expr_t, ret_tp), expr_t, dup, void: MISMTCH,
+                        "return types", "union types are not implemented yet")?;
+                };
+                free(dup);
+                out = fmt::asprintf("{}{}{}    ret %.val\n", out, solve_ref(&add), exp);
             case =>
                 todo(f, "uncovered rule")?;
             };
         case let i: idt =>
-            match(get_idt(i: str, scp)){
-            case void =>
-                const nm = push_idt(i: str, false, f, scp)!;
+            match(get_idt(i, f, scp)){
+            case =>
+                const nm = push_idt(i: str, false, f, scp)!: *nmsp;
                 next = nxttk(f, true)?;
                 const oper = expct(next is opr, next, f, void: EXPECTD,
                     "declaration or assignment")?: opr;
                 
                 switch(oper){
-                case opr::MODFIELD =>
-                    const (refs, res) = parse_modc(f, i, scp)?;
-                    out = fmt::asprintf("{}{}    {}", out, solve_ref(refs), res);
                 case opr::CASTTOTP =>
                     next = nxttk(f)?;
                     const tp = expct(is_type(next), next, f, void: EXPECTD,
@@ -464,80 +568,121 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) (str | CMP_ERR) = {
                         ptr = f,
                     }: CANT_DO;
                 };
+            case let fun: *func =>
+                next = nxttk(f, true)?;
+                if(cmp_tok(next, opr::ASSIGNMT)){
+                    setptr(f, true);
+                    const (exp, _) = parse_asg(f, i: str, scp)?;
+                    out = fmt::asprintf("{}{}", out, exp);
+
+                } else if(scp.over is void){
+                    const (refs, exp) = parse_fcall(fun, f, scp)?;
+                    out = fmt::asprintf("{}{}", solve_ref(refs), exp);
+                    free(refs);
+                    finsh(f, void: EXPECTD, "end of expression")?;
+
+                } else {
+                    todo(f, "local functions")?;
+                };
             };
         case let s: sym =>
             switch(s){
             case sym::CLS_CRLY =>
                 if(stop > 0 && f.ptr >= stop) break;
             case =>
-                todo(f, "uncovered rule")?;
+                todo(f, fmt::asprintf("uncovered symbol {}", tktostr(s, true)))?;
             };
         case =>
-            todo(f, "uncovered rule")?;
+            todo(f, "uncovered statement")?;
         };
     };
-    if(scp.over is void) return strings::concat(datasec, out);
-    return out;
+    if(scp.over is void) return (strings::concat(datasec, out), kwd::NOT_KWRD);
+    return (out, ret_tp);
 };
 
-fn parse_modc(f: *file, mod: idt, scp: *scope) ((*[]idref, str) | CMP_ERR) = {
+fn parse_globl(_f: *file, scp: *scope) (void | CMP_ERR) = {
     if(stacktrace)
-        fmt::printfln("parsing mod function call")!;
-    for(let m .. ldd_mods){
-        if(m.name == mod: str){
-            let next = nxttk(f)?;
-            const field = expct(next is idt,
-                next, f, void: EXPECTD, "field name")?: idt;
-            
-            for(let fun ..& m.funs){
-                if(field == fun.fname){
-                    return parse_fcall(f, &fun, scp)?;
-                };
+        fmt::println("parsing global definitions")!;
+    const f = alloc(*_f);
+    const max = len(f.src);
+    for(f.ptr < max){
+        let next = nxttk(f)?;
+        if(next is eol) continue;
+        match(next: tok){
+        case let i: idt =>
+            next = nxttk(f)?;
+            if(!cmp_tok(next, opr::ASSIGNMT)){
+                jmpto(eol, f)?;
+                continue;
             };
-            for(let var ..& m.vars){
-                if(field: str == var.ident){
+            next = nxttk(f)?;
+            if(!cmp_tok(next, kwd::FUNCTION)){
+                jmpto(eol, f)?;
+                continue;
+            };
+            parse_fun(f, i, scp, true)?;
+        case let k: kwd =>
+            // TODO: parse typedefs
+            switch(k){
+            case kwd::PUBFIELD =>
+                next = nxttk(f)?;
+                const nm =
+                    if(next is idt){
+                        yield next: idt;
+                    } else {
+                        jmpto(eol, f)?;
+                        continue;
+                    };
+                next = nxttk(f)?;
+                if(!cmp_tok(next, opr::ASSIGNMT)){
+                    jmpto(eol, f)?;
+                    continue;
+                };
+                next = nxttk(f)?;
+                if(!cmp_tok(next, kwd::FUNCTION)){
+                    jmpto(eol, f)?;
+                    continue;
+                };
+                parse_fun(f, nm, scp, true)?;
+            case kwd::DMUTABLE =>
+                next = nxttk(f)?;
+                const nm =
+                    if(next is idt){
+                        yield next: idt;
+                    } else {
+                        jmpto(eol, f)?;
+                        continue;
+                    };
+                next = nxttk(f)?;
+                if(!cmp_tok(next, opr::ASSIGNMT)){
+                    jmpto(eol, f)?;
+                    continue;
+                };
+                next = nxttk(f)?;
+                if(cmp_tok(next, kwd::FUNCTION)){
                     return unimsg {
-                        msg = "redefine module variable",
-                        tip = void,
+                        msg = "define a function as mutable",
+                        tip = "try removing the \"mut\" at the beginning of the assignment",
                         ptr = f,
                     }: CANT_DO;
                 };
+            case => jmpto(eol, f)?;
             };
-            return unimsg {
-                msg = fmt::asprintf("this field is not defined in the \"{}\" module", mod: str),
-                tip = void,
-                ptr = f,
-            }: GENERIC;
+        case => jmpto(eol, f)?;
         };
     };
-    return unimsg {
-        msg = fmt::asprintf("the module {} is not defined at this point", mod: str),
-        tip = void,
-        ptr = f,
-    }: GENERIC;
+    free(f);
+    if(stacktrace)
+        fmt::println("end of global definitions")!;
 };
 
-fn parse_modv(f: *file, mod: idt, scp: *scope, fcall: bool = false) (*nmsp | *func | CMP_ERR) = {
+fn parse_field(mod: idt, f: *file, scp: *scope) (*nmsp | *func | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("parsing mod field access")!;
-    let next = nxttk(f, true)?;
-    if(!(next is opr && next: opr == opr::MODFIELD)){
-        setptr(f, true);
-        match(get_idt(mod: str, scp)){
-        case void =>
-            return unimsg {
-                msg = mod: str,
-                tip = void,
-                ptr = f,
-            }: UNDEFNS;
-        case let var: *nmsp =>
-            return var;
-        };
-    };
-    let add = alloc([]: []idref);
+
     for(let m .. ldd_mods){
         if(m.name == mod: str){
-            next = nxttk(f)?;
+            let next = nxttk(f)?;
             const field = expct(next is idt,
                 next, f, void: EXPECTD, "field name")?: idt;
             let max = len(m.funs);
@@ -568,20 +713,20 @@ fn parse_modv(f: *file, mod: idt, scp: *scope, fcall: bool = false) (*nmsp | *fu
     }: GENERIC;
 };
 
-fn parse_fcall(f: *file, fun: *func, scp: *scope) ((*[]idref, str) | CMP_ERR) = {
+fn parse_fcall(fun: *func, f: *file, scp: *scope) ((*[]idref, str) | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("parsing function call")!;
     let out = fmt::asprintf("call ${}(", fun.fname);
     let add = alloc([]: []idref);
 
     let next = nxttk(f)?;
-    expct(next is sym && next: sym == sym::OPEN_PAR, next, f,
-        void: EXPECTD, "function argument list")?;
+    expct(cmp_tok(next, sym::OPEN_PAR), next, f, void: EXPECTD,
+        "function argument list")?;
 
     let argc = 0z;
     let swtch = false;
     const max = len(fun.param);
-    for(!(next is sym && next: sym == sym::CLOSEPAR)){
+    for(!cmp_tok(next, sym::CLOSEPAR)){
         // too many args
         if(argc > max){
             return unimsg {
@@ -626,7 +771,7 @@ fn parse_fcall(f: *file, fun: *func, scp: *scope) ((*[]idref, str) | CMP_ERR) = 
                     }: MISMTCH;
                 };
             case let i: idt =>
-                const nm = parse_modv(f, i, scp, true)?;
+                const nm = get_idt(i, f, scp)?;
                 // TODO: handle optional casting
                 match(nm){
                 case let var: *nmsp =>
@@ -652,7 +797,7 @@ fn parse_fcall(f: *file, fun: *func, scp: *scope) ((*[]idref, str) | CMP_ERR) = 
                         }: MISMTCH;
                     };
                 case let fun: *func =>
-                    const (refs, exp) = parse_fcall(f, fun, scp)?;
+                    const (refs, exp) = parse_fcall(fun, f, scp)?;
                     append(add, (*refs)...);
                     if(argc == 0){
                         out = fmt::asprintf("{}{} {}", out, tptob(fun.retrn), exp);
@@ -661,7 +806,9 @@ fn parse_fcall(f: *file, fun: *func, scp: *scope) ((*[]idref, str) | CMP_ERR) = 
                     };
                 };
             case =>
-                return f: UNREACH;
+                const err = fmt::asprintf("argument should be literal or identifier, but is {}",
+                    tktostr(arg));
+                return (err, f): UNREACH;
             };
             argc += 1;
             swtch = true;
@@ -671,10 +818,85 @@ fn parse_fcall(f: *file, fun: *func, scp: *scope) ((*[]idref, str) | CMP_ERR) = 
             swtch = false;
         };
     };
+    for(argc < max){
+        // TODO: default values for function parameters
+        if(argc == 0){
+            out = fmt::asprintf("{}{} {}", out, tptob(fun.param[argc]), getdefval(fun.param[argc]));
+        } else {
+            out = fmt::asprintf("{}, {} {}", out, tptob(fun.param[argc]), getdefval(fun.param[argc]));
+        };
+    };
     return (add, strings::concat(out, ")\n"));
 };
 
-fn parse_asg(f: *file, dest: str, scp: *scope, defn: bool = false) ((str, kwd) | CMP_ERR) = {
+fn parse_exp(f: *file, dest: idt, scp: *scope, add: *[]idref, limit: tok = eol) ((str, kwd) | CMP_ERR) = {
+    let out = "";
+    let expr_t = kwd::NOT_KWRD;
+    let next = nxttk(f)?;
+    // TODO: handle idt, opr, "+" | "-" | "~"
+    // TODO: handle literals of records and lists
+    // TODO: handle statements as valid hands
+    const vall = expct(next is num || next is txt || next is idt,
+        next, f, void: EXPECTD, "valid righthand")?: (num | txt | idt);
+    match(vall){
+    case let n: num =>
+        out = fmt::asprintf("    %.val =w copy {}\n", n: u32);
+        expr_t = cast_to(expr_t, kwd::U32_TYPE, vall, f)?;
+    case let t: txt => void;
+        const val = tostr(t);
+        const idx = pushstr(val);
+        out = fmt::asprintf("    %.val =l copy {}\n", idx);
+
+        finsh(f, void: CANT_DO, "perform operations on string literals")?;
+        return (out, kwd::STRING_T);
+
+    case let i: idt => void;
+        match(get_idt(i: str, f, scp)?){
+        case let nm: *nmsp =>
+            pushref(i: str, f, scp, add)?;
+            out = fmt::asprintf("    %.val ={0} copy %{1}.v\n", tptob(nm.vtype), i: str);
+            expr_t = cast_to(nm.vtype, expr_t, vall, f)?;
+            // TODO: assert for composite types
+        case let fun: *func =>
+            const (refs, exp) = parse_fcall(fun, f, scp)?;
+            append(add, (*refs)...);
+            free(refs);
+            out = fmt::asprintf("    %.val ={} {}\n", tptob(fun.retrn), exp);
+            expr_t = cast_to(fun.retrn, expr_t, vall, f)?;
+        };
+    };
+    // keep reading until end of expression
+    next = nxttk(f)?;
+    for(!(!(next is eof) && cmp_tok(next: tok, limit)); next = nxttk(f)?){
+        expct(next is opr || next is eol, next, f,
+            void: EXPECTD, "operator or end of expression")?;
+        if(next is opr){
+            // cast value
+            if(next: opr == opr::CASTTOTP){
+                next = nxttk(f)?;
+                const cast = expct(is_type(next), next, f, void: EXPECTD,
+                    "valid casting type")?: kwd;
+
+                expct(castable(expr_t, cast), cast, f, void: EXPECTD,
+                    "valid casting", cast_err(expr_t, cast))?: kwd;
+                // TODO: actually cast values
+                expr_t = cast;
+                continue;
+            };
+            const tmp = alloc(*f);
+            const (exp, tp) = parse_opr(f, next: opr, expr_t, scp, add)?;
+            
+            expct(is_subt(tp, expr_t), next, tmp, void: MISMTCH,
+                "member types", cast_err(tp, expr_t))?;
+            free(tmp);
+            out = strings::concat(out, exp);
+        };
+    };
+    assert(expr_t != kwd::NUMBER_T);
+    return (out, expr_t);
+};
+
+fn parse_asg(f: *file, dest: idt, scp: *scope, defn: bool = false, limit: tok = eol) ((str, kwd) | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("parsing assignment to \"{}\"", dest)!;
 
@@ -698,10 +920,11 @@ fn parse_asg(f: *file, dest: str, scp: *scope, defn: bool = false) ((str, kwd) |
     let out = "";
     let add = []: []idref;
     const nm_def =
-        match(get_idt(dest, scp)){
+        match(get_idt(dest, f, scp)){
         case let nm: *nmsp =>
             yield nm;
-        case void => void;
+        case *func => void; // case handled by parse_glob
+        case => void;
         };
     let dest_t =
         match(nm_def){
@@ -712,6 +935,7 @@ fn parse_asg(f: *file, dest: str, scp: *scope, defn: bool = false) ((str, kwd) |
     next = nxttk(f)?;
     // TODO: handle idt, opr, "+" | "-" | "~"
     // TODO: handle literals of records and lists
+    // TODO: handle statements as valid hands
     const vall = expct(next is num || next is txt || next is idt || next is kwd,
         next, f, void: EXPECTD, "valid righthand")?;
     match(vall){
@@ -733,25 +957,32 @@ fn parse_asg(f: *file, dest: str, scp: *scope, defn: bool = false) ((str, kwd) |
         return (out, kwd::STRING_T);
 
     case let i: idt => void;
-        match(get_idt(i: str, scp)){
+        match(get_idt(i: str, f, scp)?){
         case let nm: *nmsp =>
             pushref(i: str, f, scp, &add)?;
             out = fmt::asprintf("    %.val ={0} copy %{1}.v\n", tptob(nm.vtype), i: str);
             expr_t = cast_to(nm.vtype, expr_t, vall, f)?;
             // TODO: assert for composite types
-        case void =>
-            return unimsg {
-                msg = i: str,
-                tip = void,
-                ptr = f,
-            }: UNDEFNS;
+        case let fun: *func =>
+            const (refs, exp) = parse_fcall(fun, f, scp)?;
+            append(add, (*refs)...);
+            free(refs);
+
+            if(!defn){
+                expct(is_subt(dest_t, fun.retrn), i, dup, void: MISMTCH,
+                    "member types", cast_err(dest_t, fun.retrn))?;
+                out = fmt::asprintf("    %.val ={} {}\n", tptob(fun.retrn), exp);
+            } else {
+                out = fmt::asprintf("    %.val ={0} {1}\n    store{0} %.val, %{2}\n", tptob(fun.retrn), exp, dest);
+            };
+            expr_t = cast_to(fun.retrn, expr_t, vall, f)?;
         };
     case let k: kwd =>
         if(k == kwd::FUNCTION){
             if(dest_t != kwd::NOT_KWRD){
                 return bi_msg {
                     lft = dest,
-                    rgt = get_idtp(nm_def: *nmsp),
+                    rgt = get_idpos(nm_def: *nmsp),
                     tip = void,
                     ptr = f,
                 }: IDTCDUP;
@@ -775,7 +1006,7 @@ fn parse_asg(f: *file, dest: str, scp: *scope, defn: bool = false) ((str, kwd) |
     };
     // keep reading until end of expression
     next = nxttk(f)?;
-    for(!(next is eol); next = nxttk(f)?){
+    for(!(!(next is eof) && cmp_tok(next: tok, limit)); next = nxttk(f)?){
         expct(next is opr || next is eol, next, f,
             void: EXPECTD, "operator or end of expression")?;
         if(next is opr){
@@ -853,42 +1084,102 @@ fn parse_opr(f: *file, oper: opr, tp: kwd, scp: *scope, add: *[]idref) ((str, kw
                 ptr = f,
             }: MISMTCH;
         };
-    case => return f: UNREACH;
+    case =>
+        return ("righthand should be number or identifier", f): UNREACH;
     };
 };
 
-fn parse_fun(f: *file, dest: str, scp: *scope) (str | CMP_ERR) = {
+fn parse_fun(f: *file, dest: idt, scp: *scope, skip: bool = false) (str | CMP_ERR) = {
+    if(stacktrace)
+        fmt::printfln("parsing function \"{}\" at {}:{}:{}",
+            dest: str, f.name, f.lin + 1, f.cln + 1)!;
+
     let out = "";
     let next = nxttk(f)?;
-    expct(next is sym && next: sym == sym::OPEN_PAR,
-        next, f, void: EXPECTD, "function parameter list declaration")?;
-    // TODO: eval parameters
+    expct(cmp_tok(next, sym::OPEN_PAR), next, f, void: EXPECTD,
+        "function parameter list declaration")?;
+
+    let params = []: []kwd;
+    let parm_n = []: []idt;
+    let defs = []: []*nmsp;
+    let swtch = false;
+
     next = nxttk(f)?;
-    expct(next is sym && next: sym == sym::CLOSEPAR,
-        next, f, void: EXPECTD, "end of function parameter list")?;
+    const args = alloc(*f);
+    // parse parameter list
+    for(!cmp_tok(next, sym::CLOSEPAR); next = nxttk(f)?){
+        if(!swtch){
+            const prm = expct(next is idt, next, f,
+                void: EXPECTD, "function parameter definition")?: idt;
+            const cln = f.cln;
+            
+            append(parm_n, prm);
+
+            next = nxttk(f)?;
+            expct(cmp_tok(next, opr::CASTTOTP), next, f, void: EXPECTD,
+                "parameter type definition")?;
+            
+            next = nxttk(f)?;
+            const tp = expct(is_type(next), next, f, void: EXPECTD,
+                "parameter type definition")?: kwd;
+
+            append(params, tp);
+            append(defs, alloc(nmsp {
+                ident = prm,
+                vtype = tp,
+                mutbl = false,
+                asgnd = true,
+                param = true,
+                orign = f.name,
+                lin = f.lin,
+                cln = cln,
+            }));
+            swtch = true;
+        } else {
+            expct(cmp_tok(next, sym::SYMCOMMA),
+                next, f, void: EXPECTD, "comma or end of parameter list definition")?;
+            swtch = false;
+        };
+    };
     
     next = nxttk(f)?;
-    expct(next is opr && next: opr == opr::CASTTOTP,
-        next, f, void: EXPECTD, "function return type declaration")?;
+    expct(cmp_tok(next, opr::CASTTOTP), next, f, void: EXPECTD,
+        "function return type declaration")?;
     
     next = nxttk(f)?;
+    const dup = alloc(*f);
     const ret = expct(is_type(next), next, f, void: EXPECTD,
         "valid function return type")?: kwd;
     
+    if(skip){
+        push_fun(dest, dup, params, parm_n, ret, scp)?;
+        jmpto(sym::OPN_CRLY, f)?;
+        mtchs(sym::OPN_CRLY, f, false)?;
+        return "";
+    };
+
     // TODO: effect tags
     // TODO: enforce 0 parameters for main
-    if(dest == "main"){
+    if(dest: str == "main"){
+        expct(len(defs) == 0, dest, args, void: GENERIC,
+            "the main function recieves no arguments")?;
+
         if(ret == kwd::UNITTYPE){
             // TODO: implement ctxt variable here
             let fn_scp = scope {
                 over = scp,
                 defs = [],
+                funs = [],
             };
             next = nxttk(f)?;
-            const bgn = expct(next is sym && next: sym == sym::OPN_CRLY,
-                next, f, void: EXPECTD, "function body declaration")?: sym;
+            const bgn = expct(cmp_tok(next, sym::OPN_CRLY), next, f, void: EXPECTD,
+                "function body declaration")?: sym;
 
-            const body = parse(f, &fn_scp, mtchs(f, bgn)?)?;
+            const (body, ret_tp) = parse(f, &fn_scp, mtchs(bgn, f)?)?;
+            expct(cmp_tok(ret_tp, kwd::UNITTYPE), ret_tp, dup, void: GENERIC,
+                "the expected return type for main is `unit`")?;
+            free(dup);
+
             out = fmt::asprintf("function $main(){{\n@start\n{}    call $exit(l 0)\n    ret\n}}\n", body);
         } else {
             return unimsg {
@@ -901,12 +1192,42 @@ fn parse_fun(f: *file, dest: str, scp: *scope) (str | CMP_ERR) = {
         // TODO: implement ctxt variable here
         let fn_scp = scope {
             over = scp,
-            defs = [],
+            defs = defs,
+            funs = [],
         };
-        const body = parse(f, &fn_scp)?;
-        out = fmt::asprintf("function {} ${}(){{\n@start\n{}}}\n", tptob(ret), dest, body);
+        next = nxttk(f)?;
+        const bgn = expct(cmp_tok(next, sym::OPN_CRLY), next, f, void: EXPECTD,
+            "function body declaration")?: sym;
+
+        const (body, ret_tp) = parse(f, &fn_scp, mtchs(bgn, f)?)?;
+        expct(is_subt(ret_tp, ret), ret_tp, dup, void: MISMTCH,
+            "function return type and body type", cast_err(ret_tp, ret))?;
+        free(dup);
+
+        const (prml, prmd) = gen_params(params, parm_n);
+        out = fmt::asprintf("function {} ${}({}){{\n@start\n{}{}}}\n", tptob(ret), dest, prml, prmd, body);
     };
     return out;
+};
+
+fn gen_params(param_t: []kwd, param_n: []idt) (str, str) = {
+    let param_lst = "";
+    let param_def = "";
+
+    const max = len(param_t);
+    assert(max == len(param_n));
+    for(let arg = 0z; arg < max; arg += 1){
+        if(arg == 0){
+            param_lst = fmt::asprintf("{} %{}.v",
+                tptob(param_t[arg]), param_n[arg]);
+        } else {
+            param_lst = fmt::asprintf("{}, {} %{}.v", param_lst,
+                tptob(param_t[arg]), param_n[arg]);
+        };
+        param_def = fmt::asprintf("{0}    %{1} =l alloc4 {2}\n    store{3} %{1}.v, %{1}\n",
+            param_def, param_n[arg], tptoz(param_t[arg]), tptob(param_t[arg]));
+    };
+    return (param_lst, param_def);
 };
 
 fn is_type(_tp: (tok | eof)) bool = {

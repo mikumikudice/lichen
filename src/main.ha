@@ -4,6 +4,7 @@ use strlib;
 use strings;
 
 const stacktrace = false;
+const track_nxttk = false;
 
 export fn main() void = {
     const abt = "mossy is the compiler for the moss programming language.";

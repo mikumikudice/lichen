@@ -12,7 +12,7 @@ type bi_msg = struct {
 };
 type LDDFAIL = !str;
 type CRTFAIL = !str;
-type UNREACH = !*file;
+type UNREACH = !(str, *file);
 type INVALID = !(void | unimsg);
 type EXPECTD = !(void | bi_msg);
 type UNDEFNS = !(void | unimsg);
@@ -112,8 +112,10 @@ type tok = ( num | txt | idt | kwd | opr | sym | eol );
 type func = struct {
     fname: str,
     param: []kwd,
+    prm_n: []idt,
     retrn: kwd,
     ret_n: str,
+    orign: (str | kernel),
     lin: size,
     cln: size,
 };
@@ -122,6 +124,7 @@ type nmsp = struct {
     vtype: kwd,
     mutbl: bool,
     asgnd: bool,
+    param: bool,
     orign: (str | kernel),
     lin: size,
     cln: size,
@@ -133,7 +136,8 @@ type idref = struct {
 };
 type scope = struct {
     over : (*scope | void),
-    defs : []*nmsp
+    defs : []*nmsp,
+    funs : []*func,
 };
 
 const krnls = [ "IO", "MEM" ];

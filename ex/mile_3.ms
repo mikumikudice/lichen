@@ -12,6 +12,6 @@ pub main = fn() : unit {
     };
 };
 
-fun = fn(x, y : u32) : u32 {
+fun = fn(x : u32, y : u32) : u32 {
     return x * y;
 };

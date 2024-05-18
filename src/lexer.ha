@@ -58,8 +58,9 @@ fn tostr(src: []u8) str = {
 };
 
 // compares two tokens
-fn cmp_tok(l: tok, r: tok) bool = {
-    match(l){
+fn cmp_tok(l: (tok | eof), r: tok) bool = {
+    if(l is eof) return false;
+    match(l: tok){
         case num =>
             return r is num && l: num == r: num;
         case let this: txt =>
@@ -132,8 +133,9 @@ fn load(fname: str) (*file | CMP_ERR) = {
 // returns the next token or end of file
 // returns a compilation error on invalid tokens
 fn nxttk(f: *file, rev: bool = false) (tok | eof | CMP_ERR) = {
+    tok_count += 1;
     // debug info
-    if(stacktrace){
+    if(stacktrace && track_nxttk){
         const txt = tostr(f.src);
         const end =
             match(strlib::finda(txt, "\n", f.ptr)){
@@ -316,16 +318,20 @@ fn expct(eql: bool, tk: (tok | eof), f: *file, e: CMP_ERR, msg: str, tip: (str |
                 ptr = f,
             }: GENERIC;
         case =>
-            return f: UNREACH;
+            return ("unhandled error case", f): UNREACH;
         };
     } else {
         return tk: tok;
     };
 };
 
-fn mtchs(f: *file, s: sym) (u64 | CMP_ERR) = {
+fn mtchs(s: sym, f: *file, restore: bool = true) (u64 | CMP_ERR) = {
+    if(stacktrace)
+        fmt::printfln("matching symbol \"{}\"", symv[s])!;
+
     noeol(f, "matching symbol")?;
-    setptr(f);
+    if(restore) setptr(f);
+
     let depth = 1z;
     const max = len(f.src);
     for(let next = nxttk(f)?; f.ptr < max; next = nxttk(f)?){
@@ -342,7 +348,7 @@ fn mtchs(f: *file, s: sym) (u64 | CMP_ERR) = {
             };
             depth -= 1;
             if(depth == 0) {
-                setptr(f, true);
+                if(restore) setptr(f, true);
                 return f.ptr;
             };
         };
@@ -360,6 +366,8 @@ fn mtchs(f: *file, s: sym) (u64 | CMP_ERR) = {
 
 // moves the parser to the first instance of `t`
 fn jmpto(t: tok, f: *file) (void | CMP_ERR) = {
+    if(stacktrace)
+        fmt::printfln("jumping to {}", tktostr(t, true))!;
     for(let next = nxttk(f)?; !(next is eol || next is eof) && !cmp_tok(next: tok, t)){
         next = nxttk(f)?;
     };
