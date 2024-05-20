@@ -48,6 +48,7 @@ these are the current goals of this project:
         - [ ] yield and statements as expressions
         - [ ] allow functions as first class objects
         - [ ] parallel assignment
+        - [ ] range comparisons
     - [ ] mutability checking
     - [ ] hex, oct and bin literals
     - [ ] prime notation
@@ -59,6 +60,7 @@ these are the current goals of this project:
             - [ ] on record assignments
             - [ ] casting for function arguments
         - [ ] arrays
+            - [ ] sugar syntax
         - [ ] lists
         - [ ] ratios
         - [ ] records
