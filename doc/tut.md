@@ -58,8 +58,10 @@ moss doesn't support floats by default, but instead ratios. that means your divi
 ```
 * note that in the first example, it's shown how moss allows digit separators.
 
+you can see more about ratios in [its section](#ratios)
+
 ## strings
-strings in moss are not null terminated, in contrast with C-like `char*` strings and are UTF-8 encoded. they can't be operated on, but are mutable values.
+strings in moss are not null terminated, in contrast with C-like `char*` strings, and are UTF-8 encoded. they can't be operated on, but are mutable values.
 ```rust
 foo = "mornin'";            // immutable value and namespace
 mut bar = " sailor!!";      // mutable value and namespace
