@@ -419,8 +419,9 @@ when you pass it to a function that accepts a linear object, it cannot be return
 use mem;
 
 append = fn(obj : []u32, val : u32) : []u32 {
-    obj[obj.len - 1] = val;
-    return obj; // this is allowed only because obj is an argument i.e. it's a borrowed value
+    mut copy = obj; // obj is immutable, so in order to change it, we copy its borrowed value
+    copy[copy.len - 1] = val;
+    return copy; // this is allowed only because `copy` is a borrowed value
 };
 
 consume = fn(obj : @[]u32) : @[]u32 {
