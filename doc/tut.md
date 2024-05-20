@@ -153,7 +153,7 @@ match x {
 ```
 a match block can also be use ranges when matching values.
 ```rust
-x = 4;
+x = 4 : u32;
 match x {
     0     => fmt::putl("x is zero")!;
     1..10 => fmt::putl("x is under 10")!;
@@ -183,7 +183,7 @@ match {                                                         // empty match s
 for loops are the only available kind of loop in moss. they work as a normal for loop, a while loop and a foreach loop in other languages. here's all its uses:
 ```rust
 // no incrementing or decrementing, we use ranges
-for i = 2 .. 20 {
+for i = 2 .. 20 : u32 {
     fmt::putfl("{}", i)!;
 };
 
@@ -197,7 +197,7 @@ for r < 100 {
     };
 };
 
-num = [ 2, 3, 5, 7, 11, 13, 17, 23 ];
+num = [ 2, 3, 5, 7, 11, 13, 17, 23 ] : []u32;
 for n .. num {
     fmt::putfl("{}", n)!;
 };
@@ -206,14 +206,14 @@ for n .. num {
 
 you even can use parallel assignment for a shorthand for nested loops.
 ```rust
-for c = 0 .. 127; r = 0 .. 127 {
+for c, r = 0 .. 127 : u32 {
     z = c + r;
 };
 ```
 the previous example is the same as:
 ```rust
-for c = 0 .. 127 {
-    for r = 0 .. 127 {
+for c = 0 .. 127 : u32 {
+    for r = 0 .. 127 : u32 {
         z = c + r;
     };
 };
@@ -263,6 +263,7 @@ myfn = fn(n, d: i32) : int {
     };
 };
 ```
+* note that only one type can be the error case for an union.
 
 # named returns
 functions, just as it can have named parammeters, can have a named return value.
