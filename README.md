@@ -58,6 +58,7 @@ these are the current goals of this project:
             - [x] on function calls
             - [ ] on record assignments
             - [ ] casting for function arguments
+        - [ ] arrays
         - [ ] lists
         - [ ] ratios
         - [ ] records

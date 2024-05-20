@@ -56,6 +56,7 @@ moss doesn't support floats by default, but instead ratios. that means your divi
 81 / 27 : i8;       // 3
 -1 / 12 : rat;      // -(1/12)
 ```
+* note that in the first example, it's shown how moss allows digit separators.
 
 ## strings
 strings in moss are not null terminated, in contrast with C-like `char*` strings and are UTF-8 encoded. they can't be operated on, but are mutable values.
@@ -85,6 +86,11 @@ nothing = fn() : unit { };
 
 test nothing() == _; // succeeds
 ```
+
+# raw type
+you should not use raw types unless you're making a module that implement types or functions that deal with any-type values or low-level operations.
+
+raw type is an untyped value that can't be compared with any other type but itself, although it can be casted to any type. it's generally used for kernel function argument/return types once the kernels don't care about the semantic type of the values, only about the actual data in them.
 
 ## declaration, definition assignment and type casting
 ```rust
@@ -210,6 +216,24 @@ for c = 0 .. 127 {
     };
 };
 ```
+# truthy values and comparisons
+if moss, there are no first-class boolean types (althogh there's a bool type in the `types` module from the standard library), but the truthness of values on if/for blocks are not like C languages. for instance, empty strings and arrays, unit type and 0 are considered falsey, anything else is considered true. you can put any type on a if/for block for truth-checking, execpt for structures, once these are not semantically meaninful to be considered checkable.
+
+when doing comparisons, you can check equality and inequality with any two types, but greater/lesser comparisons are only allowed between subtypes i.e. numerical types between numerical types, strings with strings, arrays with arrays. these last two are compared only using their length. in this case, lists, unions and structures are prohibited to be compared for the same reason of equality. in the specific case of lists, these have no size to be compared. see more on [their own topic](#lists).
+
+comparison of union values cannot be done without casting, but you also can check their tag using the `is` operator. for example:
+```rust
+type num_or_str = uni i64 | rat | str;
+
+foo = 32 : i64 : num_or_str;
+bar = 1 / 64 : rat : num_or_str;
+egg = "hi!!!" : num_or_str;
+
+foo_t = foo is i64; // true (1)
+bar_t = bar is str; // false (0)
+egg_t = egg is rat or egg is i64; // false
+```
+* note that moss uses `and` and `or` instead of `&&` and `||` for boolean operations.
 
 # unions, error handling and pattern matching
 moss has no exception handling. everything that can go wrong is dealt simply as another kind of return value. these types are a special kind called error types. these can be defined defining unions with an error option using a bang. when a function can return an union tagged as an option, it must be handled with a match block, the propagation operator `?` or by the assertion operator `!`.
@@ -271,16 +295,16 @@ all unassigned variables will start with its zero corresponding value depending 
 
 record fields are set to their respective zero values as well or the default value if set. unions are the only objects that must be initialized, once there is no objectively correct type to inherit the zeroed value.
 
-# lists and ranges
+# arrays and ranges
 ## syntax
-lists need a size, a type and a body. a size can be given or deduced by context. a body may or may not be initialized explicitly (being set to the default zero of tye type if not).
+arrays need a size, a type and a value. a size can be given or deduced by context. a value may or may not be initialized explicitly (being set to the default zero of tye type if not).
 ```rust
 foo = [1, 2, 3, 4]: [4]u32;                 // explicit size
 bar = ["mia", "chloe", "liam", "finn"];     // context-deduced ([4]str)
 egg : [8]i64;                               // all 8 items set to 0
 ```
 
-you can also define ranges when assigning to lists or even set default values to all members.
+you can also define ranges when assigning to arrays or even set default values to all members.
 ```rust
 all_ones = [1...]: [32]u32;                 // fill all 32
 mytenths = [10...; 5]: [10]u32;             // every 5th number, starting from 10
@@ -288,17 +312,149 @@ all_even = [0 .. 10; %2 == 0];              // all numbers from 0 up to 10 that 
 ```
 * note that in `all_even`, the `%2 == 0` is a rule for the filling. only n % 2 == 0 will be assigned (up to 10).
 
-# effect system and modules
+## lists
 TODO
 
+# modules
+whenever you create a file, it becomes a module. all the namespaces, i.e. functions, variables and types, can either be private or public. to make a namespace public, simply add `pub` at the beginning. if a public function returns or accepts a local-defined type, this type also has to be public. so, for instance:
+```rust
+pub type hashmap = rec {
+    vals : []raw,
+    keys : []raw,
+};
+
+pub new_map = fn(ptr : @raw, vals : []raw, keys : []raw) : @hashmap ! u32 {
+    if vals.len != keys.len {
+        return !1;
+    };
+    mut out = ptr: @hashmap;
+    out.vals = vals;
+    out.keys = keys;
+};
+
+pub get = fn(self : hashmap, key : raw) : raw | unit {
+    match find_key(self, key) {
+    k : u32 => return self.val[k];
+    _ => return _;
+    }
+};
+
+pub set = fn(self : @hashmap, key : raw, val : raw) : @hashmap ! u32 {
+    match find_key(self, key) {
+    k : u32 =>
+        mut copy = self;
+        key.vals[ik] = val;
+        return copy;
+    _ => return !1;
+    };
+};
+
+find_key = fn(self : hashmap, key : raw) : u64 ! unit {
+    for i .. self.keys.len {
+        k = self.keys[i];
+        if k == key : t {
+            return i;
+        };
+    };
+};
+```
+* note that `find_key` is used by public functions, but it doesn't have to be public as well.
+* also note that the return type is a linear instance of a hashmap. see more on [linear types](#linear-types).
+
+# effect system
+at the bottom level, all IO operations, such as CLI and memory allocation, are done by the language kernels. these are bindings to runtime functions implemented in low-level code and should not be used directly unless you're doing something that cannot be done with pre-existing modules. when a function uses a kernel, it must be tagged with its name, indicating its side-effects, making it impure. all functions in the same module that uses this impure function must be tagged as such and hence becoming impure as well. all modules with impure functions become impure, so all code that uses impure functions from this module should be tagged with the module name as well. example:
+```rust
+// code from io.ms i.e. the module io
+use IO; // IO in uppercase is the kernel, io in lowercase is the module
+
+pub stdout = 1 : u32;
+
+pub write = fn(handle : u32, data : str) unit ! u32 \ IO { // impure function
+    res = IO::write(handle, data);
+    if res < 0 {
+        return !res;
+    };
+};
+
+pub etos = fn(err : !u32) : str { // pure function
+    match err {
+    01 => return "operation not permitted";
+    09 => return "bad file descriptor";
+    13 => return "permission denied";
+    17 => return "file exists";
+    _  => return "generic error exit code";
+    };
+};
+
+// code from main.ms
+use io;
+
+pub main = fn() : unit \ io {
+    io::write(io::stdout, "mornin' sailor!\n");
+};
+
+pub wrap = fn(status : unit ! u32) : unit | str {
+    match status {
+    err : !u32 => return io::etos(err); // etos is pure, no need for effect tags
+    _ => return _;
+    };
+};
+```
+this code would not compile if any function that calls an impure function was not tagged as impure with the coresponding effect.
+
+effects can be grouped together in-line using the `&` operator or hidden behind a local effect tag. for example, you can combine two module effects, `io` and `mem` doing `my_eff = io & mem`.
+
 # linear types
-TODO
+a linear type is needed whenever you allocate memory or if you have to follow the pattern create-use-dispose. once created, a linear type must be used once, only once and at least once. "using" it is either copying it when assigning to another variable (and creating a new linear type), passing it to another function that accepts a linear objcet or returning it to the higher stack frame. once used, a linear object is consumed and cannot be used anymore.
+
+when you pass it to a function that accepts a linear object, it cannot be returned, but it still must be either copied or passed to another function, so then it may be consumed. the following example explains it:
+```rust
+use mem;
+
+append = fn(obj : []u32, val : u32) : []u32 {
+    obj[obj.len - 1] = val;
+    return obj; // this is allowed only because obj is an argument i.e. it's a borrowed value
+};
+
+consume = fn(obj : @[]u32) : @[]u32 {
+    copy = obj; // `obj` is consumed and `copy` is a new linear object
+
+    // from now on, you can't use `obj` anymore
+
+    return copy; // returning is allowed once `copy` is a new, not-yet-consumed linear object
+};
+
+pub main = fn() : unit \ mem {
+    mut arr = mem::alloc([ 1, 2, 3, 5, 7 ], [6]u32)!; // alloc returns a new linear object
+    arr[5] = append(arr, 11); // not consuming it once append doen't accept a linear object
+    new_arr = consume(arr); // despite being the same allocated memory chunk, new_arr is a new instance of a linear object
+
+    // from now on, you can't use `arr` anymore
+
+    mem::free(new_arr); // consumes the array and frees the memory chunk
+    
+    // from now on, you can't use `new_arr` anymore
+};
+```
 
 # undefined behavior and compilation settings
 TODO
 
 # ratios
-TODO
+ratios are a built-in data structure that is 64-bit wide and caries 4 values, 1 bit for its signal, and 3 values of 21 bytes each. these 3 last values are the integer value, the numerator and the denominator, respectively. the integer and numerator values can be any value from 0 to 2^21 -1, i.e. from 0 up to 2097151 or `0o7777777`. the denominator, in the other hand, can't be 0, so the value in memory is always incremented by 1, making it range from 1 to 2097152. these numbers are not twos's complement encoded to increase numerical length, just like floating point codification does.
+
+- the biggest positive number possible to be represented is 2097151, and the "biggest" negative number is -2097151.
+- the smallest positive number possible to be represented is 1 / 2097151 or 0.000000477, and the smallest negative number is -1 / 2097151 or -0.000000477.
+
+note that there's no syntax for representing ratios as decimal numbers, only by fractions (hence the name ratios).
 
 # trivia
-- the `putf` function from the `fmt` submodule of the lime library, when called with no arguments, prints "fox!" for both quick debugging and because of a joke I saw once on internet and I can't find again (probably on twitter or social.linux.pizza).
+- the official mascot of the moss programming language is the vietnamese mossy frog.
+
+    ![image credit: Matthijs Kuijpers/Alamy](https://i0.wp.com/www.australiangeographic.com.au/wp-content/uploads/2020/05/moss-frog.jpg?resize=300%2C176&ssl=1)
+    
+    a picture of the said frog. we still lack an official stylized icon. image credit: Matthijs Kuijpers/Alamy
+
+- the name moss is due to the fact that moss are a simple kind of plant that operate by simple rules and is mostly isolated from their neighbors (execpt when reproducing), but together they make long covers of a beautiful moist green. moss can also integrate with algae and produce lichens. the programming language moss is a small language that operates by simple rules and builds code from small isolated units of functions that can be composed together (sometimes with external, low-level code) and build beautiful mossy code.
+
+- the `putf`/`putfl` functions from the `fmt` submodule of the lime library, when called with no arguments, prints "fox!" for both quick debugging and because of a joke I saw once on internet and I can't find again (probably on twitter or social.linux.pizza).
