@@ -393,7 +393,11 @@ pub etos = fn(err : !u32) : str { // pure function
 use io;
 
 pub main = fn() : unit \ io {
-    io::write(io::stdout, "mornin' sailor!\n");
+    res = io::write(io::stdout, "mornin' sailor!\n");
+    match wrap(res) {
+    e : str => fmt::panl(e);
+    _ => _;
+    };
 };
 
 pub wrap = fn(status : unit ! u32) : unit | str {
