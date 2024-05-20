@@ -89,12 +89,12 @@ nothing = fn() : unit { };
 test nothing() == _; // succeeds
 ```
 
-# raw type
+## raw type
 you should not use raw types unless you're making a module that implement types or functions that deal with any-type values or low-level operations.
 
 raw type is an untyped value that can't be compared with any other type but itself, although it can be casted to any type. it's generally used for kernel function argument/return types once the kernels don't care about the semantic type of the values, only about the actual data in them.
 
-## declaration, definition assignment and type casting
+# declaration, definition assignment and type casting
 ```rust
 mut foo : u32;      // declaration of a mutable value
 mut bar = 42: u64;  // declaration and definition
@@ -314,7 +314,7 @@ all_even = [0 .. 10; %2 == 0];              // all numbers from 0 up to 10 that 
 ```
 * note that in `all_even`, the `%2 == 0` is a rule for the filling. only n % 2 == 0 will be assigned (up to 10).
 
-## lists
+# lists
 TODO
 
 # modules
