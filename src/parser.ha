@@ -23,39 +23,34 @@ fn todo(f: *file, msg: str) (void | CMP_ERR) = {
 // returns the default value for each primitive type
 fn getdefval(vtp: kwd) str = {
     switch(vtp){
-    case kwd::U8__TYPE, kwd::I8__TYPE =>
-        return "0";
-    case kwd::U16_TYPE, kwd::I16_TYPE =>
-        return "0";
-    case kwd::U32_TYPE, kwd::I32_TYPE =>
-        return "0";
-    case kwd::U64_TYPE, kwd::I64_TYPE,
-        kwd::RATIO__T =>
-        return "0";
+    case kwd::RATIO__T =>
+        return "0"; // TODO
     case kwd::STRING_T, kwd::ARRAY__T =>
-        return "0";
+        return "$empty.arr";
     case kwd::UNITTYPE =>
         return "0xcafe0000";
     case =>
-        assert(false);
-        return "";
+        return "0";
     };
 };
 
 // converts moss types to qbe types i.e. type length
-fn tptob(vtp: kwd, asg: bool = false) str = {
-    if(asg)
+fn get_qbe_t(vtp: kwd, mode: int = 0) str = {
+    if(mode == 1)
     if(vtp == kwd::U8__TYPE || vtp == kwd::I8__TYPE ||
         vtp == kwd::U16_TYPE || vtp == kwd::I16_TYPE){
         return "w";
     };
     switch(vtp){
     case kwd::U8__TYPE, kwd::I8__TYPE =>
+        if(mode == 2) return "ub";
         return "b";
     case kwd::I16_TYPE, kwd::U16_TYPE =>
+        if(mode == 2) return "uh";
         return "h";
     case kwd::U32_TYPE, kwd::I32_TYPE,
         kwd::NOT_KWRD, kwd::NUMBER_T =>
+        if(mode == 2) return "uw";
         return "w";
     case kwd::U64_TYPE, kwd::I64_TYPE, kwd::RATIO__T,
         kwd::STRING_T, kwd::RAW_TYPE, kwd::ARRAY__T =>
@@ -68,7 +63,7 @@ fn tptob(vtp: kwd, asg: bool = false) str = {
 };
 
 // returns size in bytes of a type
-fn tptoz(vtp: kwd) str = {
+fn get_t_len(vtp: kwd) str = {
     switch(vtp){
     case kwd::U8__TYPE, kwd::I8__TYPE =>
         return "1";
@@ -76,33 +71,30 @@ fn tptoz(vtp: kwd) str = {
         return "2";
     case kwd::U32_TYPE, kwd::I32_TYPE =>
         return "4";
-    case kwd::U64_TYPE, kwd::I64_TYPE,
-        kwd::RATIO__T =>
+    case kwd::U64_TYPE, kwd::I64_TYPE, kwd::RATIO__T,
+        kwd::STRING_T, kwd::ANY_TYPE, kwd::RAW_TYPE,
+        kwd::UNITTYPE, kwd::ARRAY__T, kwd::NUMBER_T  =>
         return "8";
-    case kwd::UNITTYPE =>
-        return fmt::asprint(0xcafe0000);
     case =>
         assert(false);
         return "";
     };
 };
 
-fn tptov(vtp: kwd) str = {
+fn get_t_tag(vtp: kwd) str = {
     switch(vtp){
     case kwd::UNITTYPE =>
-        return fmt::asprint(0xcafe0000);
+        return "$t.unt";
     case kwd::STRING_T =>
-        return fmt::asprint(0xcafe0001);
+        return "$t.str";
     case kwd::ARRAY__T =>
-        return fmt::asprint(0xcafe0001);
+        return "$t.arr";
     case kwd::RECORD_T =>
-        return fmt::asprint(0xcafe0002);
-    case kwd::TUNION_T =>
-        return fmt::asprint(0xcafe0004);
+        return "$t.rec";
     case kwd::FUNCTION =>
-        return fmt::asprint(0xcafe0008);
+        return "$t.fun";
     case =>
-        return "0";
+        return "$t.num";
     };
 };
 
@@ -116,63 +108,48 @@ fn pushstr(l: str) str = {
         };
     };
     append(str_lit, l);
-    datasec = fmt::asprintf("{}data $.{} = {{ w {}, b \"{}\" }}\n",
+    datasec = fmt::asprintf("{}data $.{} = {{ l {}, b \"{}\" }}\n",
         datasec, max, len(l), l);
     return fmt::asprintf("$.{}", max);
 };
 
-fn pushref(id: str, f: *file, scp: *scope, add: *[]idref) (kwd | CMP_ERR) = {
+fn cmp_orign(ths: (str | kernel), tht: (str | kernel)) bool = {
+    if(ths is str && tht is str) return ths: str == tht: str;
+    if(ths is kernel && tht is kernel) return ths: kernel == tht: kernel;
+    return false;
+};
+
+fn pushref(nm : *nmsp, f: *file, scp: *scope, add: *[]idref) (kwd | CMP_ERR) = {
     if(stacktrace)
-        fmt::printfln("pushing new reference to \"{}\" at {}:{}:{}", id, f.name, f.lin + 1, f.cln + 1)!;
+        fmt::printfln("pushing new reference to \"{}\" at {}", nm.ident, gen_pos(f))!;
+
     const max = len(add);
-    const nm =
-        match(get_idt(id, f, scp)?){
-        case let i: *nmsp =>
-            yield i;
-        case =>
-            const err = fmt::asprintf("namespace \"{}\" should be defined", id);
-            return (err, f): UNREACH;
-        };
     // value is already loaded
     if(nm.param) return nm.vtype;
 
     for(let i = 0z; i < max; i += 1){
-        if(add[i].idt == id){
+        if(add[i].idt == nm.ident && cmp_orign(add[i].orign, nm.orign)){
             return add[i].vtp;
         };
     };
     append(add, idref {
-        idt = id,
+        idt = nm.ident,
         vtp = nm.vtype,
-        mod = false,
+        orign = nm.orign
     });
     return nm.vtype;
-};
-
-fn pushgref(id: str, tp: kwd, add: *[]idref) void = {
-    const max = len(add);
-    for(let i = 0z; i < max; i += 1){
-        if(add[i].idt == id && add[i].mod){
-            return;
-        };
-    };
-    append(add, idref {
-        idt = id,
-        vtp = tp,
-        mod = true,
-    });
 };
 
 fn solve_ref(refs: *[]idref) str = {
     let hdr = "";
     const max = len(refs);
     for(let i = 0z; i < max; i += 1){
-        if(refs[i].mod){
-            hdr = fmt::asprintf("{0}    %{1}.gv ={2} load{2} ${1}\n",
-                hdr, refs[i].idt, tptob(refs[i].vtp, true));
+        if(refs[i].orign is kernel){
+            hdr = fmt::asprintf("{0}    %{1}.{2}.g ={3} load{3} ${1}\n",
+                hdr, refs[i].idt, get_qbe_t(refs[i].vtp), get_qbe_t(refs[i].vtp, 1));
         } else {
-            hdr = fmt::asprintf("{0}    %{1}.v ={2} load{2} %{1}\n",
-                hdr, refs[i].idt, tptob(refs[i].vtp, true));
+            hdr = fmt::asprintf("{0}    %{1}.{2} ={3} load{3} %{1}\n",
+                hdr, refs[i].idt, get_qbe_t(refs[i].vtp), get_qbe_t(refs[i].vtp, 1));
         };
     };
     return hdr;
@@ -181,29 +158,26 @@ fn solve_ref(refs: *[]idref) str = {
 fn get_idpos(id: (*nmsp | *func)) str = {
     match(id){
     case let var: *nmsp =>
-        const orign =
-            match(var.orign){
-            case let fname: str =>
-                yield fname;
-            case let kid: kernel =>
-                yield krnls[kid];
-            };
-        return fmt::asprintf("{}:{}:{}", orign, var.lin + 1, var.cln + 1);
+        match(var.orign){
+        case let fname: str =>
+            return fmt::asprintf("{}:{}:{}", fname, var.lin + 1, var.cln + 1);
+        case let kid: kernel =>
+            return fmt::asprintf("the {} kernel", krnls[kid]);
+        };
     case let fun: *func =>
-        const orign =
-            match(fun.orign){
-            case let fname: str =>
-                yield fname;
-            case let kid: kernel =>
-                yield krnls[kid];
-            };
-        return fmt::asprintf("{}:{}:{}", orign, fun.lin + 1, fun.cln + 1);
+        match(fun.orign){
+        case let fname: str =>
+            return fmt::asprintf("{}:{}:{}", fname, fun.lin + 1, fun.cln + 1);
+        case let kid: kernel =>
+            return fmt::asprintf("the {} kernel", krnls[kid]);
+        };
     };
 };
 
-fn push_idt(nm: idt, mut: bool, f: *file, scp: *scope) ((*nmsp | *func) | IDTCDUP) = {
+fn push_idt(nm: idt, mut: bool, tp: kwd, f: *file, scp: *scope) (*nmsp | IDTCDUP) = {
     if(stacktrace)
         fmt::printfln("pushing identifier \"{}\" at {}", nm, gen_pos(f))!;
+
     match(get_idt(nm, f, scp, true)){
     case let var: *nmsp =>
         return bi_msg {
@@ -213,12 +187,16 @@ fn push_idt(nm: idt, mut: bool, f: *file, scp: *scope) ((*nmsp | *func) | IDTCDU
             ptr = f,
         }: IDTCDUP;
     case let fun: *func =>
-        // only push_fun effectively pushes functions
-        return fun;
+        return bi_msg {
+            lft = nm: str,
+            rgt = get_idpos(fun),
+            tip = void,
+            ptr = f,
+        }: IDTCDUP;
     case =>
         const new = alloc(nmsp {
             ident = nm: str,
-            vtype = kwd::NOT_KWRD,
+            vtype = tp,
             mutbl = mut,
             asgnd = false,
             param = false,
@@ -231,18 +209,15 @@ fn push_idt(nm: idt, mut: bool, f: *file, scp: *scope) ((*nmsp | *func) | IDTCDU
     };
 };
 
-fn get_idt(nm: idt, f: *file, scp: *scope, notmod: bool = false) (*nmsp | *func | CMP_ERR) = {
+fn get_idt(nm: idt, f: *file, scp: *scope, nomods: bool = false) (*nmsp | *func | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("getting identifier \"{}\" at {}", nm, gen_pos(f))!;
 
-    if(!notmod){
-        let next = nxttk(f, true)?;
-        if(cmp_tok(next, opr::MODFIELD)){
-            return parse_field(nm, f, scp)?;
-        } else {
-            setptr(f, true);
-        };
+    let next = nxttk(f, true)?;
+    if(cmp_tok(next, opr::MODFIELD)){
+        return parse_field(nm, f, scp)?;
     };
+    setptr(f, true);
 
     for(let n ..& scp.defs){
         if(n.ident == nm: str) return n;
@@ -263,7 +238,7 @@ fn get_idt(nm: idt, f: *file, scp: *scope, notmod: bool = false) (*nmsp | *func 
 
 fn push_fun(name: idt, f: *file, parm_l: []kwd, parm_n : []idt, retrn: kwd, scp: *scope) (*func | CMP_ERR) = {
     if(stacktrace)
-        fmt::printfln("pushing function \"{}\" at {}:{}:{}", name, f.name, f.lin + 1, f.cln + 1)!;
+        fmt::printfln("pushing function \"{}\" at {}", name, gen_pos(f))!;
     assert(scp.over is void);
     match(get_idt(name, f, scp, true)){
     case let var: *nmsp =>
@@ -328,9 +303,6 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) ((str, kwd) | CMP_ERR
     for(f.ptr < max){
         let next = nxttk(f)?;
         if(next is eol) continue;
-        if(next is eof) break;
-
-        //fmt::println(tktostr(next: tok, true))!;
 
         match(next: tok){
         case let k: kwd =>
@@ -347,68 +319,33 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) ((str, kwd) | CMP_ERR
                     }: CANT_DO;
                 };
                 next = nxttk(f)?;
-                const obj = expct(next is kwd || next is idt,
-                    next, f, void: EXPECTD, "type or variable definition")?;
+                const i = expct(next is idt, next, f, void: EXPECTD,
+                    "type or variable definition")?: idt;
 
-                match(obj){
-                case let k: kwd =>
-                    todo(f, "type definition")?;
-                case let i: idt =>
-                    const (exp, _) = parse_asg(f, i: str, scp)?;
-                    out = fmt::asprintf("{}export {}", out, exp);
-                };
-            case kwd::DMUTABLE =>
-                if(stacktrace)
-                    fmt::printfln("parsing mutdef at {}", gen_pos(f))!;
-                if(scp.over is void){
-                    return unimsg {
-                        msg = "define mutable variables at global scope",
-                        tip = "try moving it to inside a function",
-                        ptr = f,
-                    }: CANT_DO;
-                };
-                next = nxttk(f)?;
-                const i = expct(next is idt,
-                    next, f, void: EXPECTD, "variable definition")?: idt;
-
-                const nm =
-                    match(push_idt(i: str, false, f, scp)?){
-                        case let var: *nmsp =>
-                            yield var;
-                        case *func =>
-                            return ("unhandled mutable function case", f): UNREACH;
-                    };
-                nm.mutbl = true;
                 next = nxttk(f, true)?;
-                const oper = expct(next is opr, next, f, void: EXPECTD,
-                    "declaration or assignment")?: opr;
-                
-                switch(oper){
-                case opr::CASTTOTP =>
-                    next = nxttk(f)?;
-                    const tp = expct(is_type(next), next, f, void: EXPECTD,
-                        "valid type notation")?: kwd;
-                    nm.vtype = tp;
-                    out = fmt::asprintf("{0}    %{1} =l alloc4 {2}\n    store{3} {4}, %{1}\n",
-                        out, i: str, tptoz(tp), tptob(tp), getdefval(tp));
-
-                    finsh(f, void: EXPECTD, "end of declaration")?;
-
-                case opr::ASSIGNMT =>
+                if(is_asg_opr(next)){
                     setptr(f, true);
-                    const (exp, tp) = parse_asg(f, i: str, scp, true)?;
-                    nm.vtype = tp;
-                    nm.asgnd = true;
-                    out = fmt::asprintf("{}    %{} =l alloc4 {}\n{}",
-                        out, i: str, tptoz(tp), exp);
-                case =>
+                    const asg = parse_asg(f, i, next: opr, scp)?;
+                    out = fmt::asprintf("{}export {}", out, asg);
+                } else if(cmp_tok(next, opr::CASTTOTP)){
+                    todo(f, "typedefs")?;
+                } else {
                     return bi_msg {
-                        lft = "declaration or assignment",
-                        rgt = tktostr(oper),
+                        lft = "namespace definition",
+                        rgt = tktostr(next, false),
                         tip = void,
                         ptr = f,
                     }: EXPECTD;
                 };
+            case kwd::DMUTABLE =>
+                if(stacktrace)
+                    fmt::printfln("parsing mutdef at {}", gen_pos(f))!;
+                next = nxttk(f)?;
+                const i = expct(next is idt,
+                    next, f, void: EXPECTD, "variable definition")?: idt;
+
+                const asg = parse_asg(f, i, next: opr, scp, void, true)?;
+                out = fmt::asprintf("{}{}", out, asg);
             case kwd::USE__MOD =>
                 if(stacktrace)
                     fmt::printfln("parsing mod req at {}", gen_pos(f))!;
@@ -442,7 +379,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) ((str, kwd) | CMP_ERR
                                 , func { // write = fn(handle : u32, data : str) : u32
                                     fname = "write",
                                     param = [ kwd::U32_TYPE, kwd::STRING_T ],
-                                    retrn = kwd::UNITTYPE,  // TODO: this should be an union (unit ! u32)
+                                    retrn = kwd::U32_TYPE,
                                     ret_n = "",
                                     orign = kernel::IO,
                                     ...
@@ -520,7 +457,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) ((str, kwd) | CMP_ERR
                     fmt::printfln("parsing return at {}", gen_pos(f))!;
                 let add = []: []idref;
                 const dup = alloc(*f);
-                const (exp, expr_t) = parse_exp(f, fmt::asprint(f.lin), scp, &add)?;
+                const (exp, expr_t, val_id) = parse_exp(f, scp, &add)?;
                 
                 if(ret_tp == kwd::UNITTYPE){
                     ret_tp = expr_t;
@@ -529,96 +466,55 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) ((str, kwd) | CMP_ERR
                         "return types", "union types are not implemented yet")?;
                 };
                 free(dup);
-                out = fmt::asprintf("{}{}{}    ret %.val.{}\n", out, solve_ref(&add), exp, f.lin);
+                out = fmt::asprintf("{}{}{}    ret %.val.{}\n", out, solve_ref(&add), exp, val_id);
             case =>
                 todo(f, "uncovered rule")?;
             };
         case let i: idt =>
-            if(stacktrace)
-                fmt::printfln("parsing definition or assignment at {}", gen_pos(f))!;
-            match(get_idt(i, f, scp)){
-            case =>
-                const nm = push_idt(i: str, false, f, scp)!: *nmsp;
-                next = nxttk(f, true)?;
-                const oper = expct(next is opr, next, f, void: EXPECTD,
-                    "declaration or assignment")?: opr;
-                
-                switch(oper){
-                case opr::CASTTOTP =>
-                    next = nxttk(f)?;
-                    const tp = expct(is_type(next), next, f, void: EXPECTD,
-                        "valid type notation")?: kwd;
-                    nm.vtype = tp;
-                    out = fmt::asprintf("{0}    %{1} =l alloc4 {2}\n    store{3} {4}, %{1}\n",
-                        out, i: str, tptoz(tp), tptob(tp), getdefval(tp));
-                    
-                    finsh(f, void: EXPECTD, "end of declaration")?;
+            next = nxttk(f, true)?;
+            // TODO: handle typedefs
+            const oper = expct(next is opr || cmp_tok(next, sym::OPEN_PAR), next, f, void: EXPECTD,
+                "declaration, assignment or function call")?;
 
-                case opr::ASSIGNMT =>
-                    setptr(f, true);
-                    const (exp, tp) = parse_asg(f, i: str, scp, true)?;
-                    nm.vtype = tp;
-                    nm.asgnd = true;
-                    out = fmt::asprintf("{}    %{} =l alloc4 {}\n{}",
-                        out, i: str, tptoz(tp), exp);
+            if(is_asg_opr(oper) || cmp_tok(oper, opr::CASTTOTP)){
+                setptr(f, true);
+                let refs = []: []idref;
+                match(get_idt(i, f, scp)){
                 case =>
-                    return bi_msg {
-                        lft = "declaration or assignment",
-                        rgt = tktostr(oper),
-                        tip = void,
-                        ptr = f,
-                    }: EXPECTD;
-                };
-            case let nm: *nmsp =>
-                if(!nm.asgnd){
-                    const dup = alloc(*f);
-                    const (exp, tp) = parse_asg(f, i: str, scp)?;
-                    nm.asgnd = true;
-
-                    expct(is_subt(tp, nm.vtype), tp, dup, void: MISMTCH,
-                        "variable and assignment types", cast_err(tp, nm.vtype))?;
-                    free(dup);
-
-                    out = fmt::asprintf("{0}{4}    store{2} %.val.{5}, %{1}\n",
-                        out, i: str, tptob(tp), tptoz(tp), exp, i: str);
-                } else if(nm.mutbl){
-                    const dup = alloc(*f);
-                    const (exp, tp) = parse_asg(f, i: str, scp)?;
-
-                    expct(is_subt(tp, nm.vtype), tp, dup, void: MISMTCH,
-                        "variable and assignment types", cast_err(tp, nm.vtype))?;
-                    free(dup);
-
-                    if(tp < nm.vtype){
-                        out = fmt::asprintf("{0}{1}    %.f ={2} copy %.val.{3}\n    store{2} %.f, %{3}\n",
-                            out, exp, tptob(nm.vtype, true), nm.ident);
-                    } else {
-                        out = fmt::asprintf("{0}{1}    store{2} %.val.{3}, %{3}\n",
-                            out, exp, tptob(nm.vtype), nm.ident);
+                    const asg = parse_asg(f, i, next: opr, scp)?;
+                    out = fmt::asprintf("{}{}", out, asg);
+                case let nm: *nmsp =>
+                    const asg = parse_asg(f, i, next: opr, scp, nm)?;
+                    out = fmt::asprintf("{}{}", out, asg);
+                case let fun: *func =>
+                    if(fun.orign is kernel){
+                        skip_field(f)?;
+                        const call = parse_fcall(fun, f, scp, &refs)?;
+                        out = fmt::asprintf("{}{}    {}\n", out, solve_ref(&refs), call);
+                        continue;
                     };
-                } else {
-                    return unimsg {
-                        msg = "redefine a value of a immutable variable",
-                        tip = void,
-                        ptr = f,
-                    }: CANT_DO;
+                    next = nxttk(f, true)?;
+                    if(is_asg_opr(next)){
+                        setptr(f, true);
+                        const asg = parse_asg(f, i, next: opr, scp, fun)?;
+                        out = fmt::asprintf("{}{}", out, asg);
+                    } else {
+                        setptr(f, true);
+                        const call = parse_fcall(fun, f, scp, &refs)?;
+                        out = fmt::asprintf("{}{}    {}\n", out, solve_ref(&refs), call);
+                    };
                 };
-            case let fun: *func =>
-                next = nxttk(f, true)?;
-                if(cmp_tok(next, opr::ASSIGNMT)){
-                    setptr(f, true);
-                    const (exp, _) = parse_asg(f, i: str, scp)?;
-                    out = fmt::asprintf("{}{}", out, exp);
-
-                } else if(scp.over is void){
-                    const (refs, exp) = parse_fcall(fun, f, scp)?;
-                    out = fmt::asprintf("{}{}", solve_ref(refs), exp);
-                    free(refs);
-                    finsh(f, void: EXPECTD, "end of expression")?;
-
-                } else {
-                    todo(f, "local functions")?;
+            } else {
+                setptr(f, true);
+                let refs = []: []idref;
+                const id = get_idt(i, f, scp)?;
+                expct(id is *func, i, f, void: NOTCALL, i)?;
+                const fun = id: *func;
+                if(fun.orign is kernel){
+                    skip_field(f)?;
                 };
+                const call = parse_fcall(fun, f, scp, &refs)?;
+                out = fmt::asprintf("{}{}    {}\n", out, solve_ref(&refs), call);
             };
         case let s: sym =>
             switch(s){
@@ -754,307 +650,216 @@ fn parse_field(mod: idt, f: *file, scp: *scope) (*nmsp | *func | CMP_ERR) = {
     }: GENERIC;
 };
 
-fn parse_fcall(fun: *func, f: *file, scp: *scope) ((*[]idref, str) | CMP_ERR) = {
+fn parse_fcall(fun: *func, f: *file, scp: *scope, refs: *[]idref) (str | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("parsing function call at {}", gen_pos(f))!;
 
     let out = fmt::asprintf("call ${}(", fun.fname);
-    let add = alloc([]: []idref);
-
+    let hdr ="";
     let next = nxttk(f)?;
     expct(cmp_tok(next, sym::OPEN_PAR), next, f, void: EXPECTD,
         "function argument list")?;
 
+    const limit = [ sym::SYMCOMMA, sym::CLOSEPAR ]: []tok;
+
     let argc = 0z;
-    let swtch = false;
-    const max = len(fun.param);
-    for(!cmp_tok(next, sym::CLOSEPAR)){
-        // too many args
-        if(argc > max){
-            return unimsg {
-                msg = "too many arguments on function call",
-                tip = void,
-                ptr = f,
-            }: GENERIC;
-        };
+    const argmax = len(fun.param);
+
+    if(argmax == 0){
         next = nxttk(f)?;
-        if(!swtch){
-            const arg = expct(next is num || next is txt || next is idt, next, f,
-                void: EXPECTD, "literal or namespace")?;
-            match(arg){
-            case let n: num =>
-                if(is_subt(kwd::NUMBER_T, fun.param[argc])){
-                    if(argc == 0){
-                        out = fmt::asprintf("{}w {}", out, n: u32);
-                    } else {
-                        out = fmt::asprintf("{}, w {}", out, n: u32);
-                    };
-                } else {
-                    return unimsg {
-                        msg = "argument and parameter types",
-                        tip = cast_err(kwd::NUMBER_T, fun.param[argc]),
-                        ptr = f,
-                    }: MISMTCH;
-                };
-            case let t: txt =>
-                if(is_subt(kwd::STRING_T, fun.param[argc])){
-                    const val = tostr(t);
-                    const ref = pushstr(val);
-                    if(argc == 0){
-                        out = fmt::asprintf("{}l {}", out, ref);
-                    } else {
-                        out = fmt::asprintf("{}, l {}", out, ref);
-                    };
-                } else {
-                    return unimsg {
-                        msg = "argument and parameter types",
-                        tip = cast_err(kwd::NUMBER_T, fun.param[argc]),
-                        ptr = f,
-                    }: MISMTCH;
-                };
-            case let i: idt =>
-                const nm = get_idt(i, f, scp)?;
-                // TODO: handle optional casting
-                match(nm){
-                case let var: *nmsp =>
-                    if(is_subt(var.vtype, fun.param[argc])){
-                        const id =
-                            if(var.orign is kernel){
-                                pushgref(var.ident, var.vtype, add);
-                                yield fmt::asprintf("%{}.gv", var.ident);
-                            } else {
-                                pushref(var.ident, f, scp, add)?;
-                                yield fmt::asprintf("%{}.v", var.ident);
-                            };
-                        if(argc == 0){
-                            out = fmt::asprintf("{}{} {}", out, tptob(var.vtype), id);
-                        } else {
-                            out = fmt::asprintf("{}, {} {}", out, tptob(var.vtype), id);
-                        };
-                    } else {
-                        return unimsg {
-                            msg = "argument and parameter types",
-                            tip = cast_err(kwd::NUMBER_T, fun.param[argc]),
-                            ptr = f,
-                        }: MISMTCH;
-                    };
-                case let fun: *func =>
-                    const (refs, exp) = parse_fcall(fun, f, scp)?;
-                    append(add, (*refs)...);
-                    if(argc == 0){
-                        out = fmt::asprintf("{}{} {}", out, tptob(fun.retrn), exp);
-                    } else {
-                        out = fmt::asprintf("{}, {} {}", out, tptob(fun.retrn), exp);
-                    };
-                };
-            case =>
-                const err = fmt::asprintf("argument should be literal or identifier, but is {}",
-                    tktostr(arg));
-                return (err, f): UNREACH;
-            };
-            argc += 1;
-            swtch = true;
+        expct(cmp_tok(next, sym::CLOSEPAR), next, f, void: GENERIC, "too many parameters on function call",
+            fmt::asprintf("the function \"{}\" takes {} arguments", fun.fname, argmax))?;
+    };
+    const max = len(f.src);
+    for(f.ptr < max){
+        next = nxttk(f, true)?;
+        if(is_limit(next, limit)) break;
+        setptr(f, true);
+
+        const (exp, tp, arg) = parse_exp(f, scp, refs, limit)?;
+        if(argc == 0){
+            out = fmt::asprintf("{}{} {}", out, get_qbe_t(tp, 1), arg);
         } else {
-            expct(next is sym && (next: sym == sym::SYMCOMMA || next: sym == sym::CLOSEPAR),
-                next, f, void: EXPECTD, "comma or end of argument list")?;
-            swtch = false;
+            out = fmt::asprintf("{}, {} {}", out, get_qbe_t(tp, 1), arg);
+        };
+        hdr = fmt::asprintf("{}{}\n", hdr, exp);
+        argc += 1;
+        if(argc > argmax){
+            next = nxttk(f)?;
+            expct(cmp_tok(next, sym::CLOSEPAR), next, f, void: GENERIC, "too many parameters on function call",
+                fmt::asprintf("the function \"{}\" takes {} arguments", fun.fname, argmax))?;
         };
     };
-    for(argc < max){
+    for(argc < argmax; argc += 1){
         // TODO: default values for function parameters
         if(argc == 0){
-            out = fmt::asprintf("{}{} {}", out, tptob(fun.param[argc]), getdefval(fun.param[argc]));
+            out = fmt::asprintf("{}{} {}", out, get_qbe_t(fun.param[argc]), getdefval(fun.param[argc]));
         } else {
-            out = fmt::asprintf("{}, {} {}", out, tptob(fun.param[argc]), getdefval(fun.param[argc]));
+            out = fmt::asprintf("{}, {} {}", out, get_qbe_t(fun.param[argc]), getdefval(fun.param[argc]));
         };
     };
-    return (add, strings::concat(out, ")\n"));
+    return strings::concat(out, ")");
 };
 
-fn parse_exp(f: *file, dest: idt, scp: *scope, add: *[]idref, limit: tok = eol) ((str, kwd) | CMP_ERR) = {
+fn parse_asg(f: *file, dest: idt, oper: opr, scp: *scope, defn: (*nmsp | *func | void) = void, mutbl: bool = false) (str | CMP_ERR) = {
+    if(stacktrace){
+        if(defn is void){
+            fmt::printfln("parsing assignment to \"{}\" at {}", dest, gen_pos(f))!;
+        } else {
+            fmt::printfln("parsing definition and assignment to \"{}\" at {}", dest, gen_pos(f))!;
+        };
+    };
+    const global = scp.over is void;
+    if(global && mutbl){
+        return unimsg {
+            msg = "define mutable variables at global scope",
+            tip = "try moving it to inside a function",
+            ptr = f,
+        }: CANT_DO;
+    };
+    let out = "";
+    let next = nxttk(f)?;
+    const oper = expct(next is opr, next, f, void: EXPECTD,
+        "declaration or assignment")?: opr;
+
+    const dup = alloc(*f);
+
+    switch(oper){
+    case opr::CASTTOTP =>
+        if(!(defn is void)){
+            return bi_msg {
+                lft = dest: str,
+                rgt = get_idpos(defn: (*nmsp | *func)),
+                tip = void,
+                ptr = dup,
+            }: IDTCDUP;
+        };
+        next = nxttk(f)?;
+        const tp = expct(is_type(next), next, f, void: EXPECTD,
+            "valid type notation")?: kwd;
+
+        push_idt(dest, mutbl, tp, f, scp)?;
+        out = fmt::asprintf("    %{0} =l alloc4 {1}\n    store{2} {3}, %{0}\n",
+            dest: str, get_t_len(tp), get_qbe_t(tp), getdefval(tp));
+
+        // TODO: typedefs
+    case opr::ASSIGNMT =>
+        next = nxttk(f, true)?;
+        if(cmp_tok(next, kwd::FUNCTION)){
+            if(!global){
+                return unimsg {
+                    msg = "define local functions",
+                    tip = "it's planned to add local-scope functions, but it's not implemented yet",
+                    ptr = dup,
+                }: CANT_DO;
+            };
+            return parse_fun(f, dest, scp)?;
+        } else {
+            setptr(f, true);
+        };
+        let refs = []: []idref;
+        const (exp, tp, val_id) = parse_exp(f, scp, &refs)?;
+        
+        if(defn is void){
+            expct(tp != kwd::NUMBER_T, oper, dup, void: GENERIC,
+                "untyped definition of namespace")?;
+
+            const nm = push_idt(dest, mutbl, tp, f, scp)?;
+            nm.asgnd = true;
+            out = fmt::asprintf("    %{} =l alloc4 {}\n", dest: str, get_t_len(tp));
+        } else {
+            match(defn){
+            case let nm: *nmsp =>
+                if(nm.asgnd && !nm.mutbl){
+                    return unimsg {
+                        msg = "redefine a value of a immutable variable",
+                        tip = void,
+                        ptr = dup,
+                    }: CANT_DO;
+                };
+                nm.asgnd = true;
+                expct(is_subt(tp, nm.vtype), oper, dup, void: MISMTCH,
+                    "destination and expression result types", cast_err(tp, nm.vtype))?;
+            case =>
+                assert(false);
+            };
+        };
+        out = fmt::asprintf("{}{}{}    store{} {}, %{}\n",
+            out, solve_ref(&refs), exp, get_qbe_t(tp), val_id, dest);
+    case =>
+        return bi_msg {
+            lft = "declaration or assignment",
+            rgt = tktostr(oper),
+            tip = void,
+            ptr = dup,
+        }: EXPECTD;
+    };
+    free(dup);
+    return out;
+};
+
+fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [eol]) ((str, kwd, str) | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("parsing expression at {}", gen_pos(f))!;
     let out = "";
+    let single = true;
     let expr_t = kwd::NOT_KWRD;
     let next = nxttk(f)?;
+
+    let dest = "";
+
     // TODO: handle idt, opr, "+" | "-" | "~"
     // TODO: handle literals of records and lists
     // TODO: handle statements as valid hands
     const vall = expct(next is num || next is txt || next is idt,
-        next, f, void: EXPECTD, "valid righthand")?: (num | txt | idt);
+        next, f, void: EXPECTD, "valid operand")?: (num | txt | idt);
     match(vall){
     case let n: num =>
-        out = fmt::asprintf("    %.val.{} =w copy {}\n", dest: str, n: u32);
-        expr_t = cast_to(expr_t, kwd::U32_TYPE, vall, f)?;
-    case let t: txt => void;
+        out = fmt::asprint(n: u64);
+        expr_t = parse_cast(f, kwd::NUMBER_T)?;
+
+    case let t: txt =>
         const val = tostr(t);
         const idx = pushstr(val);
-        out = fmt::asprintf("    %.val.{} =l copy {}\n", dest: str, idx);
-
-        finsh(f, void: CANT_DO, "perform operations on string literals")?;
-        return (out, kwd::STRING_T);
-
-    case let i: idt => void;
-        match(get_idt(i: str, f, scp)?){
-        case let nm: *nmsp =>
-            pushref(i: str, f, scp, add)?;
-            out = fmt::asprintf("    %.val.{} ={} copy %{}.v\n", dest: str, tptob(nm.vtype, true), i: str);
-            expr_t = cast_to(nm.vtype, expr_t, vall, f)?;
-            // TODO: assert for composite types
-        case let fun: *func =>
-            const (refs, exp) = parse_fcall(fun, f, scp)?;
-            append(add, (*refs)...);
-            free(refs);
-            out = fmt::asprintf("    %.val.{} ={} {}\n", dest: str, tptob(fun.retrn, true), exp);
-            expr_t = cast_to(fun.retrn, expr_t, vall, f)?;
-        };
-    };
-    // keep reading until end of expression
-    next = nxttk(f)?;
-    for(!(!(next is eof) && cmp_tok(next: tok, limit)); next = nxttk(f)?){
-        expct(next is opr || next is eol, next, f,
-            void: EXPECTD, "operator or end of expression")?;
-        if(next is opr){
-            // cast value
-            if(next: opr == opr::CASTTOTP){
-                next = nxttk(f)?;
-                const cast = expct(is_type(next), next, f, void: EXPECTD,
-                    "valid casting type")?: kwd;
-
-                expct(castable(expr_t, cast), cast, f, void: EXPECTD,
-                    "valid casting", cast_err(expr_t, cast))?: kwd;
-                // TODO: actually cast values
-                expr_t = cast;
-                continue;
-            };
-            const tmp = alloc(*f);
-            const (exp, tp) = parse_opr(f, dest, next: opr, expr_t, scp, add)?;
-            
-            expct(is_subt(tp, expr_t), next, tmp, void: MISMTCH,
-                "member types", cast_err(tp, expr_t))?;
-            free(tmp);
-            out = strings::concat(out, exp);
-        };
-    };
-    assert(expr_t != kwd::NUMBER_T);
-    return (out, expr_t);
-};
-
-fn parse_asg(f: *file, dest: idt, scp: *scope, defn: bool = false, limit: tok = eol) ((str, kwd) | CMP_ERR) = {
-    if(stacktrace)
-        fmt::printfln("parsing assignment to \"{}\" at {}", dest, gen_pos(f))!;
-
-    let next = nxttk(f)?;
-    let defn = false;
-    const oper = expct(next is opr, next,
-            f, void: EXPECTD, "assigment")?: opr;
-    const dup = alloc(*f);
-    switch(oper){
-        case opr::ASSIGNMT =>
-            defn = true;
-        case opr::INCREMNT, opr::DECREMNT =>
-            void;
-        case =>
-            return unimsg {
-                msg = "assignment operator",
-                tip = void,
-                ptr = f,
-            }: INVALID;
-        };
-    let out = "";
-    let add = []: []idref;
-    const nm_def =
-        match(get_idt(dest, f, scp)){
-        case let nm: *nmsp =>
-            out = fmt::asprintf("    %.val.{0} ={1} load{1} %{0}\n",
-                nm.ident, tptob(nm.vtype));
-            yield nm;
-        case *func => void; // case handled by parse_glob
-        case => void;
-        };
-    let dest_t =
-        match(nm_def){
-        case void => yield kwd::NOT_KWRD;
-        case let nm: *nmsp => yield nm.vtype;
-        };
-    let expr_t = kwd::NOT_KWRD;
-    next = nxttk(f)?;
-    // TODO: handle idt, opr, "+" | "-" | "~"
-    // TODO: handle literals of records and lists
-    // TODO: handle statements as valid hands
-    const vall = expct(next is num || next is txt || next is idt || next is kwd,
-        next, f, void: EXPECTD, "valid righthand")?;
-
-    match(vall){
-    case let n: num =>
-        out = fmt::asprintf("    %.val.{} =w copy {}\n", dest, n: u32);
-        expr_t = cast_to(expr_t, kwd::U32_TYPE, vall, f)?;
-    case let t: txt => void;
-        const val = tostr(t);
-        const idx = pushstr(val);
-
-        out = fmt::asprintf("    %.val.{} =w copy {}\n", dest, idx);
-        finsh(f, void: CANT_DO, "perform operations on string literals")?;
-
-        expct(is_subt(kwd::STRING_T, dest_t), vall, dup, void: MISMTCH, "member types",
-            cast_err(kwd::STRING_T, dest_t))?;
-        return (out, kwd::STRING_T);
+        out = idx;
+        
+        next = nxttk(f, true)?;
+        // TODO: acept casting to union types
+        expct(is_limit(next, limit), next, f, void: EXPECTD,
+            "end of expression")?;
+        setptr(f, true);
+        return ("", kwd::STRING_T, idx);
 
     case let i: idt =>
         match(get_idt(i: str, f, scp)?){
         case let nm: *nmsp =>
-            pushref(i: str, f, scp, &add)?;
-            out = fmt::asprintf("    %.val.{} ={} copy %{}.v\n",
-                dest, tptob(nm.vtype, true), i: str);
-
-            expr_t = cast_to(nm.vtype, expr_t, vall, f)?;
+            pushref(nm, f, scp, refs)?;
+            if(nm.orign is kernel){
+                skip_field(f)?;
+                expr_t = parse_cast(f, nm.vtype)?;
+                out = fmt::asprintf("%{}.{}.g", nm.ident, get_qbe_t(nm.vtype));
+            } else {
+                expr_t = parse_cast(f, nm.vtype)?;
+                out = fmt::asprintf("%{}.{}", nm.ident, get_qbe_t(nm.vtype));
+            };
+            dest = fmt::asprintf("%val.{}", get_qbe_t(expr_t, 1));
             // TODO: assert for composite types
         case let fun: *func =>
-            const (refs, exp) = parse_fcall(fun, f, scp)?;
-            append(add, (*refs)...);
-            free(refs);
-
-            if(!defn){
-                expct(is_subt(dest_t, fun.retrn), i, dup, void: MISMTCH,
-                    "member types", cast_err(dest_t, fun.retrn))?;
+            if(fun.orign is kernel){
+                skip_field(f)?;
             };
-            out = fmt::asprintf("    %.val.{} ={} {}\n", dest, tptob(fun.retrn), exp);
-            expr_t = cast_to(fun.retrn, expr_t, vall, f)?;
+            out = parse_fcall(fun, f, scp, refs)?;
+            expr_t = fun.retrn;
         };
-    case let k: kwd =>
-        if(k == kwd::FUNCTION){
-            if(dest_t != kwd::NOT_KWRD){
-                return bi_msg {
-                    lft = dest,
-                    rgt = get_idpos(nm_def: *nmsp),
-                    tip = void,
-                    ptr = f,
-                }: IDTCDUP;
-            };
-            if(defn){
-                out = parse_fun(f, dest, scp)?;
-                return (out, k);
-            };
-            return unimsg {
-                msg = "perform arithmetic operations on functions",
-                tip = void,
-                ptr = f,
-            }: CANT_DO;
-        };
-        return bi_msg {
-            lft = "valid righthand",
-            rgt = tktostr(k, true),
-            tip = void,
-            ptr = f,
-        }: EXPECTD;
+    };
+    next = nxttk(f)?;
+    if(is_limit(next, limit)){
+        return ("", expr_t, out);
     };
     // keep reading until end of expression
-    next = nxttk(f)?;
-    let ran = false;
-    for(!(next is eof) && !cmp_tok(next: tok, limit); next = nxttk(f)?){
+    for(!is_limit(next, limit); next = nxttk(f)?){
         expct(next is opr || next is eol, next, f,
             void: EXPECTD, "operator or end of expression")?;
-        ran = true;
         if(next is opr){
             // cast value
             if(next: opr == opr::CASTTOTP){
@@ -1062,114 +867,97 @@ fn parse_asg(f: *file, dest: idt, scp: *scope, defn: bool = false, limit: tok = 
                 const cast = expct(is_type(next), next, f, void: EXPECTD,
                     "valid casting type")?: kwd;
 
-                expct(castable(expr_t, cast), cast, f, void: EXPECTD,
-                    "valid casting", cast_err(expr_t, cast))?: kwd;
-                // TODO: actually cast values
-                expr_t = cast;
+                expr_t = cast_to(expr_t, cast, next, f)?;
+                if(single){
+                    dest = fmt::asprintf("%val.{}", get_qbe_t(expr_t, 1));
+                };
                 continue;
             };
             const tmp = alloc(*f);
-            const (exp, tp) = parse_opr(f, dest, next: opr, expr_t, scp, &add)?;
-            
-            expct(is_subt(tp, expr_t), next, tmp, void: MISMTCH,
-                "member types", cast_err(tp, expr_t))?;
+            const (exp, tp) = parse_opr(f, next: opr, expr_t, scp, refs)?;
+
+            expr_t = cast_to(expr_t, tp, next, tmp)?;
             free(tmp);
-            out = strings::concat(out, exp);
+
+            if(single){
+                dest = fmt::asprintf("%val.{}", get_qbe_t(expr_t, 1));
+                out = fmt::asprintf("    {} ={} copy {}\n{}",
+                    dest, get_qbe_t(expr_t, 1), out, exp);
+                single = false;
+            } else {
+                out = strings::concat(out, exp);
+            };
         };
     };
-    assert(expr_t != kwd::NUMBER_T);
-    expct(is_subt(expr_t, dest_t), oper, dup,
-        void: MISMTCH, "member types", cast_err(expr_t, dest_t))?;
-    free(dup);
-
-    if(dest_t == kwd::NOT_KWRD) dest_t = expr_t;
-
-    let hdr = "";
-    const max = len(add);
-    for(let i = 0z; i < max; i += 1){
-        hdr = fmt::asprintf("{0}    %{1}.v ={2} load{2} %{1}\n",
-            hdr, add[i].idt, tptob(add[i].vtp, true));
-    };
-    out = fmt::asprintf("{0}    store{1} %.val.{2}, %{2}\n",
-        out, tptob(dest_t, true), dest);
-    return (strings::concat(hdr, out), expr_t);
+    return (out, expr_t, dest);
 };
 
-fn parse_opr(f: *file, dest: idt, oper: opr, tp: kwd, scp: *scope, add: *[]idref) ((str, kwd) | CMP_ERR) = {
+fn parse_opr(f: *file, oper: opr, expr_t: kwd, scp: *scope, refs: *[]idref) ((str, kwd) | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("parsing operation at {}", gen_pos(f))!;
-
-    const val = fmt::asprintf("%.val.{}", dest: str);
-
-    let next = nxttk(f)?;
-    const lfth = expct(next is num || next is idt, next, f,
-        void: EXPECTD, "numeric literal or identifier")?;
-
     static const inst =
         [ "neg", "and", "or"
         , "sar", "shl"
-        , "call $eq(", "call $neq("
-        , "call $ls(", "call $gt("
-        , "call $le(", "call $ge("
+        , "ceq", "cneq"
+        , "cls", "cgt"
+        , "cle", "cge"
         , "add", "sub", "mul", "div", "rem"
         ];
-    if(is_wrp(oper)){
-        match(lfth){
-        case let n: num =>
-            if(is_subt(tp, kwd::NUMBER_T)){
-                const exp = fmt::asprintf("    %.val.{} ={} {} {}\n",
-                    dest: str, tptob(tp, true), inst[oper], op_wrp(val, n: u32, tp, kwd::NUMBER_T));
-                return (exp, tp);
-            } else {
-                return unimsg {
-                    msg = "member types",
-                    tip =  cast_err(tp, kwd::NUMBER_T),
-                    ptr = f,
-                }: MISMTCH;
-            };
-        case let i: idt =>
-            if(is_subt(tp, kwd::NUMBER_T)){
-                const vtp = pushref(i: str, f, scp, add)?;
-                const wrp = fmt::asprintf("%{}.v", i: str);
-                const exp = fmt::asprintf("    %.val.{} ={} {} {}\n",
-                    dest: str, tptob(tp, true), inst[oper], op_wrp(val, wrp, tp, vtp));
-                return (exp, tp);
-            } else {
-                return unimsg {
-                    msg = "member types",
-                    tip =  cast_err(tp, kwd::NUMBER_T),
-                    ptr = f,
-                }: MISMTCH;
-            };
-        case =>
-            return ("righthand should be number or identifier", f): UNREACH;
-        };
+    let next = nxttk(f)?;
+    const rgth = expct(next is num || next is idt, next, f,
+        void: EXPECTD, "numeric literal or identifier")?;
+    
+    const val_id = fmt::asprintf("%val.{}", get_qbe_t(expr_t, 1));
+    const asg_tp = get_qbe_t(expr_t, 1);
+
+    if(is_cmp(oper)){
+        todo(f, "comparisons")?;
+        return ("", expr_t);
     };
-    match(lfth){
+    match(rgth){
     case let n: num =>
-        if(is_subt(tp, kwd::NUMBER_T)){
-            const exp = fmt::asprintf("    %.val.{0} ={1} {2} %.val.{0}, {3}\n",
-                dest: str, tptob(tp, true), inst[oper], n: u32);
-            return (exp, tp);
+        if(opeable(kwd::NUMBER_T, expr_t, oper)){
+            const exp = fmt::asprintf("    {0} ={1} {2} {0}, {3}\n",
+                val_id, asg_tp, inst[oper], n: u64);
+            return (exp, expr_t);
         } else {
             return unimsg {
                 msg = "member types",
-                tip =  cast_err(tp, kwd::NUMBER_T),
+                tip =  cast_err(kwd::NUMBER_T, expr_t),
                 ptr = f,
             }: MISMTCH;
         };
     case let i: idt =>
-        if(is_subt(tp, kwd::NUMBER_T)){
-            pushref(i: str, f, scp, add)?;
-            const exp = fmt::asprintf("    %.val.{0} ={1} {2} %.val.{0}, %{3}.v\n",
-                dest: str, tptob(tp, true), inst[oper], i: str);
-            return (exp, tp);
-        } else {
-            return unimsg {
-                msg = "member types",
-                tip =  cast_err(tp, kwd::NUMBER_T),
-                ptr = f,
-            }: MISMTCH;
+        match(get_idt(i: str, f, scp)?){
+        case let nm: *nmsp =>
+            pushref(nm, f, scp, refs)?;
+            if(opeable(nm.vtype, expr_t, oper)){
+                const (hdr, wrp) = fix_sizes(expr_t, nm);
+                const exp = fmt::asprintf("{}    {} ={} {} {}, {}\n",
+                    hdr, val_id, asg_tp, inst[oper], val_id, wrp);
+                return (exp, nm.vtype);
+            } else {
+                return unimsg {
+                    msg = "member types",
+                    tip =  cast_err(nm.vtype, expr_t),
+                    ptr = f,
+                }: MISMTCH;
+            };
+        case let fun: *func =>
+            if(opeable(fun.retrn, expr_t, oper)){
+                const call = parse_fcall(fun, f, scp, refs)?;
+                const wrp = fmt::asprintf("%{}.{}", fun.fname, get_qbe_t(fun.retrn));
+                const exp = fmt::asprintf("    {} ={} {} {}, {}\n",
+                    val_id, asg_tp, inst[oper], val_id, wrp);
+                const out = fmt::asprintf("{}{}{}", solve_ref(refs), call, exp);
+                return (out, fun.retrn);
+            } else {
+                return unimsg {
+                    msg = "member types",
+                    tip =  cast_err(fun.retrn, expr_t),
+                    ptr = f,
+                }: MISMTCH;
+            };
         };
     case =>
         return ("righthand should be number or identifier", f): UNREACH;
@@ -1294,7 +1082,7 @@ fn parse_fun(f: *file, dest: idt, scp: *scope, skip: bool = false) (str | CMP_ER
             body = fmt::asprintf("{}    %.ret =l copy {}\n    ret %.ret\n", body, 0xcafe0000);
         };
         const (prml, prmd) = gen_params(params, parm_n);
-        out = fmt::asprintf("function {} ${}({}){{\n@start\n{}{}}}\n", tptob(ret, true), dest, prml, prmd, body);
+        out = fmt::asprintf("function {} ${}({}){{\n@start\n{}{}}}\n", get_qbe_t(ret, 1), dest, prml, prmd, body);
     };
     return out;
 };
@@ -1307,43 +1095,79 @@ fn gen_params(param_t: []kwd, param_n: []idt) (str, str) = {
     assert(max == len(param_n));
     for(let arg = 0z; arg < max; arg += 1){
         if(arg == 0){
-            param_lst = fmt::asprintf("{} %{}.v",
-                tptob(param_t[arg]), param_n[arg]);
+            param_lst = fmt::asprintf("{} %{}.{}", get_qbe_t(param_t[arg], 1),
+                param_n[arg], get_qbe_t(param_t[arg]));
         } else {
-            param_lst = fmt::asprintf("{}, {} %{}.v", param_lst,
-                tptob(param_t[arg]), param_n[arg]);
+            param_lst = fmt::asprintf("{}, {} %{}.{}", param_lst, get_qbe_t(param_t[arg], 1),
+                param_n[arg], get_qbe_t(param_t[arg]));
         };
-        param_def = fmt::asprintf("{0}    %{1} =l alloc4 {2}\n    store{3} %{1}.v, %{1}\n",
-            param_def, param_n[arg], tptoz(param_t[arg]), tptob(param_t[arg]));
+        param_def = fmt::asprintf("{0}    %{1} =l alloc4 {2}\n    store{3} %{1}.{3}, %{1}\n",
+            param_def, param_n[arg], get_t_len(param_t[arg]), get_qbe_t(param_t[arg]));
     };
     return (param_lst, param_def);
 };
 
-fn is_type(_tp: (tok | eof)) bool = {
-    if(!(_tp is kwd)) return false;
-    const tp = _tp: kwd;
-    switch(tp){
-    case kwd::U8__TYPE, kwd::U16_TYPE, kwd::U32_TYPE, kwd::U64_TYPE, kwd::I8__TYPE,
-        kwd::I16_TYPE, kwd::I32_TYPE, kwd::I64_TYPE, kwd::RATIO__T, kwd::STRING_T, kwd::UNITTYPE =>
-        return true;
-    case => return false;
+fn is_limit(tkn: tok, lmt: []tok) bool = {
+    for(let l .. lmt){
+        if(cmp_tok(tkn, l)) return true;
     };
+    return false;
+};
+
+// TODO: linear types
+fn match_linear() bool = {
+    return false;
+};
+
+// TODO: if/else & enhance operations' type checking
+fn opeable(lft: kwd, rgt: kwd, oper: opr) bool = {
+    switch(oper){
+    case opr::BOOL_LSS, opr::BOOL_GRT, opr::BOOL_LEQ, opr::BOOL_GEQ =>
+        return (is_num(lft) && is_num(rgt)) ||
+            (is_num(lft, true) && is_num(rgt, true)) ||
+            (lft == kwd::STRING_T && rgt == kwd::STRING_T) ||
+            (lft == kwd::ARRAY__T && rgt == kwd::ARRAY__T);
+    case =>
+        return is_subt(lft, rgt) && is_subt(rgt, lft);
+    };
+};
+
+fn fix_sizes(dest: kwd, nm: *nmsp) (str, str) = {
+    let hdr = "";
+    let val = fmt::asprintf("%{}.{}", nm.ident, get_qbe_t(nm.vtype));
+    if(is_subt(dest, kwd::NUMBER_T) && dest != kwd::NUMBER_T){
+        const chck =
+            (is_num(dest) && dest > kwd::U32_TYPE) ||
+            (is_num(dest, true) && dest > kwd::I32_TYPE);
+        const smol = dest > nm.vtype;
+        
+        if(chck && smol){
+            hdr = fmt::asprintf("%{}.l =l ext{1} {}", nm.ident, get_qbe_t(nm.vtype, 2), val);
+            val = fmt::asprintf("%{0}.l", nm.ident);
+        };
+    };
+    if(nm.orign is kernel){
+        val = strings::concat(val, ".g");
+    };
+    return (hdr, val);
 };
 
 fn is_subt(tp: kwd, set: kwd) bool = {
     switch(set){
-    case kwd::RAW_TYPE =>
+    case kwd::RAW_TYPE, kwd::ANY_TYPE =>
         return tp == set;
     case kwd::U8__TYPE, kwd::U16_TYPE, kwd::U32_TYPE,
         kwd::U64_TYPE =>
         return is_num(tp) && tp <= set || tp == kwd::NUMBER_T;
     case kwd::I8__TYPE, kwd::I16_TYPE, kwd::I32_TYPE,
-        kwd::I64_TYPE, kwd::NUMBER_T =>
+        kwd::I64_TYPE =>
         if(is_num(tp)) return tp < set - stou;
         if(is_num(tp, true)) return tp <= set;
         return  tp == kwd::NUMBER_T;
     case kwd::ARRAY__T, kwd::STRING_T =>
         return tp == set;
+    case kwd::NUMBER_T =>
+        return is_num(tp);
     case kwd::NOT_KWRD =>
         return true;
     case =>
@@ -1352,28 +1176,44 @@ fn is_subt(tp: kwd, set: kwd) bool = {
     };
 };
 
-fn castable(s: kwd, d: kwd) bool = {
-    if(s == kwd::NOT_KWRD || s == kwd::RAW_TYPE) return true;
-    if((is_num(s) || is_num(d, true)) &&
-        (is_num(s) || is_num(d, true))) return true;
-    return s == d;
+fn parse_cast(f: *file, src: kwd) (kwd | CMP_ERR) = {
+    if(stacktrace)
+        fmt::printfln("parsing cast of {}", src: int)!;
+    let out_t = src;
+    let next = nxttk(f, true)?;
+    if(cmp_tok(next, opr::CASTTOTP)){
+        next = nxttk(f)?;
+        const cast = expct(is_type(next), next, f, void: EXPECTD,
+            "valid casting type")?: kwd;
+        out_t = cast_to(src, cast, next, f)?;
+    } else {
+        setptr(f, true);
+    };
+    return out_t;
 };
 
 fn cast_to(s: kwd, d: kwd, t: tok, f: *file) (kwd | CMP_ERR) = {
     if(s == kwd::NOT_KWRD){
         return d;
     } else {
-        expct(is_subt(s, d), t, f, void: MISMTCH,
+        expct(castable(s, d), t, f, void: MISMTCH,
             "member types", cast_err(s, d))?;
         if(d != kwd::NOT_KWRD) return d;
         return s;
     };
 };
 
+fn castable(s: kwd, d: kwd) bool = {
+    if(s == kwd::NOT_KWRD || s == kwd::RAW_TYPE) return true;
+    if((is_num(s) || is_num(d, true)) &&
+        (is_num(d) || is_num(s, true))) return true;
+    return s == d;
+};
+
 fn cast_err(s: kwd, d: kwd) str = {
     assert(s != kwd::NOT_KWRD);
     // result will never be used
-    if(d == kwd::NOT_KWRD) return "";
+    if(d == kwd::NOT_KWRD) assert(false);
     const src =
         if(s == kwd::NUMBER_T){
             yield "numberical type";
@@ -1406,17 +1246,7 @@ fn is_num(tp: kwd, sign: bool = false) bool = {
     };
 };
 
-fn is_wrp(oper: opr) bool = {
+fn is_cmp(oper: opr) bool = {
     return oper == opr::BOOL_EQL || oper == opr::BOOL_DIF || oper == opr::BOOL_LSS ||
         oper == opr::BOOL_GRT || oper == opr::BOOL_LEQ || oper == opr::BOOL_GEQ;
-};
-
-fn op_wrp(lft: fmt::formattable, rgt: fmt::formattable, lft_t: kwd, rgt_t: kwd) str = {
-    return fmt::asprintf("{} {}, {} {}, l {}, l {})",
-        tptob(lft_t, true), lft, tptob(rgt_t, true), rgt, tptov(lft_t), tptov(rgt_t));
-};
-
-fn uop_wrp(arg: fmt::formattable, arg_t: kwd) str = {
-    return fmt::asprintf("{} {}, l {})",
-        tptob(arg_t, true), arg, tptov(arg_t));
 };

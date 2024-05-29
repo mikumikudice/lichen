@@ -1,276 +1,83 @@
-segment .rod
-    bad_eq:
-        dd 49
-        db "runtime bug: mismatch of types during comparison", 10
+segment .data
+    stdin dd 0
+    stdout dd 1
+    stderr dd 2
 segment .text
-extern write
+global stdin
+global stdout
+global stderr
 
-global ok
-global nok
-global eq
-global neq
-global gt
-global ls
-global ge
-global le
+global read
+global write
+
+global alloc
+global free
+global copy
 
 global exit
 
-; ok = fn(arg : raw, arg_t : type) : u8
-ok:
-    ; lft is unit
-    cmp rdx, 0xcafe0000
-    je .false
-    cmp rdx, 0xcafe0001
-    je .array
-    ; TODO: composite types
-    jmp .prim
-
-    .array:
-    mov rcx, [rdi]
-    cmp rcx, 0
-    jnz .true
-    jmp .false
-
-    .prim:
-    cmp rdi, 0
-    jz .false
-    jmp .true
-
-    .true:
-    mov rax, 1
-    ret
-    .false:
-    mov rax, 0
+; write = fn(handler : u32, data : str) : u32
+write:
+    mov ecx, edi
+    xor rdi, rdi        ; clear residual bytes
+    mov edi, ecx
+    mov rdx, [rsi]      ; gets length
+    add rsi, 8
+    mov rax, 1          ; system call (write)
+    syscall             ; calls it
     ret
 
-; nok = fn(arg : raw, arg_t : type) : u8
-nok:
-    call ok
-    cmp rax, 0
-    jz .false
-    jmp .true
-
-    .true:
-    mov rax, 1
-    ret
-    .false:
-    mov rax, 0
+; read = fn(handler : u32, buff : str) : u32
+read:
+    mov ecx, edi
+    xor rdi, rdi        ; clear residual bytes
+    mov edi, ecx
+    add rsi, 8
+    mov rdx, [rsi]      ; gets input max length
+    mov rax, 0          ; system call (read)
+    syscall             ; calls it
     ret
 
-; eq = fn(lft : raw, rgt : raw, lft_t : type, rgt_t : type) : u8
-eq:
-    ; lft is unit
-    cmp rdx, 0xcafe0000
-    je .lft_unit
-    cmp rdx, 0xcafe0001
-    je .array
-    ; TODO: composite types
-    jmp .lft_prim
+; alloc = fn(len : u64) : raw
+alloc:
+    mov rsi, rdi        ; get memory size
+    xor rdi, rdi        ; clear register for null
+    mov rdx, 7          ; prot
+    mov r10, 22h        ; MAP_ANONYMOUS | MAP_PRIVATE
+    mov rax, 09h        ; mmap syscall
+    syscall
+    ret
 
-    .lft_unit:
-    ; rgt is also unit
-    cmp r10, 0xcafe0000
-    je .true
-    jmp .false
+; free = fn(ptr : raw) : unit
+free:
+    xor rdx, rdx
+    mov edx, [rdi]      ; get length from pointer
+    mov rsi, rdx
+    mov rax, 0bh        ; munmap syscall
+    syscall
+    ret
 
-    .lft_prim:
-    ; rgt is unit
-    cmp r10, 0xcafe0000
-    je .false
-    jmp .all_prim
+; copy = fn(dest : raw, src : raw, size : u64) : unit
+copy:
+    cmp rdx, 0
+    jz .end
+    xor rcx, rcx
+    .next:
+        mov cl, [rsi]
+        mov [rdi], cl
 
-    .all_unit:
-    cmp rdx, r10
-    je .true
-    jne .false
-
-    .array:
-    cmp r10, 0xcafe0001 ; assert both arem arrays
-    jne .bug
-
-    xor rax, rax
-    mov eax, [rdi]      ; get length of lft
-
-    xor rbx, rbx
-    mov ebx, [rsi]      ; get length of rgt
-
-    cmp rax, rbx        ; compare length
-    jne .false
-
-    add rdi, 4
-    add rsi, 4
-    mov rcx, rax
-    mov eax, [rdi]      ; get size of items of lft
-    mov ebx, [rsi]      ; get size of items of rgt
-    cmp eax, ebx        ; if sizes are different, then the arrays are different
-    jne .false
-    mov rdx, rax
-    add rdi, 4
-    add rsi, 4
-    xor eax, eax
-    xor ebx, ebx
-    .rpt:
-        cmp rcx, 0
-        jz .true
-        mov al, [rdi]
-        mov bl, [rsi]
-        cmp al, bl      ; compare byte by byte
-        jne .false
         inc rdi
         inc rsi
-        dec rcx
-        jmp .rpt        ; repeat until arrays diverge or loop reaches the end
-    .bug:
-    mov rdi, bad_eq
-    call write
+        dec rdx
 
-    mov rdi, 1
-    call exit
-
-    .all_prim:
-    cmp rdx, r10
-    je .true
-    jne .false
-
-    .true:
-    mov rax, 1
-    ret
-    .false:
-    mov rax, 0
+        cmp rdx, 0
+        jz .end
+        jmp .next
+    .end:
+    mov rax, rdi
     ret
 
-; eq = fn(lft : raw, rgt : raw, lft_t : type, rgt_t : type) : u8
-neq:
-    call eq
-    cmp rax, 0
-    jz .false
-    jmp .true
-
-    .true:
-    mov rax, 1
-    ret
-    .false:
-    mov rax, 0
-    ret
-
-; ls = fn(lft : raw, rgt : raw, lft_t : type, rgt_t : type) : u8
-ls:
-    ; lft is unit
-    cmp rdx, 0xcafe0000
-    je .bug
-    cmp rdx, 0xcafe0001
-    je .bug
-    ; TODO: composite types
-    jmp .ok
-
-    .bug:
-    mov rdi, bad_eq
-    call write
-
-    mov rdi, 1
-    call exit
-
-    .ok:
-    cmp rdx, r10
-    jl .true
-    jmp .false
-
-    .true:
-    mov rax, 1
-    ret
-    .false:
-    mov rax, 0
-    ret
-
-; gt = fn(lft : raw, rgt : raw, lft_t : type, rgt_t : type) : u8
-gt:
-    ; lft is unit
-    cmp rdx, 0xcafe0000
-    je .bug
-    cmp rdx, 0xcafe0001
-    je .bug
-    ; TODO: composite types
-    jmp .ok
-
-    .bug:
-    mov rdi, bad_eq
-    call write
-
-    mov rdi, 1
-    call exit
-
-    .ok:
-    cmp rdx, r10
-    jg .true
-    jmp .false
-
-    .true:
-    mov rax, 1
-    ret
-    .false:
-    mov rax, 0
-    ret
-
-; le = fn(lft : raw, rgt : raw, lft_t : type, rgt_t : type) : u8
-le:
-    ; lft is unit
-    cmp rdx, 0xcafe0000
-    je .bug
-    cmp rdx, 0xcafe0001
-    je .bug
-    ; TODO: composite types
-    jmp .ok
-
-    .bug:
-    mov rdi, bad_eq
-    call write
-
-    mov rdi, 1
-    call exit
-
-    .ok:
-    cmp rdx, r10
-    jle .true
-    jmp .false
-
-    .true:
-    mov rax, 1
-    ret
-    .false:
-    mov rax, 0
-    ret
-
-; ge = fn(lft : raw, rgt : raw, lft_t : type, rgt_t : type) : u8
-ge:
-    ; lft is unit
-    cmp rdx, 0xcafe0000
-    je .bug
-    cmp rdx, 0xcafe0001
-    je .bug
-    ; TODO: composite types
-    jmp .ok
-
-    .bug:
-    mov rdi, bad_eq
-    call write
-
-    mov rdi, 1
-    call exit
-
-    .ok:
-    cmp rdx, r10
-    jge .true
-    jmp .false
-
-    .true:
-    mov rax, 1
-    ret
-    .false:
-    mov rax, 0
-    ret
-
-; exit = fn(code : u32) : unit
+; exit = fn(code : u32) : never
 exit:
     mov rax,  3ch
     syscall

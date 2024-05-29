@@ -10,7 +10,7 @@ use strlib;
 
 let tok_count = 0;
 
-fn build(src: str, dest: str) void = {
+fn build(src: str, dest: str, silent: bool = false) void = {
     let global = scope {
         over = void,
         defs = [],
@@ -21,8 +21,10 @@ fn build(src: str, dest: str) void = {
         case let s: (str, kwd) => yield s.0;
     };
 
-    fmt::printfln("successfully parsed {} tokens of {}",
-        col(tok_count, cmd::GRN), col(src, cmd::GRN))!;
+    if(!silent){
+        fmt::printfln("successfully parsed {} tokens of {}",
+            col(tok_count, cmd::GRN), col(src, cmd::GRN))!;
+    };
 
     const code = fmt::asprintf("# moss 0.0.1\n{}", qbe_ir);
     const root = "./bin";
@@ -30,19 +32,14 @@ fn build(src: str, dest: str) void = {
     const (objf, _) = rem_path(dest);
     
     const rt_src = fmt::asprintf("{}/../src/lib/rt.asm", root);
-    const rt_out = fmt::asprintf("{}/rt.o", root);
-
-    const io_mod = fmt::asprintf("{}/../src/lib/io.asm", root);
-    const io_out = fmt::asprintf("{}/io.o", temp);
-
-    const mem_mod = fmt::asprintf("{}/../src/lib/mem.asm", root);
-    const mem_out = fmt::asprintf("{}/mem.o", temp);
+    const rt_out = fmt::asprintf("{}/rt.o", temp);
 
     const qbe_out = fmt::asprintf("{}/{}.ssa", temp, objf);
     const bin_src = fmt::asprintf("{}/{}.asm", temp, objf);
     const bin_out = fmt::asprintf("{}/{}.o", temp, objf);
 
-    runc("mkdir", "-p", "bin", temp);
+    runc(silent, "mkdir", "-p", "bin", temp);
+    runc(silent, "mkdir", "-p", "bin/tmp", temp);
 
     const file = match(os::create(qbe_out, fs::mode::USER_RWX)){
         case let f: io::file => yield f;
@@ -52,37 +49,42 @@ fn build(src: str, dest: str) void = {
     io::write(file, strings::toutf8(code))!;
     io::close(file)!;
 
-    runc("qbe", "-o", bin_src, qbe_out);
-    runc("as" , "-o", bin_out, bin_src);
-    runc("nasm", "-felf64", "-o", rt_out, rt_src);
-    runc("nasm", "-felf64", "-o", io_out, io_mod);
-    runc("nasm", "-felf64", "-o", mem_out, mem_mod);
-    runc("mold", "-o", dest, bin_out, rt_out, io_out, mem_out);
+    runc(silent, "qbe", "-o", bin_src, qbe_out);
+    runc(silent, "as" , "-o", bin_out, bin_src);
+
+    runc(silent, "nasm", "-felf64", "-o", rt_out, rt_src);
+    runc(silent, "mold", "-o", dest, bin_out, rt_out);
 
     //runc("rm", qbe_out, bin_src, bin_out);
 };
 
-fn runc(cmd: str, args: str...) void = {
+fn runc(silent: bool, cmd: str, args: str...) void = {
     let argf = "";
     for(let a .. args){
         argf = fmt::asprintf("{} {}", argf, a);
     };
-    fmt::printfln("{}{}{}", col("exec: ", cmd::BLU), cmd, argf)!;
+    if(!silent)
+        fmt::printfln("{}{}{}", col("exec: ", cmd::BLU), cmd, argf)!;
 
     const exe = exec::cmd(cmd, args...)!;
     match(exec::fork()!){
     case void =>
         exec::exec(&exe);
     case let proc: exec::process =>
-        peek(&proc);
+        peek(silent, fmt::asprintf("{}{}", cmd, argf), &proc);
     };
 };
 
-fn peek(proc: * exec::process) void = {
+fn peek(silent: bool, cmd: str, proc: * exec::process) void = {
     let stat = exec::wait(proc)!;
     match(exec::check(&stat)){
         case void => void;
-        case => os::exit(1);
+        case =>
+            if(silent){
+                assert(false, cmd);
+            } else {
+                os::exit(1);
+            };
     };
 };
 
@@ -150,6 +152,10 @@ fn errstr(e: CMP_ERR) (str, (*file | void), (str | void)) = {
             col(err.lft, cmd::BLU), col(err.rgt, cmd::BLU));
         return (msg, err.ptr, err.tip);
 
+    case let uni: NOTCALL =>
+        const err = uni as unimsg;
+        const msg = fmt::asprintf("the namespace \"{}\" is not callable", err.msg);
+        return (err.msg, err.ptr, err.tip);
     case let uni: GENERIC =>
         const err = uni as unimsg;
         return (err.msg, err.ptr, err.tip);

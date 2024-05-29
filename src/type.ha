@@ -19,6 +19,7 @@ type UNDEFNS = !(void | unimsg);
 type MISMTCH = !(void | unimsg);
 type CANT_DO = !(void | unimsg);
 type IDTCDUP = !(void | bi_msg);
+type NOTCALL = !(void | unimsg);
 type GENERIC = !(void | unimsg);
 type GENTODO = !(void | unimsg);
 type CMP_ERR = !
@@ -31,6 +32,7 @@ type CMP_ERR = !
     | MISMTCH
     | CANT_DO
     | IDTCDUP
+    | NOTCALL
     | GENERIC
     | GENTODO
     );
@@ -56,20 +58,20 @@ type kwd = enum int
     , DEFERSTT, EVAL_STT, RETURNTO
     , U8__TYPE, U16_TYPE, U32_TYPE, U64_TYPE    // 12
     , I8__TYPE, I16_TYPE, I32_TYPE, I64_TYPE    // 16
-    , RATIO__T, STRING_T, RAW_TYPE, UNITTYPE    // 20
-    , RECORD_T, TUNION_T, FUNCTION              // 24
+    , RATIO__T, STRING_T, ANY_TYPE, RAW_TYPE    // 20
+    , UNITTYPE, RECORD_T, TUNION_T, FUNCTION    // 24
     , IS__OPER, DMUTABLE
-    , KWRD_END, NOT_KWRD, NUMBER_T, ARRAY__T    // 29
+    , KWRD_END, NOT_KWRD, NUMBER_T, ARRAY__T, LLIST__T, EFFECT_T // 30
 };
 const kwdv =
     [ "use"  , "pub"  , "test"
     , "if"   , "else" , "match"
     , "for"  , "next" , "break"
-    , "defer", "yield", "return"
+    , "yield", "return", "defer"
     , "u8"   , "u16"  , "u32", "u64"
     , "i8"   , "i16"  , "i32", "i64"
-    , "rat"  , "str"  , "raw", "unit"
-    , "rec"  , "uni"  , "fn"
+    , "rat"  , "str"  , "any", "raw"
+    , "unit" , "rec"  , "uni", "fn"
     , "is"   , "mut"
     ];
 const stou = kwd::I8__TYPE - kwd::U8__TYPE;
@@ -106,7 +108,6 @@ const symv =
 static assert(sym::SYMB_END: size == len(symv), "symbol values not updated");
 
 type eol = void;
-type eof = void;
 type tok = ( num | txt | idt | kwd | opr | sym | eol );
 
 type func = struct {
@@ -132,7 +133,7 @@ type nmsp = struct {
 type idref = struct {
     idt: str,
     vtp: kwd,
-    mod: bool,
+    orign: (str | kernel),
 };
 type scope = struct {
     over : (*scope | void),
@@ -148,6 +149,9 @@ type moss_t = struct {
     tdef: []kwd,
     kind: tkind,
     orign: str,
+    error: bool,
+    linear: bool,
+    public: bool,
 };
 const krnls = [ "IO", "MEM" ];
 type kernel = enum size

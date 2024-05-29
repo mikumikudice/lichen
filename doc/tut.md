@@ -29,8 +29,8 @@ this is a list of the 32 tokens used as keywords for the language and as such ca
 | ------------- | --------------------- | ------------------ | ------------- |
 | `use`         | `u8, u16, u32, u64`   | `if, else, match`  | `mut`         |
 | `pub`         | `i8, i16, i32, i64`   | `for, next, break` | `test`        |
-|               | `rat, str, raw, unit` | `yield, return`    | `is, and, or` |
-|               | `fn, uni, rec, type`  | `defer`            |               |
+|               | `rat, str, any, raw`  | `yield, return`    | `is, and, or` |
+|               | `unit, fn, uni, rec`  | `defer`            |               |
 
 # types and variables
 these are all primitive and composite types in moss.
@@ -41,12 +41,13 @@ rat                     // ratios
 rec                     // records
 uni                     // tagged unions
 str                     // string types
-raw                     // untyped raw 64-bit data
+any                     // generic tagged unions for any type
+raw                     // untyped 64-bit raw data
 unit                    // "nothing" type
 ```
 
 ## numbers and ratios
-moss doesn't support floats by default, but instead ratios. that means your divisions results in an integer part and a ratio. these all are valid numerical values:
+numbers can be represented in decimal or hexadecimal, ocatal and binary using the prefix `0x`, `0o` and `0b`, respectively. numbers also can use digit separators (`_`) at any place. moss also doesn't support floats by default, but instead ratios. that means your divisions results in an integer part and a ratio. you can see more about ratios in [its section](#ratios). these all are valid numerical values:
 ```rust
 123_456 : u64;      // 123456
 99 * 99 : i64;      // 9801
@@ -58,15 +59,15 @@ moss doesn't support floats by default, but instead ratios. that means your divi
 ```
 * note that in the first example, it's shown how moss allows digit separators.
 
-you can see more about ratios in [its section](#ratios)
+numerical literals have no concrete type and always must be casted to some type. casting uneven divisions to interger types results in rounding down the number (i.e. resulting only in the integer part of the division) and signed values to unsigned results in the absolute type. casting a bigger literal e.g. 2048 to an u8 results in a compilation error.
 
 ## strings
-strings in moss are not null terminated, in contrast with C-like `char*` strings, and are UTF-8 encoded. they can't be operated on, but are mutable values.
+strings in moss are an immutable array of bytes, not null terminated, in contrast with C-like `char*` strings, and are UTF-8 encoded. as immutable data, you can't change their bytesm but you can access them individually.
 ```rust
 foo = "mornin'";            // immutable value and namespace
-mut bar = " sailor!!";      // mutable value and namespace
+mut bar = " sailor!\n";     // immutable value, but mutable namespace
 
-bar[bar.len - 1] = '\n';    // all arrays have a `len` field indicating their length
+chr = bar[bar.len - 1];     // chr == 10
 ```
 
 and these are the only supported escape-characters in moss.
@@ -89,10 +90,11 @@ nothing = fn() : unit { };
 test nothing() == _; // succeeds
 ```
 
-## raw type
-you should not use raw types unless you're making a module that implement types or functions that deal with any-type values or low-level operations.
+## any type
+TODO
 
-raw type is an untyped value that can't be compared with any other type but itself, although it can be casted to any type. it's generally used for kernel function argument/return types once the kernels don't care about the semantic type of the values, only about the actual data in them.
+## raw type
+TODO
 
 # declaration, definition assignment and type casting
 ```rust
@@ -119,7 +121,7 @@ c = 5 * (42 + 3): u16;  // no operator precedence, use parenthesis to enclose an
 # records
 also called "structs" by other languages, these are collections of data whithin fields of a single data structure.
 ```rust
-type dog = rec {
+dog : rec {
     age   : u8,
     name  : str,
     owner : str,
@@ -143,7 +145,7 @@ if x = 5 * 5; x > 64 {
 ## match blocks
 match blocks works both as a switch block and a pattern matching block. it can check the value or the type of a given variable. the distinction is done by checking if the argument is a tagged union and if the match cases are values or types.
 ```rust
-type my_uni = uni u32 | str;
+my_uni : uni u32 | str;
 ...
 x = 55: my_uni;
 match x {
@@ -223,9 +225,11 @@ if moss, there are no first-class boolean types (althogh there's a bool type in 
 
 when doing comparisons, you can check equality and inequality with any two types, but greater/lesser comparisons are only allowed between subtypes i.e. numerical types between numerical types, strings with strings, arrays with arrays. these last two are compared only using their length. in this case, lists, unions and structures are prohibited to be compared for the same reason of equality. in the specific case of lists, these have no size to be compared. see more on [their own topic](#lists).
 
+comparison between functions is prohibited.
+
 comparison of union values cannot be done without casting, but you also can check their tag using the `is` operator. for example:
 ```rust
-type num_or_str = uni i64 | rat | str;
+num_or_str : uni i64 | rat | str;
 
 foo = 32 : i64 : num_or_str;
 bar = 1 / 64 : rat : num_or_str;
@@ -242,7 +246,7 @@ moss has no exception handling. everything that can go wrong is dealt simply as 
 ```rust
 use fmt;
 
-type int = uni i32 ! u8;
+int : uni i32 ! u8;
 
 pub main = fn() : u32 \ fmt {
     mut res = myfn(7, 2);
@@ -284,7 +288,7 @@ div = fn(n, d = 1, 1: i64) : i64 { // both parameters will be set to 1 if no arg
     return n / d;
 };
 
-type person = rec {
+person : rec {
     name = "bob",   // these will be the default values of these fields when instantiating the `person` record
     age  = 18: u32
 };
@@ -321,7 +325,7 @@ TODO
 # modules
 whenever you create a file, it becomes a module. all the namespaces, i.e. functions, variables and types, can either be private or public. to make a namespace public, simply add `pub` at the beginning. if a public function returns or accepts a local-defined type, this type also has to be public. so, for instance:
 ```rust
-pub type hashmap = rec {
+pub hashmap : rec {
     vals : []raw,
     keys : []raw,
 };

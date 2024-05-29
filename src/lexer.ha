@@ -8,9 +8,8 @@ use strings;
 use strconv;
 use encoding::utf8;
 
-fn tktostr(tk: (tok | eof), verb: bool = false) str = {
-    if(tk is eof) return "end of source file";
-    match(tk: tok){
+fn tktostr(tk: tok, verb: bool = false) str = {
+    match(tk){
         case num =>
             if(verb){
                 return fmt::asprintf("a number ({})", tk: num: u64);
@@ -58,9 +57,8 @@ fn tostr(src: []u8) str = {
 };
 
 // compares two tokens
-fn cmp_tok(l: (tok | eof), r: tok) bool = {
-    if(l is eof) return false;
-    match(l: tok){
+fn cmp_tok(l: tok, r: tok) bool = {
+    match(l){
         case num =>
             return r is num && l: num == r: num;
         case let this: txt =>
@@ -102,6 +100,24 @@ fn gen_pos(f: *file) str = {
     return fmt::asprintf( "{}:{}:{}", f.name, f.lin + 1, f.cln + 1);
 };
 
+fn is_type(tp: tok) bool = {
+    if(!(tp is kwd)) return false;
+    switch(tp: kwd){
+    case kwd::U8__TYPE, kwd::U16_TYPE, kwd::U32_TYPE, kwd::U64_TYPE, kwd::I8__TYPE,
+        kwd::I16_TYPE, kwd::I32_TYPE, kwd::I64_TYPE, kwd::RATIO__T, kwd::STRING_T, kwd::UNITTYPE =>
+        return true;
+    case => return false;
+    };
+};
+
+fn is_asg_opr(oper: tok) bool = {
+    if(oper is opr){
+        const op = oper: opr;
+        return op == opr::ASSIGNMT || op == opr::INCREMNT || op == opr::DECREMNT;
+    };
+    return false;
+};
+
 // loads the file `fname` and instantiates
 // a file parsing object
 fn load(fname: str) (*file | CMP_ERR) = {
@@ -136,7 +152,7 @@ fn load(fname: str) (*file | CMP_ERR) = {
 
 // returns the next token or end of file
 // returns a compilation error on invalid tokens
-fn nxttk(f: *file, rev: bool = false) (tok | eof | CMP_ERR) = {
+fn nxttk(f: *file, rev: bool = false) (tok | CMP_ERR) = {
     tok_count += 1;
     // debug info
     if(stacktrace && track_nxttk){
@@ -184,7 +200,9 @@ fn nxttk(f: *file, rev: bool = false) (tok | eof | CMP_ERR) = {
                     f.end = 0;
                     f.cln = f.end;
                     return eol;
-                case => return eof;
+                case =>
+                    assert(false);
+                    return eol;
                 };
             };
             // just text
@@ -271,14 +289,12 @@ fn nxttk(f: *file, rev: bool = false) (tok | eof | CMP_ERR) = {
             };
         };
     };
-    if(f.ptr >= max) return eof;
-
     assert(false, "unhandled lexer path");
     return eol;
 };
 
 // asserts `eql`, returning an error if false
-fn expct(eql: bool, tk: (tok | eof), f: *file, e: CMP_ERR, msg: str, tip: (str | void) = void) (tok | CMP_ERR) = {
+fn expct(eql: bool, tk: tok, f: *file, e: CMP_ERR, msg: str, tip: (str | void) = void) (tok | CMP_ERR) = {
     if(!eql){
         match(e){
         case INVALID =>
@@ -318,6 +334,12 @@ fn expct(eql: bool, tk: (tok | eof), f: *file, e: CMP_ERR, msg: str, tip: (str |
                 tip = tip,
                 ptr = f,
             }: GENTODO;
+        case NOTCALL =>
+            return unimsg {
+                msg = tk: str,
+                tip = tip,
+                ptr = f,
+            }: NOTCALL;
         case GENERIC =>
             return unimsg {
                 msg = msg,
@@ -372,12 +394,23 @@ fn mtchs(s: sym, f: *file, restore: bool = true) (u64 | CMP_ERR) = {
 };
 
 // moves the parser to the first instance of `t`
-fn jmpto(t: tok, f: *file) (void | CMP_ERR) = {
+fn jmpto(t: tok, f: *file, before: bool = false) (void | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("jumping to {}", tktostr(t, true))!;
-    for(let next = nxttk(f)?; !(next is eol || next is eof) && !cmp_tok(next: tok, t)){
-        next = nxttk(f)?;
+    for(let next = nxttk(f, before)?; !(next is eol) && !cmp_tok(next: tok, t)){
+        next = nxttk(f, before)?;
     };
+    setptr(f, before);
+};
+
+fn skip_field(f: *file) (void | CMP_ERR) = {
+    if(stacktrace)
+        fmt::println("skiping fields")!;
+    let next = nxttk(f, true)?;
+    for(cmp_tok(next, opr::MODFIELD) || next is idt){
+        next = nxttk(f, true)?;
+    };
+    setptr(f, true);
 };
 
 // checks if it is end of line
@@ -386,7 +419,7 @@ fn iseol(f: *file) (bool | CMP_ERR) = {
     if(f.src[f.ptr] == ';' || f.src[f.ptr - 1] == ';') return true;
 
     const dummy = nxttk(f, true)?;
-    if(dummy is eof || dummy is eol) return true;
+    if(dummy is eol) return true;
     setptr(f, true);
     return false;
 };
@@ -401,7 +434,7 @@ fn noeol(f: *file, msg: str, tip: (str | void) = void) (void | CMP_ERR) = {
     setptr(f);
     const dummy = nxttk(f)?;
 
-    if(dummy is eof || dummy is eol){
+    if(dummy is eol){
         return bi_msg {
             lft = msg,
             rgt = "end of file",
