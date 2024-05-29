@@ -109,7 +109,7 @@ fn pushstr(l: str) str = {
     };
     append(str_lit, l);
     datasec = fmt::asprintf("{}data $.{} = {{ l {}, b \"{}\" }}\n",
-        datasec, max, len(l), l);
+        datasec, max, truelen(l), l);
     return fmt::asprintf("$.{}", max);
 };
 

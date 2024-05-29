@@ -491,6 +491,20 @@ fn parse_str(f: *file) (num | txt | CMP_ERR) = {
     return tkv: txt;
 };
 
+fn truelen(txt: str) size = {
+    static const pairs =
+        [ ("\\t", "\t"), ("\\b", "\b")
+        , ("\\a", "\a"), ("\\r", "\r")
+        , ("\\n", "\n"), ("\\f", "\f")
+        , ("\\0", "\0")
+        ];
+    let fix = txt;
+    for(let p .. pairs){
+        fix = strlib::replace(fix, p.0, p.1);
+    };
+    return len(fix);
+};
+
 // parses a character literal
 fn parsechar(f: *file) (num | CMP_ERR) = {
     let onstr = true;

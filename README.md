@@ -100,5 +100,7 @@ these are the current goals of this project:
 # building moss
 moss is written in the [hare programming language](https://hare-lang.org), uses the [QBE](https://c9x.me/compile/) IR as a backend to generate the binaries, [nasm](https://nasm.us) as assembler for the language kernels and [mold](https://github.com/rui314/mold) as a linker. once all dependencies are installed, you're ready to both build the compiler and use it with no other dependencies. note that each of moss' dependencies have theirs own dependencies. once everything is set, simply run the `build.sh`. it will generate the compiler binary by the name `mossy`.
 
+optionally, you can run `test.sh` to run the moss compiler tests. also, if you have lua 5.3, you can run an automated test unit for all milestones with `test.ms.lua`.
+
 # learning moss
 you can learn moss in a course of one to three days. [this](doc/tut.md) is the tutorial.
