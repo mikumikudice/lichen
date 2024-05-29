@@ -153,7 +153,6 @@ fn load(fname: str) (*file | CMP_ERR) = {
 // returns the next token or end of file
 // returns a compilation error on invalid tokens
 fn nxttk(f: *file, rev: bool = false) (tok | CMP_ERR) = {
-    tok_count += 1;
     // debug info
     if(stacktrace && track_nxttk){
         const txt = tostr(f.src);

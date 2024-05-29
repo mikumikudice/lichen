@@ -8,8 +8,6 @@ use fmt;
 use strings;
 use strlib;
 
-let tok_count = 0;
-
 fn build(src: str, dest: str, silent: bool = false) void = {
     let global = scope {
         over = void,
@@ -19,11 +17,6 @@ fn build(src: str, dest: str, silent: bool = false) void = {
     const qbe_ir = match(parse(src, &global)){
         case let e: CMP_ERR => cmperr(e);
         case let s: (str, kwd) => yield s.0;
-    };
-
-    if(!silent){
-        fmt::printfln("successfully parsed {} tokens of {}",
-            col(tok_count, cmd::GRN), col(src, cmd::GRN))!;
     };
 
     const code = fmt::asprintf("# moss 0.0.1\n{}", qbe_ir);

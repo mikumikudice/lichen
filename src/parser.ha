@@ -22,10 +22,18 @@ fn todo(f: *file, msg: str) (void | CMP_ERR) = {
     assert(castable(kwd::I8__TYPE, kwd::U64_TYPE) == true);
     assert(castable(kwd::STRING_T, kwd::I32_TYPE) == false);
 
-    assert(need_ext(kwd::U8__TYPE, kwd::U32_TYPE) == true);
+    assert(need_ext(kwd::U32_TYPE, kwd::U64_TYPE) == true);
     assert(need_ext(kwd::I16_TYPE, kwd::U64_TYPE) == true);
+    assert(need_ext(kwd::U8__TYPE, kwd::I64_TYPE) == true);
+    assert(need_ext(kwd::I16_TYPE, kwd::U64_TYPE) == true);
+    assert(need_ext(kwd::U8__TYPE, kwd::U32_TYPE) == false);
     assert(need_ext(kwd::U32_TYPE, kwd::U32_TYPE) == false);
     assert(need_ext(kwd::I64_TYPE, kwd::U8__TYPE) == false);
+    assert(need_ext(kwd::I64_TYPE, kwd::U64_TYPE) == false);
+    assert(need_ext(kwd::U64_TYPE, kwd::I64_TYPE) == false);
+
+    assert(sign_mismtch(kwd::U64_TYPE, kwd::I64_TYPE) == true);
+    assert(sign_mismtch(kwd::I8__TYPE, kwd::U64_TYPE) == true);
 };
 
 // returns the default value for each primitive type
@@ -47,6 +55,12 @@ fn get_qbe_t(vtp: kwd, mode: int = 0) str = {
     if(mode == 1)
     if(vtp == kwd::U8__TYPE || vtp == kwd::I8__TYPE ||
         vtp == kwd::U16_TYPE || vtp == kwd::I16_TYPE){
+        return "w";
+    };
+    if(mode == 3)
+    if(vtp == kwd::U8__TYPE || vtp == kwd::U16_TYPE){
+        return "uw";
+    } else if(vtp == kwd::I8__TYPE || vtp == kwd::I16_TYPE){
         return "w";
     };
     switch(vtp){
@@ -811,7 +825,7 @@ fn parse_asg(f: *file, dest: idt, oper: opr, scp: *scope, defn: (*nmsp | *func |
         if(need_ext(tp, store_t)){
             src_id = fmt::asprintf("%{}.l", dest);
             exp = fmt::asprintf("{}    {} =l ext{} {}\n",
-                exp, src_id, get_qbe_t(tp, 2), val_id);
+                exp, src_id, get_qbe_t(tp, 3), val_id);
         };
         out = fmt::asprintf("{}{}{}    store{} {}, %{}\n",
             out, solve_ref(&refs), exp, get_qbe_t(store_t), src_id, dest);
@@ -875,14 +889,18 @@ fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [eol]) ((str,
                     src_id = fmt::asprintf("%{}.l.g", nm.ident);
 
                     const cast = fmt::asprintf("    {} =l ext{} {}\n",
-                        src_id, get_qbe_t(nm.vtype, 2), val_id);
+                        src_id, get_qbe_t(nm.vtype, 3), val_id);
 
                     if(src_id != dest){
                         exp = fmt::asprintf("{}    store{} {}, {}\n",
                             cast, get_qbe_t(expr_t), src_id, dest);
                     } else {
-                        exp = cast;
+                        exp = strings::concat(exp, cast);
                     };
+                };
+                if(sign_mismtch(nm.vtype, expr_t)){
+                    exp = fmt::asprintf("{0}    {1} ={2} $abs{3}({3} {1})\n",
+                        exp, dest, get_qbe_t(expr_t, 1), get_qbe_t(expr_t));
                 };
             } else {
                 expr_t = parse_cast(f, nm.vtype)?;
@@ -894,13 +912,17 @@ fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [eol]) ((str,
                     src_id = fmt::asprintf("%{}.l", nm.ident);
 
                     const cast = fmt::asprintf("    {} =l ext{} {}\n",
-                        src_id, get_qbe_t(nm.vtype, 2), val_id);
+                        src_id, get_qbe_t(nm.vtype, 3), val_id);
 
                     if(src_id != dest){
                         exp = fmt::asprintf("{}    store{} {}, {}\n",
                             cast, get_qbe_t(expr_t), src_id, dest);
                     } else {
-                        exp = cast;
+                        exp = strings::concat(exp, cast);
+                    };
+                    if(sign_mismtch(nm.vtype, expr_t)){
+                        exp = fmt::asprintf("{0}    {1} ={2} $abs{3}({3} {1})\n",
+                            exp, dest, get_qbe_t(expr_t, 1), get_qbe_t(expr_t));
                     };
                 };
             };
@@ -936,8 +958,9 @@ fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [eol]) ((str,
                     const old = dest;
                     dest = fmt::asprintf("%val.{}", get_qbe_t(cast, 1));
                     exp = fmt::asprintf("{}{}    {} ={} ext{} {}\n", exp, dest,
-                        exp, get_qbe_t(expr_t, 1), get_qbe_t(expr_t, 2), old);
+                        exp, get_qbe_t(expr_t, 1), get_qbe_t(expr_t, 3), old);
                 };
+                const old_t = expr_t;
                 expr_t = cast_to(expr_t, cast, next, f)?;
                 if(single){
                     const first = dest;
@@ -945,6 +968,10 @@ fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [eol]) ((str,
                     exp = fmt::asprintf("{}    {} ={} copy {}\n",
                         exp, dest, get_qbe_t(expr_t, 1), first);
                     single = false;
+                };
+                if(sign_mismtch(old_t, cast)){
+                    exp = fmt::asprintf("{0}    {1} ={2} $abs{3}({3} {1})\n",
+                        exp, dest, get_qbe_t(cast, 1), get_qbe_t(cast));
                 };
                 continue;
             };
@@ -979,6 +1006,7 @@ fn parse_opr(f: *file, oper: opr, expr_t: kwd, scp: *scope, refs: *[]idref) ((st
         , "cle", "cge"
         , "add", "sub", "mul", "div", "rem"
         ];
+    const dup = alloc(*f);
     let next = nxttk(f)?;
     const rgth = expct(next is num || next is idt, next, f,
         void: EXPECTD, "numeric literal or identifier")?;
@@ -988,6 +1016,7 @@ fn parse_opr(f: *file, oper: opr, expr_t: kwd, scp: *scope, refs: *[]idref) ((st
 
     if(is_cmp(oper)){
         todo(f, "comparisons")?;
+        free(dup);
         return ("", expr_t);
     };
     match(rgth){
@@ -995,47 +1024,58 @@ fn parse_opr(f: *file, oper: opr, expr_t: kwd, scp: *scope, refs: *[]idref) ((st
         if(opeable(kwd::NUMBER_T, expr_t, oper)){
             const exp = fmt::asprintf("    {0} ={1} {2} {0}, {3}\n",
                 val_id, asg_tp, inst[oper], n: u64);
+            
+            free(dup);
             return (exp, expr_t);
         } else {
             return unimsg {
                 msg = "member types",
-                tip =  cast_err(kwd::NUMBER_T, expr_t),
-                ptr = f,
+                tip =  cast_err(kwd::NUMBER_T, expr_t, true),
+                ptr = dup,
             }: MISMTCH;
         };
     case let i: idt =>
         match(get_idt(i: str, f, scp)?){
         case let nm: *nmsp =>
             pushref(nm, f, scp, refs)?;
-            if(opeable(nm.vtype, expr_t, oper)){
+            const cast = parse_cast(f, nm.vtype)?;
+            if(opeable(cast, expr_t, oper)){
                 const (hdr, wrp) = fix_sizes(expr_t, nm);
+                expr_t = cast;
                 const exp = fmt::asprintf("{}    {} ={} {} {}, {}\n",
                     hdr, val_id, asg_tp, inst[oper], val_id, wrp);
-                return (exp, nm.vtype);
+
+                free(dup);
+                return (exp, expr_t);
             } else {
                 return unimsg {
                     msg = "member types",
-                    tip =  cast_err(nm.vtype, expr_t),
-                    ptr = f,
+                    tip =  cast_err(cast, expr_t, true),
+                    ptr = dup,
                 }: MISMTCH;
             };
         case let fun: *func =>
-            if(opeable(fun.retrn, expr_t, oper)){
+            const cast = parse_cast(f, fun.retrn)?;
+            if(opeable(cast, expr_t, oper)){
+                const (hdr, wrp) = fix_sizes(expr_t, fun);
+                expr_t = cast;
                 const call = parse_fcall(fun, f, scp, refs)?;
-                const wrp = fmt::asprintf("%{}.{}", fun.fname, get_qbe_t(fun.retrn, 1));
                 const exp = fmt::asprintf("    {} ={} {} {}, {}\n",
                     val_id, asg_tp, inst[oper], val_id, wrp);
                 const out = fmt::asprintf("{}{}{}", solve_ref(refs), call, exp);
-                return (out, fun.retrn);
+
+                free(dup);
+                return (out, expr_t);
             } else {
                 return unimsg {
                     msg = "member types",
-                    tip =  cast_err(fun.retrn, expr_t),
-                    ptr = f,
+                    tip =  cast_err(cast, expr_t, true),
+                    ptr = dup,
                 }: MISMTCH;
             };
         };
     case =>
+        free(dup);
         return ("righthand should be number or identifier", f): UNREACH;
     };
 };
@@ -1209,6 +1249,11 @@ fn opeable(lft: kwd, rgt: kwd, oper: opr) bool = {
 };
 
 fn need_ext(src: kwd, dst: kwd) bool = {
+    if(src == kwd::U64_TYPE || src == kwd::I64_TYPE) return false;
+    if(dst == kwd::U32_TYPE || dst == kwd::I32_TYPE){
+        if(is_num(src) && src <= kwd::U16_TYPE) return false;
+        if(is_num(src, true) && src <= kwd::I16_TYPE) return false;
+    };
     if(is_num(dst) && is_num(src)){
         return src < dst;
     } else if(is_num(dst, true) && is_num(src, true)){
@@ -1220,17 +1265,32 @@ fn need_ext(src: kwd, dst: kwd) bool = {
     };
 };
 
-fn fix_sizes(dest: kwd, nm: *nmsp) (str, str) = {
+fn fix_sizes(dest: kwd, id: (*nmsp | *func)) (str, str) = {
     let hdr = "";
-    let val = fmt::asprintf("%{}.{}", nm.ident, get_qbe_t(nm.vtype, 1));
-    if(is_subt(dest, kwd::NUMBER_T) && dest != kwd::NUMBER_T){
-        if(need_ext(dest, nm.vtype)){
-            hdr = fmt::asprintf("%{}.l =l ext{1} {}", nm.ident, get_qbe_t(nm.vtype, 2), val);
-            val = fmt::asprintf("%{0}.l", nm.ident);
+    let val = "";
+    match(id){
+    case let nm: *nmsp =>
+        val = fmt::asprintf("%{}.{}", nm.ident, get_qbe_t(nm.vtype, 1));
+        if(is_subt(dest, kwd::NUMBER_T) && dest != kwd::NUMBER_T){
+            if(need_ext(nm.vtype, dest)){
+                hdr = fmt::asprintf("%{}.l =l ext{1} {}", nm.ident, get_qbe_t(nm.vtype, 3), val);
+                val = fmt::asprintf("%{0}.l", nm.ident);
+            };
         };
-    };
-    if(nm.orign is kernel){
-        val = strings::concat(val, ".g");
+        if(nm.orign is kernel){
+            val = strings::concat(val, ".g");
+        };
+    case let fun: *func =>
+            val = fmt::asprintf("%{}.{}", fun.fname, get_qbe_t(fun.retrn, 1));
+        if(is_subt(dest, kwd::NUMBER_T) && dest != kwd::NUMBER_T){
+            if(need_ext(fun.retrn, dest)){
+                hdr = fmt::asprintf("%{}.l =l ext{1} {}", fun.fname, get_qbe_t(fun.retrn, 3), val);
+                val = fmt::asprintf("%{0}.l", fun.fname);
+            };
+        };
+        if(fun.orign is kernel){
+            val = strings::concat(val, ".g");
+        };
     };
     return (hdr, val);
 };
@@ -1295,7 +1355,11 @@ fn castable(s: kwd, d: kwd) bool = {
     return s == d;
 };
 
-fn cast_err(s: kwd, d: kwd) str = {
+fn sign_mismtch(l: kwd, r: kwd) bool = {
+    return (is_num(l) && is_num(r, true)) || (is_num(r) && is_num(l, true));
+};
+
+fn cast_err(s: kwd, d: kwd, oper: bool = false) str = {
     assert(s != kwd::NOT_KWRD);
     // result will never be used
     if(d == kwd::NOT_KWRD) assert(false);
@@ -1319,7 +1383,11 @@ fn cast_err(s: kwd, d: kwd) str = {
         } else {
             yield kwdv[d];
         };
-    return fmt::asprintf("source type is {}, but dest type is {}", src, dst);
+    if(oper){
+        return fmt::asprintf("lefthand type is {}, but righthand type is {}", dst, src);
+    } else {
+        return fmt::asprintf("source type is {}, but dest type is {}", src, dst);
+    };
 };
 
 fn is_num(tp: kwd, sign: bool = false) bool = {

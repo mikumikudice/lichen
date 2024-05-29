@@ -6,4 +6,8 @@ pub main = fn() : unit {
     x = y : u8 + x;
 
     z = x : u64; 
+    x = y : u8 + z : u8;
+
+    w = x : i32;
+    a = w + x : i32;
 };

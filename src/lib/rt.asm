@@ -25,6 +25,11 @@ global alloc
 global free
 global copy
 
+global absb
+global absh
+global absw
+global absl
+
 global exit
 
 ; write = fn(handler : u32, data : str) : u32
@@ -106,6 +111,47 @@ memset:
     lea rax, t.unt
     ret
 
+; absb = fn(i8) : u8
+absb:
+    xor rax, rax
+    xor rbx, rbx
+    mov bx, di
+    mov al, bl
+    sar bl, 7
+    xor al, bl
+    sub al, bl
+    ret
+
+; absh = fn(i16) : u16
+absh:
+    xor rax, rax
+    xor rbx, rbx
+    mov bx, di
+    mov ax, di
+    sar bx, 15
+    xor ax, bx
+    sub ax, bx
+    ret
+
+; absw = fn(i32) : u32
+absw:
+    xor rax, rax
+    xor rbx, rbx
+    mov ebx, edi
+    mov eax, edi
+    sar ebx, 31
+    xor eax, ebx
+    sub eax, ebx
+    ret
+
+; absl = fn(i64) : 64
+absl:
+    mov rbx, rdi
+    mov rax, rdi
+    sar rbx, 63
+    xor rax, rbx
+    sub rax, rbx
+    ret
 
 ; exit = fn(code : u32) : never
 exit:
