@@ -18,6 +18,14 @@ fn todo(f: *file, msg: str) (void | CMP_ERR) = {
     assert(is_subt(kwd::U32_TYPE, kwd::U16_TYPE) == false);
     assert(is_subt(kwd::I32_TYPE, kwd::U32_TYPE) == false);
     assert(is_subt(kwd::I8__TYPE, kwd::U64_TYPE) == false);
+    
+    assert(castable(kwd::I8__TYPE, kwd::U64_TYPE) == true);
+    assert(castable(kwd::STRING_T, kwd::I32_TYPE) == false);
+
+    assert(need_ext(kwd::U8__TYPE, kwd::U32_TYPE) == true);
+    assert(need_ext(kwd::I16_TYPE, kwd::U64_TYPE) == true);
+    assert(need_ext(kwd::U32_TYPE, kwd::U32_TYPE) == false);
+    assert(need_ext(kwd::I64_TYPE, kwd::U8__TYPE) == false);
 };
 
 // returns the default value for each primitive type
@@ -28,7 +36,7 @@ fn getdefval(vtp: kwd) str = {
     case kwd::STRING_T, kwd::ARRAY__T =>
         return "$empty.arr";
     case kwd::UNITTYPE =>
-        return "0xcafe0000";
+        return "$t.unt";
     case =>
         return "0";
     };
@@ -48,12 +56,13 @@ fn get_qbe_t(vtp: kwd, mode: int = 0) str = {
     case kwd::I16_TYPE, kwd::U16_TYPE =>
         if(mode == 2) return "uh";
         return "h";
-    case kwd::U32_TYPE, kwd::I32_TYPE,
-        kwd::NOT_KWRD, kwd::NUMBER_T =>
+    case kwd::U32_TYPE, kwd::I32_TYPE =>
         if(mode == 2) return "uw";
         return "w";
     case kwd::U64_TYPE, kwd::I64_TYPE, kwd::RATIO__T,
-        kwd::STRING_T, kwd::RAW_TYPE, kwd::ARRAY__T =>
+        kwd::STRING_T, kwd::ANY_TYPE, kwd::RAW_TYPE,
+        kwd::UNITTYPE, kwd::ARRAY__T =>
+        if(mode == 2) assert(false);
         return "l";
     case =>
         fmt::errorfln("unknown type {}", vtp: int)!;
@@ -101,6 +110,7 @@ fn get_t_tag(vtp: kwd) str = {
 let datasec = "";
 let str_lit = []: []str;
 fn pushstr(l: str) str = {
+    //if(len(l) == 0) return "$empty.arr";
     const max = len(str_lit);
     for(let i = 0z; i < max; i += 1){
         if(l == str_lit[i]){
@@ -145,11 +155,11 @@ fn solve_ref(refs: *[]idref) str = {
     const max = len(refs);
     for(let i = 0z; i < max; i += 1){
         if(refs[i].orign is kernel){
-            hdr = fmt::asprintf("{0}    %{1}.{2}.g ={3} load{3} ${1}\n",
-                hdr, refs[i].idt, get_qbe_t(refs[i].vtp), get_qbe_t(refs[i].vtp, 1));
+            hdr = fmt::asprintf("{0}    %{1}.{2}.g ={2} load{2} ${1}\n",
+                hdr, refs[i].idt, get_qbe_t(refs[i].vtp, 1));
         } else {
-            hdr = fmt::asprintf("{0}    %{1}.{2} ={3} load{3} %{1}\n",
-                hdr, refs[i].idt, get_qbe_t(refs[i].vtp), get_qbe_t(refs[i].vtp, 1));
+            hdr = fmt::asprintf("{0}    %{1}.{2} ={2} load{2} %{1}\n",
+                hdr, refs[i].idt, get_qbe_t(refs[i].vtp, 1));
         };
     };
     return hdr;
@@ -433,10 +443,18 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) ((str, kwd) | CMP_ERR
                                     orign = kernel::MEM,
                                     ...
                                 }
-                                , func { // copy = fn(dest : @raw, src : raw, size : u32) : @raw
+                                , func { // copy = fn(dest : @raw, src : raw, size : u64) : @raw
                                     fname = "copy",
-                                    param = [ kwd::RAW_TYPE, kwd::RAW_TYPE, kwd::U32_TYPE ],
+                                    param = [ kwd::RAW_TYPE, kwd::RAW_TYPE, kwd::U64_TYPE ],
                                     retrn = kwd::RAW_TYPE,
+                                    ret_n = "",
+                                    orign = kernel::MEM,
+                                    ...
+                                }
+                                , func { // memset = fn(dest : raw, src : u8, size : u64) : unit
+                                    fname = "memset",
+                                    param = [ kwd::RAW_TYPE, kwd::RAW_TYPE, kwd::U8__TYPE, kwd::U64_TYPE ],
+                                    retrn = kwd::UNITTYPE,
                                     ret_n = "",
                                     orign = kernel::MEM,
                                     ...
@@ -673,8 +691,8 @@ fn parse_fcall(fun: *func, f: *file, scp: *scope, refs: *[]idref) (str | CMP_ERR
     const max = len(f.src);
     for(f.ptr < max){
         next = nxttk(f, true)?;
-        if(is_limit(next, limit)) break;
         setptr(f, true);
+        if(is_limit(next, limit) || next is eol) break;
 
         const (exp, tp, arg) = parse_exp(f, scp, refs, limit)?;
         if(argc == 0){
@@ -685,9 +703,10 @@ fn parse_fcall(fun: *func, f: *file, scp: *scope, refs: *[]idref) (str | CMP_ERR
         hdr = fmt::asprintf("{}{}\n", hdr, exp);
         argc += 1;
         if(argc > argmax){
-            next = nxttk(f)?;
+            next = nxttk(f, true)?;
             expct(cmp_tok(next, sym::CLOSEPAR), next, f, void: GENERIC, "too many parameters on function call",
                 fmt::asprintf("the function \"{}\" takes {} arguments", fun.fname, argmax))?;
+            setptr(f, true);
         };
     };
     for(argc < argmax; argc += 1){
@@ -698,6 +717,7 @@ fn parse_fcall(fun: *func, f: *file, scp: *scope, refs: *[]idref) (str | CMP_ERR
             out = fmt::asprintf("{}, {} {}", out, get_qbe_t(fun.param[argc]), getdefval(fun.param[argc]));
         };
     };
+    next = nxttk(f)?;
     return strings::concat(out, ")");
 };
 
@@ -760,10 +780,12 @@ fn parse_asg(f: *file, dest: idt, oper: opr, scp: *scope, defn: (*nmsp | *func |
         let refs = []: []idref;
         const (exp, tp, val_id) = parse_exp(f, scp, &refs)?;
         
+        let store_t = kwd::NOT_KWRD;
         if(defn is void){
             expct(tp != kwd::NUMBER_T, oper, dup, void: GENERIC,
                 "untyped definition of namespace")?;
 
+            store_t = tp;
             const nm = push_idt(dest, mutbl, tp, f, scp)?;
             nm.asgnd = true;
             out = fmt::asprintf("    %{} =l alloc4 {}\n", dest: str, get_t_len(tp));
@@ -778,14 +800,21 @@ fn parse_asg(f: *file, dest: idt, oper: opr, scp: *scope, defn: (*nmsp | *func |
                     }: CANT_DO;
                 };
                 nm.asgnd = true;
+                store_t = nm.vtype;
                 expct(is_subt(tp, nm.vtype), oper, dup, void: MISMTCH,
                     "destination and expression result types", cast_err(tp, nm.vtype))?;
             case =>
                 assert(false);
             };
         };
+        const src_id = val_id;
+        if(need_ext(tp, store_t)){
+            src_id = fmt::asprintf("%{}.l", dest);
+            exp = fmt::asprintf("{}    {} =l ext{} {}\n",
+                exp, src_id, get_qbe_t(tp, 2), val_id);
+        };
         out = fmt::asprintf("{}{}{}    store{} {}, %{}\n",
-            out, solve_ref(&refs), exp, get_qbe_t(tp), val_id, dest);
+            out, solve_ref(&refs), exp, get_qbe_t(store_t), src_id, dest);
     case =>
         return bi_msg {
             lft = "declaration or assignment",
@@ -801,33 +830,34 @@ fn parse_asg(f: *file, dest: idt, oper: opr, scp: *scope, defn: (*nmsp | *func |
 fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [eol]) ((str, kwd, str) | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("parsing expression at {}", gen_pos(f))!;
-    let out = "";
+    let exp = "";
     let single = true;
     let expr_t = kwd::NOT_KWRD;
-    let next = nxttk(f)?;
-
     let dest = "";
 
     // TODO: handle idt, opr, "+" | "-" | "~"
     // TODO: handle literals of records and lists
     // TODO: handle statements as valid hands
+    let next = nxttk(f)?;
     const vall = expct(next is num || next is txt || next is idt,
         next, f, void: EXPECTD, "valid operand")?: (num | txt | idt);
     match(vall){
     case let n: num =>
-        out = fmt::asprint(n: u64);
+        exp = fmt::asprint(n: u64);
         expr_t = parse_cast(f, kwd::NUMBER_T)?;
-
+            next = nxttk(f)?;
+            if(is_limit(next, limit)){
+                return ("", expr_t, exp);
+            };
     case let t: txt =>
         const val = tostr(t);
         const idx = pushstr(val);
-        out = idx;
+        exp = idx;
         
         next = nxttk(f, true)?;
         // TODO: acept casting to union types
         expct(is_limit(next, limit), next, f, void: EXPECTD,
             "end of expression")?;
-        setptr(f, true);
         return ("", kwd::STRING_T, idx);
 
     case let i: idt =>
@@ -837,24 +867,59 @@ fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [eol]) ((str,
             if(nm.orign is kernel){
                 skip_field(f)?;
                 expr_t = parse_cast(f, nm.vtype)?;
-                out = fmt::asprintf("%{}.{}.g", nm.ident, get_qbe_t(nm.vtype));
+                dest = fmt::asprintf("%{}.{}.g", nm.ident, get_qbe_t(expr_t, 1));
+
+                let src_id = fmt::asprintf("%{}.{}.g", nm.ident, get_qbe_t(nm.vtype, 1));
+                if(need_ext(nm.vtype, expr_t)){
+                    const val_id = src_id;
+                    src_id = fmt::asprintf("%{}.l.g", nm.ident);
+
+                    const cast = fmt::asprintf("    {} =l ext{} {}\n",
+                        src_id, get_qbe_t(nm.vtype, 2), val_id);
+
+                    if(src_id != dest){
+                        exp = fmt::asprintf("{}    store{} {}, {}\n",
+                            cast, get_qbe_t(expr_t), src_id, dest);
+                    } else {
+                        exp = cast;
+                    };
+                };
             } else {
                 expr_t = parse_cast(f, nm.vtype)?;
-                out = fmt::asprintf("%{}.{}", nm.ident, get_qbe_t(nm.vtype));
+                dest = fmt::asprintf("%{}.{}", nm.ident, get_qbe_t(expr_t, 1));
+
+                let src_id = fmt::asprintf("%{}.{}", nm.ident, get_qbe_t(nm.vtype, 1));
+                if(need_ext(nm.vtype, expr_t)){
+                    const val_id = src_id;
+                    src_id = fmt::asprintf("%{}.l", nm.ident);
+
+                    const cast = fmt::asprintf("    {} =l ext{} {}\n",
+                        src_id, get_qbe_t(nm.vtype, 2), val_id);
+
+                    if(src_id != dest){
+                        exp = fmt::asprintf("{}    store{} {}, {}\n",
+                            cast, get_qbe_t(expr_t), src_id, dest);
+                    } else {
+                        exp = cast;
+                    };
+                };
             };
-            dest = fmt::asprintf("%val.{}", get_qbe_t(expr_t, 1));
+            next = nxttk(f)?;
+            if(is_limit(next, limit)){
+                return (exp, expr_t, dest);
+            };
             // TODO: assert for composite types
         case let fun: *func =>
             if(fun.orign is kernel){
                 skip_field(f)?;
             };
-            out = parse_fcall(fun, f, scp, refs)?;
+            exp = parse_fcall(fun, f, scp, refs)?;
             expr_t = fun.retrn;
+            next = nxttk(f)?;
+            if(is_limit(next, limit)){
+                return ("", expr_t, exp);
+            };
         };
-    };
-    next = nxttk(f)?;
-    if(is_limit(next, limit)){
-        return ("", expr_t, out);
     };
     // keep reading until end of expression
     for(!is_limit(next, limit); next = nxttk(f)?){
@@ -867,29 +932,40 @@ fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [eol]) ((str,
                 const cast = expct(is_type(next), next, f, void: EXPECTD,
                     "valid casting type")?: kwd;
 
+                if(need_ext(expr_t, cast) && !single){
+                    const old = dest;
+                    dest = fmt::asprintf("%val.{}", get_qbe_t(cast, 1));
+                    exp = fmt::asprintf("{}{}    {} ={} ext{} {}\n", exp, dest,
+                        exp, get_qbe_t(expr_t, 1), get_qbe_t(expr_t, 2), old);
+                };
                 expr_t = cast_to(expr_t, cast, next, f)?;
                 if(single){
+                    const first = dest;
                     dest = fmt::asprintf("%val.{}", get_qbe_t(expr_t, 1));
+                    exp = fmt::asprintf("{}    {} ={} copy {}\n",
+                        exp, dest, get_qbe_t(expr_t, 1), first);
+                    single = false;
                 };
                 continue;
             };
             const tmp = alloc(*f);
-            const (exp, tp) = parse_opr(f, next: opr, expr_t, scp, refs)?;
+            const (newexp, tp) = parse_opr(f, next: opr, expr_t, scp, refs)?;
 
             expr_t = cast_to(expr_t, tp, next, tmp)?;
             free(tmp);
 
             if(single){
+                const first = dest;
                 dest = fmt::asprintf("%val.{}", get_qbe_t(expr_t, 1));
-                out = fmt::asprintf("    {} ={} copy {}\n{}",
-                    dest, get_qbe_t(expr_t, 1), out, exp);
+                exp = fmt::asprintf("    {} ={} copy {}\n{}",
+                    dest, get_qbe_t(expr_t, 1), first, newexp);
                 single = false;
             } else {
-                out = strings::concat(out, exp);
+                exp = strings::concat(exp, newexp);
             };
         };
     };
-    return (out, expr_t, dest);
+    return (exp, expr_t, dest);
 };
 
 fn parse_opr(f: *file, oper: opr, expr_t: kwd, scp: *scope, refs: *[]idref) ((str, kwd) | CMP_ERR) = {
@@ -946,7 +1022,7 @@ fn parse_opr(f: *file, oper: opr, expr_t: kwd, scp: *scope, refs: *[]idref) ((st
         case let fun: *func =>
             if(opeable(fun.retrn, expr_t, oper)){
                 const call = parse_fcall(fun, f, scp, refs)?;
-                const wrp = fmt::asprintf("%{}.{}", fun.fname, get_qbe_t(fun.retrn));
+                const wrp = fmt::asprintf("%{}.{}", fun.fname, get_qbe_t(fun.retrn, 1));
                 const exp = fmt::asprintf("    {} ={} {} {}, {}\n",
                     val_id, asg_tp, inst[oper], val_id, wrp);
                 const out = fmt::asprintf("{}{}{}", solve_ref(refs), call, exp);
@@ -1079,7 +1155,7 @@ fn parse_fun(f: *file, dest: idt, scp: *scope, skip: bool = false) (str | CMP_ER
         free(dup);
 
         if(ret_tp == kwd::UNITTYPE){
-            body = fmt::asprintf("{}    %.ret =l copy {}\n    ret %.ret\n", body, 0xcafe0000);
+            body = fmt::asprintf("{}    %.ret =l copy {}\n    ret %.ret\n", body, getdefval(kwd::UNITTYPE));
         };
         const (prml, prmd) = gen_params(params, parm_n);
         out = fmt::asprintf("function {} ${}({}){{\n@start\n{}{}}}\n", get_qbe_t(ret, 1), dest, prml, prmd, body);
@@ -1095,14 +1171,14 @@ fn gen_params(param_t: []kwd, param_n: []idt) (str, str) = {
     assert(max == len(param_n));
     for(let arg = 0z; arg < max; arg += 1){
         if(arg == 0){
-            param_lst = fmt::asprintf("{} %{}.{}", get_qbe_t(param_t[arg], 1),
-                param_n[arg], get_qbe_t(param_t[arg]));
+            param_lst = fmt::asprintf("{0} %{1}.{0}",
+                get_qbe_t(param_t[arg], 1), param_n[arg]);
         } else {
-            param_lst = fmt::asprintf("{}, {} %{}.{}", param_lst, get_qbe_t(param_t[arg], 1),
-                param_n[arg], get_qbe_t(param_t[arg]));
+            param_lst = fmt::asprintf("{0}, {1} %{2}.{1}",
+                param_lst, get_qbe_t(param_t[arg], 1), param_n[arg]);
         };
-        param_def = fmt::asprintf("{0}    %{1} =l alloc4 {2}\n    store{3} %{1}.{3}, %{1}\n",
-            param_def, param_n[arg], get_t_len(param_t[arg]), get_qbe_t(param_t[arg]));
+        param_def = fmt::asprintf("{0}    %{1} =l alloc4 {2}\n    store{3} %{1}.{4}, %{1}\n",
+            param_def, param_n[arg], get_t_len(param_t[arg]), get_qbe_t(param_t[arg]), get_qbe_t(param_t[arg], 1));
     };
     return (param_lst, param_def);
 };
@@ -1132,16 +1208,23 @@ fn opeable(lft: kwd, rgt: kwd, oper: opr) bool = {
     };
 };
 
+fn need_ext(src: kwd, dst: kwd) bool = {
+    if(is_num(dst) && is_num(src)){
+        return src < dst;
+    } else if(is_num(dst, true) && is_num(src, true)){
+        return src < dst;
+    } else if(is_num(dst)){
+        return src - stou < dst;
+    } else {
+        return src < dst  - stou;
+    };
+};
+
 fn fix_sizes(dest: kwd, nm: *nmsp) (str, str) = {
     let hdr = "";
-    let val = fmt::asprintf("%{}.{}", nm.ident, get_qbe_t(nm.vtype));
+    let val = fmt::asprintf("%{}.{}", nm.ident, get_qbe_t(nm.vtype, 1));
     if(is_subt(dest, kwd::NUMBER_T) && dest != kwd::NUMBER_T){
-        const chck =
-            (is_num(dest) && dest > kwd::U32_TYPE) ||
-            (is_num(dest, true) && dest > kwd::I32_TYPE);
-        const smol = dest > nm.vtype;
-        
-        if(chck && smol){
+        if(need_ext(dest, nm.vtype)){
             hdr = fmt::asprintf("%{}.l =l ext{1} {}", nm.ident, get_qbe_t(nm.vtype, 2), val);
             val = fmt::asprintf("%{0}.l", nm.ident);
         };
@@ -1170,8 +1253,10 @@ fn is_subt(tp: kwd, set: kwd) bool = {
         return is_num(tp);
     case kwd::NOT_KWRD =>
         return true;
+    case kwd::UNITTYPE =>
+        return tp == set;
     case =>
-        assert(false);
+        assert(false, fmt::asprint(set: int));
         return false;
     };
 };
@@ -1205,8 +1290,8 @@ fn cast_to(s: kwd, d: kwd, t: tok, f: *file) (kwd | CMP_ERR) = {
 
 fn castable(s: kwd, d: kwd) bool = {
     if(s == kwd::NOT_KWRD || s == kwd::RAW_TYPE) return true;
-    if((is_num(s) || is_num(d, true)) &&
-        (is_num(d) || is_num(s, true))) return true;
+    if((is_num(s) || is_num(s, true)) &&
+        (is_num(d) || is_num(d, true))) return true;
     return s == d;
 };
 

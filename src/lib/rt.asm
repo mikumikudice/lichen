@@ -1,11 +1,22 @@
-segment .data
+segment .rod
     stdin dd 0
     stdout dd 1
     stderr dd 2
+    
+    t.unt dd 0xcafe00
+
+    empty.arr:
+        dd 0
+        dd 0
+        db 0
 segment .text
 global stdin
 global stdout
 global stderr
+
+global t.unt
+
+global empty.arr
 
 global read
 global write
@@ -55,13 +66,13 @@ free:
     mov rsi, rdx
     mov rax, 0bh        ; munmap syscall
     syscall
+    lea rax, t.unt
     ret
 
-; copy = fn(dest : raw, src : raw, size : u64) : unit
+; copy = fn(dest : raw, src : raw, size : u64) : raw
 copy:
     cmp rdx, 0
     jz .end
-    xor rcx, rcx
     .next:
         mov cl, [rsi]
         mov [rdi], cl
@@ -76,6 +87,25 @@ copy:
     .end:
     mov rax, rdi
     ret
+
+; memset = fn(dest : raw, src : u8, size : u64) : unit
+memset:
+    cmp rdx, 0
+    jz .end
+    .next:
+        mov rcx, rsi
+        mov [rdi], cl
+
+        inc rdi
+        dec rdx
+
+        cmp rdx, 0
+        jz .end
+        jmp .next
+    .end:
+    lea rax, t.unt
+    ret
+
 
 ; exit = fn(code : u32) : never
 exit:

@@ -1,6 +1,9 @@
 #! /usr/bin/lua
-local tests = { "mile_1", "mile_2" }
-local results = { "", "mornin' sailor!\n" }
+local init = os.execute("./build.sh")
+if not init then os.exit(1) end
+
+local tests = { "mile_1", "mile_2", "test_exp", "test_fun" }
+local results = { "", "mornin' sailor!\n", "", "working!\n" }
 local fails = 0
 for i, t in pairs(tests) do
     local cmd = "./bin/mossy ex/" .. t .. ".ms bin/tmp/" .. t
@@ -17,7 +20,7 @@ for i, t in pairs(tests) do
         log:close()
     
         if res ~= results[i] then
-            print(t .. "ouput is incorrect")
+            print(t .. "'s ouput is incorrect: \"" .. res .. "\"")
             fails = fails + 1
         end
         os.remove(t .. ".log")
