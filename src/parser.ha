@@ -1038,6 +1038,8 @@ fn parse_globl(_f: *file, scp: *scope) (str | CMP_ERR) = {
             // TODO: parse typedefs
             switch(k){
             case kwd::PUBFIELD =>
+                continue;
+            case kwd::DMUTABLE =>
                 next = nxttk(f)?;
                 const nm =
                     if(next is idt){
@@ -1052,11 +1054,13 @@ fn parse_globl(_f: *file, scp: *scope) (str | CMP_ERR) = {
                     continue;
                 };
                 next = nxttk(f)?;
-                if(!cmp_tok(next, kwd::FUNCTION)){
-                    jmpto(eol, f)?;
-                    continue;
+                if(cmp_tok(next, kwd::FUNCTION)){
+                    return unimsg {
+                        msg = "define a function as mutable",
+                        tip = "try removing the \"mut\" at the beginning of the assignment",
+                        ptr = f,
+                    }: CANT_DO;
                 };
-                parse_fun(f, nm, scp, true)?;
             case => jmpto(eol, f)?;
             };
         case => jmpto(eol, f)?;
