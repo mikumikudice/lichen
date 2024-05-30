@@ -2,11 +2,11 @@ use IO;
 use MEM;
 
 pub main = fn() : unit {
-    buff = MEM::alloc(128 + 8);
+    buff = MEM::alloc(128 + 8) : str;
     MEM::strlset(buff, 128 + 8);
 
     res = IO::read(IO::stdin, buff);
-    read = MEM::alloc(res + 8);
+    read = MEM::alloc(res + 8) : str;
 
     MEM::strcpy(read, buff, res + 8);
     MEM::free(buff);

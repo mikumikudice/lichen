@@ -15,11 +15,11 @@ pub main = fn() : unit {
 };
 
 scan = fn(max : u64) : str {
-    buff = MEM::alloc(max + 8);
+    buff = MEM::alloc(max + 8) : str;
     MEM::strlset(buff, max + 8);
 
     res = IO::read(IO::stdin, buff) + 8;
-    read = MEM::alloc(res);
+    read = MEM::alloc(res) : str;
 
     MEM::strcpy(read, buff, res);
     MEM::free(buff);

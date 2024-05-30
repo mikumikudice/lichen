@@ -21,6 +21,7 @@ fn todo(f: *file, msg: str) (void | CMP_ERR) = {
     
     assert(castable(kwd::I8__TYPE, kwd::U64_TYPE) == true);
     assert(castable(kwd::STRING_T, kwd::I32_TYPE) == false);
+    assert(castable(kwd::NUMBER_T, kwd::STRING_T) == false);
 
     assert(need_ext(kwd::U32_TYPE, kwd::U64_TYPE) == true);
     assert(need_ext(kwd::I16_TYPE, kwd::U64_TYPE) == true);
@@ -804,9 +805,9 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0, fun_tp: kwd = kwd::UN
                         const mod_io = module {
                             name = mod: str,
                             funs =
-                                [ func { // read = fn(handle : u32, size: u32) : @str
+                                [ func { // read = fn(handle : u32, size : str) : @str
                                     fname = "read",
-                                    param = [ kwd::U32_TYPE, kwd::U32_TYPE ],
+                                    param = [ kwd::U32_TYPE, kwd::STRING_T ],
                                     retrn = kwd::U32_TYPE,
                                     ret_n = "",
                                     orign = kernel::IO,
@@ -861,7 +862,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0, fun_tp: kwd = kwd::UN
                             funs =
                                 [ func { // alloc = fn(size: u32) : raw
                                     fname = "alloc",
-                                    param = [ kwd::U32_TYPE ],
+                                    param = [ kwd::U64_TYPE ],
                                     retrn = kwd::RAW_TYPE,
                                     ret_n = "",
                                     orign = kernel::MEM,
@@ -1142,6 +1143,9 @@ fn parse_fcall(fun: *func, f: *file, scp: *scope, refs: *[]idref) ((str, str) | 
         if(cmp_tok(next, sym::SYMCOMMA)) nxttk(f)!;
 
         const (exp, tp, arg) = parse_exp(f, scp, refs, limit, fun.param[argc])?;
+        expct(is_subt(tp, fun.param[argc]), next, f, void: MISMTCH,
+            fmt::asprintf("function parameter {} and argument types", argc + 1), cast_err(tp, fun.param[argc]))?;
+
         if(argc == 0){
             out = fmt::asprintf("{}{} {}", out, get_qbe_t(tp, 1), arg);
         } else {
@@ -1293,10 +1297,11 @@ fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [ eol ], ini_
     case let n: num =>
         dest = fmt::asprint(n: i64);
         if(expr_t == kwd::NOT_KWRD){
-            expr_t = parse_cast(f, kwd::NUMBER_T)?;
+            expr_t = kwd::NUMBER_T;
         } else {
-            expr_t = parse_cast(f, expr_t)?;
+            expr_t = cast_to(kwd::NUMBER_T, expr_t, vall, f)?;
         };
+        expr_t = parse_cast(f, expr_t)?;
         next = nxttk(f, true)?;
         if(is_limit(next, limit)){
             setptr(f, true);
@@ -1306,10 +1311,11 @@ fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [ eol ], ini_
         const val = tostr(t);
         const idx = pushstr(val);
         if(expr_t == kwd::NOT_KWRD){
-            expr_t = parse_cast(f, kwd::STRING_T)?;
+            expr_t = kwd::STRING_T;
         } else {
-            expr_t = parse_cast(f, expr_t)?;
+            expr_t = cast_to(kwd::STRING_T, expr_t, vall, f)?;
         };
+        expr_t = parse_cast(f, expr_t)?;
         expct(is_subt(kwd::STRING_T, expr_t), vall, f, void: MISMTCH,
             "argument and parameter types", cast_err(kwd::STRING_T, expr_t))?;
 
@@ -1796,7 +1802,7 @@ fn fix_sizes(dest: kwd, id: (*nmsp | *func)) (str, str) = {
 fn is_subt(tp: kwd, set: kwd) bool = {
     switch(set){
     case kwd::RAW_TYPE, kwd::ANY_TYPE =>
-        return tp == set;
+        return true;
     case kwd::U8__TYPE, kwd::U16_TYPE, kwd::U32_TYPE,
         kwd::U64_TYPE =>
         return is_num(tp) && tp <= set || tp == kwd::NUMBER_T;
@@ -1836,20 +1842,21 @@ fn parse_cast(f: *file, src: kwd) (kwd | CMP_ERR) = {
 };
 
 fn cast_to(s: kwd, d: kwd, t: tok, f: *file) (kwd | CMP_ERR) = {
+    expct(castable(s, d), t, f, void: MISMTCH,
+        "member types", cast_err(s, d))?;
     if(s == kwd::NOT_KWRD){
         return d;
     } else if(d == kwd::NUMBER_T){
         return s;
     } else {
-        expct(castable(s, d), t, f, void: MISMTCH,
-            "member types", cast_err(s, d))?;
         if(d != kwd::NOT_KWRD) return d;
         return s;
     };
 };
 
 fn castable(s: kwd, d: kwd) bool = {
-    if(s == kwd::NOT_KWRD || s == kwd::RAW_TYPE) return true;
+    if(s == kwd::NOT_KWRD || s == kwd::RAW_TYPE || s == kwd::ANY_TYPE) return true;
+    if(d == kwd::RAW_TYPE || d == kwd::ANY_TYPE) return true;
     if((is_num(s) || is_num(s, true)) &&
         (is_num(d) || is_num(d, true))) return true;
     return s == d;
