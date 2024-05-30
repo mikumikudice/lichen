@@ -1,10 +1,11 @@
 use IO;
 
 pub main = fn() : unit {
-    print("working!");
+    x = print("working!");
 };
 
-print = fn(txt : str) : unit {
+print = fn(txt : str) : u32 {
     IO::write(IO::stdout, txt);
     IO::write(IO::stdout, "\n");
+    return 8;
 };

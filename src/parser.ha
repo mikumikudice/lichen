@@ -321,7 +321,7 @@ let ldd_mods = []: []module;
 // a function body. in case of any parsing error, returns a compilation error
 fn parse(from: (str | *file), scp: *scope, stop: size = 0) ((str, kwd) | CMP_ERR) = {
     let out = "";
-    let ret_tp = kwd::UNITTYPE;
+    let ret_tp = kwd::NOT_KWRD;
     let f =
         match(from){
         case let fname: str =>
@@ -512,17 +512,14 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) ((str, kwd) | CMP_ERR
                 let add = []: []idref;
                 const dup = alloc(*f);
                 const (exp, expr_t, val_id) = parse_exp(f, scp, &add)?;
-                
-                if(ret_tp == kwd::UNITTYPE){
-                    ret_tp = expr_t;
-                } else {
-                    expct(is_subt(expr_t, ret_tp), expr_t, dup, void: MISMTCH,
-                        "return types", "union types are not implemented yet")?;
-                };
+                expct(is_subt(expr_t, ret_tp), expr_t, dup, void: MISMTCH,
+                    "return types", "union types are not implemented yet")?;
+                ret_tp = expr_t;
+
                 free(dup);
-                out = fmt::asprintf("{}{}{}    ret %.val.{}\n", out, solve_ref(&add), exp, val_id);
+                out = fmt::asprintf("{}{}{}    ret {}\n", out, solve_ref(&add), exp, val_id);
             case =>
-                todo(f, "uncovered rule")?;
+                todo(f, fmt::asprintf("uncovered keyword: {}", kwdv[k]))?;
             };
         case let i: idt =>
             next = nxttk(f, true)?;
@@ -588,6 +585,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) ((str, kwd) | CMP_ERR
     if(scp.over is void){
         return (strings::concat(datasec, out), kwd::NOT_KWRD);
     };
+    if(ret_tp == kwd::NOT_KWRD) ret_tp = kwd::UNITTYPE;
     return (out, ret_tp);
 };
 
