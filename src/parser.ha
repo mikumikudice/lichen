@@ -80,7 +80,7 @@ fn get_qbe_t(vtp: kwd, mode: int = 0) str = {
         if(mode == 2) return "uw";
         return "w";
     case kwd::I32_TYPE =>
-        if(mode == 2) return "sh";
+        if(mode == 2) return "sw";
         return "w";
     case kwd::U64_TYPE =>
         if(mode == 2) return "ul";
@@ -409,7 +409,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) ((str, kwd) | CMP_ERR
                                 [ func { // read = fn(handle : u32, size: u32) : @str
                                     fname = "read",
                                     param = [ kwd::U32_TYPE, kwd::U32_TYPE ],
-                                    retrn = kwd::STRING_T, // TODO: this should be an union (@str ! u32)
+                                    retrn = kwd::U32_TYPE,
                                     ret_n = "",
                                     orign = kernel::IO,
                                     ...
@@ -455,7 +455,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) ((str, kwd) | CMP_ERR
                         const mod_mem = module {
                             name = mod: str,
                             funs =
-                                [ func { // alloc = fn(size: u32) : @raw
+                                [ func { // alloc = fn(size: u32) : raw
                                     fname = "alloc",
                                     param = [ kwd::U32_TYPE ],
                                     retrn = kwd::RAW_TYPE,
@@ -463,7 +463,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) ((str, kwd) | CMP_ERR
                                     orign = kernel::MEM,
                                     ...
                                 }
-                                , func { // free = fn(obj : @raw) : unit
+                                , func { // free = fn(obj : raw) : unit
                                     fname = "free",
                                     param = [ kwd::RAW_TYPE ],
                                     retrn = kwd::UNITTYPE,
@@ -471,7 +471,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) ((str, kwd) | CMP_ERR
                                     orign = kernel::MEM,
                                     ...
                                 }
-                                , func { // copy = fn(dest : @raw, src : raw, size : u64) : @raw
+                                , func { // copy = fn(dest : raw, src : raw, size : u64) : raw
                                     fname = "copy",
                                     param = [ kwd::RAW_TYPE, kwd::RAW_TYPE, kwd::U64_TYPE ],
                                     retrn = kwd::RAW_TYPE,
@@ -479,9 +479,17 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) ((str, kwd) | CMP_ERR
                                     orign = kernel::MEM,
                                     ...
                                 }
+                                , func { // strcpy = fn(dest : str, src : sre, size : u64) : @raw
+                                    fname = "strcpy",
+                                    param = [ kwd::STRING_T, kwd::STRING_T, kwd::U64_TYPE ],
+                                    retrn = kwd::UNITTYPE,
+                                    ret_n = "",
+                                    orign = kernel::MEM,
+                                    ...
+                                }
                                 , func { // memset = fn(dest : raw, src : u8, size : u64) : unit
                                     fname = "memset",
-                                    param = [ kwd::RAW_TYPE, kwd::RAW_TYPE, kwd::U8__TYPE, kwd::U64_TYPE ],
+                                    param = [ kwd::RAW_TYPE, kwd::U8__TYPE, kwd::U64_TYPE ],
                                     retrn = kwd::UNITTYPE,
                                     ret_n = "",
                                     orign = kernel::MEM,
@@ -720,7 +728,8 @@ fn parse_fcall(fun: *func, f: *file, scp: *scope, refs: *[]idref) ((str, str) | 
     for(f.ptr < max){
         next = nxttk(f, true)?;
         setptr(f, true);
-        if(is_limit(next, limit) || next is eol) break;
+        if(cmp_tok(next, sym::CLOSEPAR) || next is eol) break;
+        if(cmp_tok(next, sym::SYMCOMMA)) nxttk(f)!;
 
         const (exp, tp, arg) = parse_exp(f, scp, refs, limit, fun.param[argc])?;
         if(argc == 0){
@@ -731,18 +740,19 @@ fn parse_fcall(fun: *func, f: *file, scp: *scope, refs: *[]idref) ((str, str) | 
         hdr = fmt::asprintf("{}{}", hdr, exp);
         argc += 1;
         if(argc > argmax){
-            next = nxttk(f, true)?;
-            expct(cmp_tok(next, sym::CLOSEPAR), next, f, void: GENERIC, "too many parameters on function call",
-                fmt::asprintf("the function \"{}\" takes {} arguments", fun.fname, argmax))?;
-            setptr(f, true);
+            return unimsg {
+                msg = "too many parameters on function call",
+                tip = fmt::asprintf("the function \"{}\" takes {} arguments", fun.fname, argmax),
+                ptr = f,
+            }: GENERIC;
         };
     };
     for(argc < argmax; argc += 1){
         // TODO: default values for function parameters
         if(argc == 0){
-            out = fmt::asprintf("{}{} {}", out, get_qbe_t(fun.param[argc]), getdefval(fun.param[argc]));
+            out = fmt::asprintf("{}{} {}", out, get_qbe_t(fun.param[argc], 1), getdefval(fun.param[argc]));
         } else {
-            out = fmt::asprintf("{}, {} {}", out, get_qbe_t(fun.param[argc]), getdefval(fun.param[argc]));
+            out = fmt::asprintf("{}, {} {}", out, get_qbe_t(fun.param[argc], 1), getdefval(fun.param[argc]));
         };
     };
     next = nxttk(f)?;
@@ -877,8 +887,9 @@ fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [eol], ini_t:
         } else {
             expr_t = parse_cast(f, expr_t)?;
         };
-        next = nxttk(f)?;
+        next = nxttk(f, true)?;
         if(is_limit(next, limit)){
+            setptr(f, true);
             return ("", expr_t, dest);
         };
     case let t: txt =>
@@ -889,6 +900,7 @@ fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [eol], ini_t:
             "argument and parameter types", cast_err(kwd::STRING_T, expr_t))?;
 
         next = nxttk(f, true)?;
+        setptr(f, true);
         // TODO: acept casting to union types
         expct(is_limit(next, limit), next, f, void: EXPECTD,
             "end of expression")?;
@@ -949,8 +961,9 @@ fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [eol], ini_t:
                     };
                 };
             };
-            next = nxttk(f)?;
+            next = nxttk(f, true)?;
             if(is_limit(next, limit)){
+                setptr(f, true);
                 return (exp, expr_t, dest);
             };
             // TODO: assert for composite types
@@ -963,8 +976,10 @@ fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [eol], ini_t:
             dest = fmt::asprintf("%{}.{}", fun.fname, qbet);
             exp = fmt::asprintf("{}    {} ={} {}\n", newexp, dest, qbet, call);
             expr_t = fun.retrn;
-            next = nxttk(f)?;
+
+            next = nxttk(f, true)?;
             if(is_limit(next, limit)){
+                setptr(f, true);
                 return (exp, expr_t, dest);
             };
         };
@@ -1048,7 +1063,7 @@ fn parse_opr(f: *file, oper: opr, expr_t: kwd, scp: *scope, refs: *[]idref) ((st
     };
     match(rgth){
     case let n: num =>
-        if(opeable(kwd::NUMBER_T, expr_t, oper)){
+        if(operable(kwd::NUMBER_T, expr_t, oper)){
             const exp = fmt::asprintf("    {0} ={1} {2} {0}, {3}\n",
                 val_id, asg_tp, inst[oper], n: u64);
             
@@ -1066,7 +1081,7 @@ fn parse_opr(f: *file, oper: opr, expr_t: kwd, scp: *scope, refs: *[]idref) ((st
         case let nm: *nmsp =>
             pushref(nm, f, scp, refs)?;
             const cast = parse_cast(f, nm.vtype)?;
-            if(opeable(cast, expr_t, oper)){
+            if(operable(cast, expr_t, oper)){
                 const (hdr, wrp) = fix_sizes(expr_t, nm);
                 expr_t = cast;
                 const exp = fmt::asprintf("{}    {} ={} {} {}, {}\n",
@@ -1083,7 +1098,7 @@ fn parse_opr(f: *file, oper: opr, expr_t: kwd, scp: *scope, refs: *[]idref) ((st
             };
         case let fun: *func =>
             const cast = parse_cast(f, fun.retrn)?;
-            if(opeable(cast, expr_t, oper)){
+            if(operable(cast, expr_t, oper)){
                 const (hdr, wrp) = fix_sizes(expr_t, fun);
                 expr_t = cast;
                 const (newexp, call) = parse_fcall(fun, f, scp, refs)?;
@@ -1267,7 +1282,9 @@ fn match_linear() bool = {
 };
 
 // TODO: if/else & enhance operations' type checking
-fn opeable(lft: kwd, rgt: kwd, oper: opr) bool = {
+fn operable(lft: kwd, rgt: kwd, oper: opr) bool = {
+    if(lft == kwd::RAW_TYPE || rgt == kwd::RAW_TYPE) return false;
+    if(lft == kwd::ANY_TYPE || rgt == kwd::ANY_TYPE) return false;
     switch(oper){
     case opr::BOOL_LSS, opr::BOOL_GRT, opr::BOOL_LEQ, opr::BOOL_GEQ =>
         return (is_num(lft) && is_num(rgt)) ||

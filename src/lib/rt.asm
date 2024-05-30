@@ -24,6 +24,7 @@ global write
 global alloc
 global free
 global copy
+global strcpy
 global memset
 
 global absb
@@ -92,6 +93,19 @@ copy:
         jmp .next
     .end:
     mov rax, rdi
+    ret
+
+; memset = fn(dest : str, src : str, size : u64) : unit
+strcpy:
+    push rdx
+    push rdi
+    add rdi, 8
+    add rsi, 8
+    call copy
+    pop rdi
+    pop rcx
+    mov [rdi], rcx
+    lea rax, t.unt
     ret
 
 ; memset = fn(dest : raw, src : u8, size : u64) : unit
