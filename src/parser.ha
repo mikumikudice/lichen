@@ -186,8 +186,13 @@ fn solve_ref(refs: *[]idref) str = {
             hdr = fmt::asprintf("{0}    %{1}.{2}.g ={2} load{2} ${1}\n",
                 hdr, refs[i].idt, get_qbe_t(refs[i].vtp, 1));
         } else if(refs[i].globl){
-            hdr = fmt::asprintf("{0}    %{1}.{2} ={2} load{2} ${1}\n",
-                hdr, refs[i].idt, get_qbe_t(refs[i].vtp, 1));
+            if(refs[i].vtp != kwd::STRING_T && refs[i].vtp != kwd::ARRAY__T){
+                hdr = fmt::asprintf("{0}    %{1}.{2} ={2} load{2} ${1}\n",
+                    hdr, refs[i].idt, get_qbe_t(refs[i].vtp, 1));
+            } else {
+                hdr = fmt::asprintf("{0}    %{1}.l =l copy ${1}\n",
+                    hdr, refs[i].idt);
+            };
         } else {
             hdr = fmt::asprintf("{0}    %{1}.{2} ={2} load{2} %{1}\n",
                 hdr, refs[i].idt, get_qbe_t(refs[i].vtp, 1));
