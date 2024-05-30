@@ -8,6 +8,8 @@ use fmt;
 use strings;
 use strlib;
 
+const fix_entry = "export function $_start(){\n@start\n    call $main()\n    hlt\n}\n";
+
 fn build(src: str, dest: str, silent: bool = false) void = {
     let global = scope {
         over = void,
@@ -18,7 +20,7 @@ fn build(src: str, dest: str, silent: bool = false) void = {
         case let e: CMP_ERR => cmperr(e);
         case let s: (str, kwd) => yield s.0;
     };
-    const code = fmt::asprintf("# moss {}\n{}", version, qbe_ir);
+    const code = fmt::asprintf("# moss {}\n{}{}", version, fix_entry, qbe_ir);
     const root = "./bin";
     const temp = "./bin/tmp";
     const (objf, _) = rem_path(dest);
