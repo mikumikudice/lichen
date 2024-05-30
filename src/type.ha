@@ -62,8 +62,8 @@ type kwd = enum int
     , I8__TYPE, I16_TYPE, I32_TYPE, I64_TYPE    // 16
     , RATIO__T, STRING_T, ANY_TYPE, RAW_TYPE    // 20
     , UNITTYPE, RECORD_T, TUNION_T, FUNCTION    // 24
-    , IS__OPER, DMUTABLE
-    , KWRD_END, NOT_KWRD, NUMBER_T, ARRAY__T, LLIST__T, EFFECT_T // 30
+    , IS__OPER, DMUTABLE, AND_OPER, OR__OPER
+    , KWRD_END, NOT_KWRD, NUMBER_T, ARRAY__T, LLIST__T, EFFECT_T // 32
 };
 const kwdv =
     [ "use"  , "pub"  , "test"
@@ -74,7 +74,7 @@ const kwdv =
     , "i8"   , "i16"  , "i32", "i64"
     , "rat"  , "str"  , "any", "raw"
     , "unit" , "rec"  , "uni", "fn"
-    , "is"   , "mut"
+    , "is"   , "mut"  , "and", "or"
     ];
 const stou = kwd::I8__TYPE - kwd::U8__TYPE;
 static assert(kwd::KWRD_END: size == len(kwdv), "keyword values not updated");
@@ -85,8 +85,7 @@ type opr = enum int
     , ARTH_PLS, ARTH_MIN, ARTH_MUL, ARTH_DIV, ARTH_MOD
     , INCREMNT, DECREMNT, MULTIPLY, DIVIDEBY, ASSIGNMT, MAP_CASE
     , RANGE_OP, COMPLETE, EFFCTTAG, CASTTOTP, MODFIELD, RECFIELD
-    , BOOL_AND, BOOL__OR, PROPAGTN, ASSERTER
-    , OPER_END, NOT_OPER
+    , PROPAGTN, ASSERTER, OPER_END, NOT_OPER
 };
 const oprv =
     [ "~"  , "&"  , "|"  , "<<", ">>" 
@@ -94,13 +93,13 @@ const oprv =
     , "+"  , "-"  , "*"  , "/" , "%"
     , "+=" , "-=" , "*=" , "/=", "=", "=>"
     , ".." , "...", "\\" , ":", "::", "."
-    , "and", "or" , "?"  , "!"
+    , "?"  , "!"
     ];
 static assert(opr::OPER_END: size == len(oprv), "operator values not updated");
 
 const inst =
     [ "neg", "and", "or"
-    , "sar", "shl"
+    , "shr", "shl"
     , "ceq", "cne"
     , "cls", "cgt"
     , "cle", "cge"

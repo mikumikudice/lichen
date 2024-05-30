@@ -18,8 +18,7 @@ fn build(src: str, dest: str, silent: bool = false) void = {
         case let e: CMP_ERR => cmperr(e);
         case let s: (str, kwd) => yield s.0;
     };
-
-    const code = fmt::asprintf("# moss 0.0.1\n{}", qbe_ir);
+    const code = fmt::asprintf("# moss {}\n{}", version, qbe_ir);
     const root = "./bin";
     const temp = "./bin/tmp";
     const (objf, _) = rem_path(dest);
@@ -31,8 +30,8 @@ fn build(src: str, dest: str, silent: bool = false) void = {
     const bin_src = fmt::asprintf("{}/{}.asm", temp, objf);
     const bin_out = fmt::asprintf("{}/{}.o", temp, objf);
 
-    runc(silent, "mkdir", "-p", "bin", temp);
-    runc(silent, "mkdir", "-p", "bin/tmp", temp);
+    runc(silent, "mkdir", "-p", "bin");
+    runc(silent, "mkdir", "-p", "bin/tmp");
 
     const file = match(os::create(qbe_out, fs::mode::USER_RWX)){
         case let f: io::file => yield f;
@@ -49,6 +48,7 @@ fn build(src: str, dest: str, silent: bool = false) void = {
     runc(silent, "mold", "-o", dest, bin_out, rt_out);
 
     //runc("rm", qbe_out, bin_src, bin_out);
+    fmt::printfln(col("successfully compiled {} in {}", cmd::GRN), src, dest)!;
 };
 
 fn runc(silent: bool, cmd: str, args: str...) void = {
@@ -148,7 +148,7 @@ fn errstr(e: CMP_ERR) (str, (*file | void), (str | void)) = {
     case let uni: NOTCALL =>
         const err = uni as unimsg;
         const msg = fmt::asprintf("the namespace \"{}\" is not callable", err.msg);
-        return (err.msg, err.ptr, err.tip);
+        return (msg, err.ptr, err.tip);
     case let uni: GENERIC =>
         const err = uni as unimsg;
         return (err.msg, err.ptr, err.tip);
@@ -163,7 +163,7 @@ fn errstr(e: CMP_ERR) (str, (*file | void), (str | void)) = {
 fn cmperr(e: CMP_ERR) never = {
     const (out, ptr, tip) = errstr(e);
     if(ptr is void){
-        fmt::errorln(out)!;
+        fmt::errorfln(out)!;
     } else {
         const pos = ptr: *file;
         if(pos.iseol){

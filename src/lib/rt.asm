@@ -24,7 +24,9 @@ global write
 global alloc
 global free
 global copy
+global strlset
 global strcpy
+global strcmp
 global memset
 
 global absb
@@ -36,24 +38,30 @@ global exit
 
 ; write = fn(handler : u32, data : str) : u32
 write:
+    push rsi
     mov ecx, edi
     xor rdi, rdi        ; clear residual bytes
     mov edi, ecx
     mov rdx, [rsi]      ; gets length
+    sub rdx, 8
     add rsi, 8
     mov rax, 1          ; system call (write)
     syscall             ; calls it
+    pop rsi
     ret
 
 ; read = fn(handler : u32, buff : str) : u32
 read:
+    push rsi
     mov ecx, edi
     xor rdi, rdi        ; clear residual bytes
     mov edi, ecx
     mov rdx, [rsi]      ; gets input max length
+    sub rdx, 8
     add rsi, 8
     mov rax, 0          ; system call (read)
     syscall             ; calls it
+    pop rsi
     ret
 
 ; alloc = fn(len : u64) : raw
@@ -68,16 +76,21 @@ alloc:
 
 ; free = fn(ptr : raw) : unit
 free:
+    push rdi
     xor rdx, rdx
     mov edx, [rdi]      ; get length from pointer
     mov rsi, rdx
     mov rax, 0bh        ; munmap syscall
     syscall
     lea rax, t.unt
+    pop rdi
     ret
 
 ; copy = fn(dest : raw, src : raw, size : u64) : raw
 copy:
+    push rdi
+    push rsi
+
     cmp rdx, 0
     jz .end
     .next:
@@ -92,24 +105,76 @@ copy:
         jz .end
         jmp .next
     .end:
+
     mov rax, rdi
+    pop rsi
+    pop rdi
     ret
 
-; memset = fn(dest : str, src : str, size : u64) : unit
-strcpy:
-    push rdx
-    push rdi
-    add rdi, 8
-    add rsi, 8
-    call copy
-    pop rdi
-    pop rcx
-    mov [rdi], rcx
+; strcpy = fn(dest : str, size : u64) : unit
+strlset:
+    mov [rdi], rsi
     lea rax, t.unt
     ret
 
+; strcpy = fn(dest : str, src : str, size : u64) : unit
+strcpy:
+    push rdi
+    push rsi
+    push rdx
+
+    add rdi, 8
+    add rsi, 8
+    call copy
+
+    pop rdx
+    pop rsi
+    pop rdi
+    mov [rdi], rdx
+    lea rax, t.unt
+    ret
+
+; strcmp = fn(a : str, b : str) : u8
+strcmp:
+    push rdi
+    push rsi
+    push rbx
+
+    mov rbx, [rdi]
+    mov rcx, [rsi]
+    cmp rbx, rcx
+    jne .f
+    mov rdx, rbx
+    sub rdx, 8
+    add rdi, 8
+    add rsi, 8
+    .rpt:
+        cmp rdx, 0
+        jz .t
+        mov bl, [rdi]
+        mov cl, [rsi]
+        cmp bl, cl
+        jne .f
+        inc rdi
+        inc rsi
+        dec rdx
+        jmp .rpt
+    .f:
+        mov rax, 0
+        pop rbx
+        pop rsi
+        pop rdi
+        ret
+    .t:
+        mov rax, 1
+        pop rbx
+        pop rsi
+        pop rdi
+        ret
+
 ; memset = fn(dest : raw, src : u8, size : u64) : unit
 memset:
+    push rdi
     cmp rdx, 0
     jz .end
     .next:
@@ -124,6 +189,7 @@ memset:
         jmp .next
     .end:
     lea rax, t.unt
+    pop rdi
     ret
 
 ; absb = fn(i8) : u8

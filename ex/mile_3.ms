@@ -1,17 +1,28 @@
 use IO;
+use MEM;
 
 // third milestone of the compiler
 pub main = fn() : unit {
-    arg = 4 : u32;
-    res = fun(arg, 5);
-
-    if res == 20 {
-        IO::write(IO::stdout, "workin!\n");
+    input = scan(128);
+    if input == "hi\n" {
+        IO::write(IO::stdout, "hiii!\n");
+    } else if input == "bye\n" {
+        IO::write(IO::stdout, "bye bye!\n");
     } else {
-        IO::write(IO::stdout, "failed!\n");
+        IO::write(IO::stdout, "hop!\n");
     };
+    MEM::free(input);
 };
 
-fun = fn(x : u32, y : u32) : u32 {
-    return x * y;
+scan = fn(max : u64) : str {
+    buff = MEM::alloc(max + 8);
+    MEM::strlset(buff, max + 8);
+
+    res = IO::read(IO::stdin, buff) + 8;
+    read = MEM::alloc(res);
+
+    MEM::strcpy(read, buff, res);
+    MEM::free(buff);
+
+    return read : str;
 };

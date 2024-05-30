@@ -6,6 +6,8 @@ use strings;
 const stacktrace = false;
 const track_nxttk = false;
 
+const version = "0.0.1";
+
 export fn main() void = {
     const abt = "mossy is the compiler for the moss programming language.";
     const tut = "not-implemented-yet";
@@ -23,6 +25,9 @@ export fn main() void = {
     // check if there are arguments
     if(len(os::args) == 1){
         fmt::printfln("{}\n{}\n\n{}", abt, usg, hlp)!;
+        return;
+    } else if(len(os::args) == 2 && (os::args[1] == "-v" || os::args[1] == "--version")){
+        fmt::printfln("moss compiler v{}", version)!;
         return;
     };
     const src = os::args[1];
