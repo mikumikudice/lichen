@@ -45,6 +45,8 @@ type file = struct {
     lst: size,
     src: []u8,
     name: str,
+    iseol: bool,
+    eolat: nullable *file,
 };
 
 type num = u64;
@@ -95,6 +97,15 @@ const oprv =
     , "and", "or" , "?"  , "!"
     ];
 static assert(opr::OPER_END: size == len(oprv), "operator values not updated");
+
+const inst =
+    [ "neg", "and", "or"
+    , "sar", "shl"
+    , "ceq", "cne"
+    , "cls", "cgt"
+    , "cle", "cge"
+    , "add", "sub", "mul", "div", "rem"
+    ];
 
 type sym = enum int
     { OPN_CRLY, CLS_CRLY, OPN_SQRB, CLS_SQRB

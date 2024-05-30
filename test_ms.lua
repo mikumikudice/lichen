@@ -2,10 +2,11 @@
 local init = os.execute("./build.sh")
 if not init then os.exit(1) end
 
-local tests = { "mile_1", "mile_2", "test_exp", "test_fun", "test_mem" }
+local tests = { "mile_1", "mile_2", "mile_3", "test_exp", "test_fun", "test_mem" }
 local results = {
     -- output / input --
     {}, { "mornin' sailor!\n" },
+    { "workin!\n" },
     {}, { "working!\n" },
     { "working!\n", "working!\n" }
 }

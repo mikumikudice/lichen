@@ -38,7 +38,7 @@ these are the current goals of this project:
 - [x] lexer
 - [ ] parser and code gen
     - [ ] expressions
-        - [ ] operators on primitives
+        - [x] operators on primitives
         - [x] global reference to functions at any position
         - [x] expressions on function call arguments
         - [ ] operators on records
@@ -71,7 +71,7 @@ these are the current goals of this project:
         - [ ] linear types
         - [ ] generics
     - [ ] control flow
-        - [ ] if/else
+        - [x] if/else
         - [ ] for loop
             - [ ] for each
             - [ ] for range

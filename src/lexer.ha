@@ -138,6 +138,8 @@ fn load(fname: str) (*file | CMP_ERR) = {
         lin = 0 , cln = 0,
         ptr = 0 , end = 0,
         lst = 0, src = [],
+        iseol = false,
+        eolat = null,
     });
     // load every line until EOF
     let lastc = 0: size;
@@ -625,6 +627,7 @@ fn setptr(f: *file, reset: bool = false) void = {
 fn incptr(f: *file, onstr: bool = false) void = {
     const max = len(f.src);
     const lst = f.src[f.ptr];
+    f.iseol = false;
     f.end += 1;
     f.ptr += 1;
 
@@ -632,6 +635,9 @@ fn incptr(f: *file, onstr: bool = false) void = {
     for(f.ptr < max){
         const chr = f.src[f.ptr];
         if(chr == '\n'){
+            f.iseol = true;
+            f.eolat = alloc(*f);
+
             f.lin += 1;
             f.ptr += 1;
             f.lst = f.ptr;

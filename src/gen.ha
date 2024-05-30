@@ -166,6 +166,9 @@ fn cmperr(e: CMP_ERR) never = {
         fmt::errorln(out)!;
     } else {
         const pos = ptr: *file;
+        if(pos.iseol){
+            pos = pos.eolat: *file;
+        };
         const txt = tostr(pos.src);
         const end =
             match(strlib::finda(txt, "\n", pos.lst)){
