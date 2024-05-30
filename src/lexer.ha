@@ -59,8 +59,11 @@ fn tostr(src: []u8) str = {
 // compares two tokens
 fn cmp_tok(l: tok, r: tok) bool = {
     match(l){
-        case num =>
-            return r is num && l: num == r: num;
+        case let n: num =>
+            match(n){
+            case u64 => return r is u64 && l: u64 == r: u64;
+            case i64 => return r is i64 && l: i64 == r: i64;
+            };
         case let this: txt =>
             const max = len(this: []u8);
             if(r is txt &&  max == len(r: txt: []u8)){

@@ -49,7 +49,7 @@ type file = struct {
     eolat: nullable *file,
 };
 
-type num = u64;
+type num = (u64 | i64);
 type idt = str;
 type txt = []u8;
 
@@ -136,13 +136,16 @@ type nmsp = struct {
     mutbl: bool,
     asgnd: bool,
     param: bool,
+    globl: bool,
     orign: (str | kernel),
+    value: tok,
     lin: size,
     cln: size,
 };
 type idref = struct {
     idt: str,
     vtp: kwd,
+    globl: bool,
     orign: (str | kernel),
 };
 type scope = struct {

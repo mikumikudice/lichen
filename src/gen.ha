@@ -192,6 +192,7 @@ fn cmperr(e: CMP_ERR) never = {
                 arw = strings::concat(arw, "~");
             };
         };
+        free(pos);
         arw = fmt::asprintf("{}^\n", arw);
         fmt::errorfln(
             "\n{}\n{}",
