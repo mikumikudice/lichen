@@ -10,7 +10,7 @@ pub main = fn() : unit \ fmt {
 };
 ```
 ## special features
-- memory safe through linear types. no GC, no borrow checker.
+- memory safe through linear types. no GC, no lifetime tags.
 - effect system and encapsulated state within in-practice pure functions.
 - modern and clever casting system for convenient (smart) type conversions.
 - simple, small and concise syntax semantics. new and yet familiar.
@@ -38,7 +38,7 @@ these are the current goals of this project:
 - [x] lexer
 - [ ] parser and code gen
     - [ ] expressions
-        - [x] operators on primitives
+        - [ ] operators on primitives
         - [x] global reference to functions at any position
         - [x] expressions on function call arguments
         - [ ] operators on records

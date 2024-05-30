@@ -24,6 +24,7 @@ global write
 global alloc
 global free
 global copy
+global memset
 
 global absb
 global absh
@@ -48,8 +49,8 @@ read:
     mov ecx, edi
     xor rdi, rdi        ; clear residual bytes
     mov edi, ecx
-    add rsi, 8
     mov rdx, [rsi]      ; gets input max length
+    add rsi, 8
     mov rax, 0          ; system call (read)
     syscall             ; calls it
     ret

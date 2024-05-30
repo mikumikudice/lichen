@@ -57,26 +57,40 @@ fn get_qbe_t(vtp: kwd, mode: int = 0) str = {
         vtp == kwd::U16_TYPE || vtp == kwd::I16_TYPE){
         return "w";
     };
-    if(mode == 3)
+    if(mode == 2)
     if(vtp == kwd::U8__TYPE || vtp == kwd::U16_TYPE){
         return "uw";
     } else if(vtp == kwd::I8__TYPE || vtp == kwd::I16_TYPE){
-        return "w";
+        return "sw";
     };
     switch(vtp){
-    case kwd::U8__TYPE, kwd::I8__TYPE =>
+    case kwd::U8__TYPE =>
         if(mode == 2) return "ub";
         return "b";
-    case kwd::I16_TYPE, kwd::U16_TYPE =>
+    case kwd::I8__TYPE =>
+        if(mode == 2) return "sb";
+        return "b";
+    case kwd::U16_TYPE =>
         if(mode == 2) return "uh";
         return "h";
-    case kwd::U32_TYPE, kwd::I32_TYPE =>
+    case kwd::I16_TYPE =>
+        if(mode == 2) return "sh";
+        return "h";
+    case kwd::U32_TYPE =>
         if(mode == 2) return "uw";
         return "w";
-    case kwd::U64_TYPE, kwd::I64_TYPE, kwd::RATIO__T,
-        kwd::STRING_T, kwd::ANY_TYPE, kwd::RAW_TYPE,
-        kwd::UNITTYPE, kwd::ARRAY__T =>
-        if(mode == 2) assert(false);
+    case kwd::I32_TYPE =>
+        if(mode == 2) return "sh";
+        return "w";
+    case kwd::U64_TYPE =>
+        if(mode == 2) return "ul";
+        return "l";
+    case kwd::I64_TYPE =>
+        if(mode == 2) return "sl";
+        return "l";
+    case kwd::RATIO__T, kwd::STRING_T, kwd::ANY_TYPE,
+        kwd::RAW_TYPE, kwd::UNITTYPE,  kwd::NUMBER_T,
+        kwd::ARRAY__T =>
         return "l";
     case =>
         fmt::errorfln("unknown type {}", vtp: int)!;
@@ -521,8 +535,8 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) ((str, kwd) | CMP_ERR
                 case let fun: *func =>
                     if(fun.orign is kernel){
                         skip_field(f)?;
-                        const call = parse_fcall(fun, f, scp, &refs)?;
-                        out = fmt::asprintf("{}{}    {}\n", out, solve_ref(&refs), call);
+                        const (newexp, call) = parse_fcall(fun, f, scp, &refs)?;
+                        out = fmt::asprintf("{}{}{}    {}\n", out, solve_ref(&refs), newexp, call);
                         continue;
                     };
                     next = nxttk(f, true)?;
@@ -532,8 +546,8 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) ((str, kwd) | CMP_ERR
                         out = fmt::asprintf("{}{}", out, asg);
                     } else {
                         setptr(f, true);
-                        const call = parse_fcall(fun, f, scp, &refs)?;
-                        out = fmt::asprintf("{}{}    {}\n", out, solve_ref(&refs), call);
+                        const (newexp, call) = parse_fcall(fun, f, scp, &refs)?;
+                        out = fmt::asprintf("{}{}{}    {}\n", out, solve_ref(&refs), newexp, call);
                     };
                 };
             } else {
@@ -545,8 +559,8 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0) ((str, kwd) | CMP_ERR
                 if(fun.orign is kernel){
                     skip_field(f)?;
                 };
-                const call = parse_fcall(fun, f, scp, &refs)?;
-                out = fmt::asprintf("{}{}    {}\n", out, solve_ref(&refs), call);
+                const (newexp, call) = parse_fcall(fun, f, scp, &refs)?;
+                out = fmt::asprintf("{}{}{}    {}\n", out, solve_ref(&refs), newexp, call);
             };
         case let s: sym =>
             switch(s){
@@ -682,7 +696,7 @@ fn parse_field(mod: idt, f: *file, scp: *scope) (*nmsp | *func | CMP_ERR) = {
     }: GENERIC;
 };
 
-fn parse_fcall(fun: *func, f: *file, scp: *scope, refs: *[]idref) (str | CMP_ERR) = {
+fn parse_fcall(fun: *func, f: *file, scp: *scope, refs: *[]idref) ((str, str) | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("parsing function call at {}", gen_pos(f))!;
 
@@ -708,13 +722,13 @@ fn parse_fcall(fun: *func, f: *file, scp: *scope, refs: *[]idref) (str | CMP_ERR
         setptr(f, true);
         if(is_limit(next, limit) || next is eol) break;
 
-        const (exp, tp, arg) = parse_exp(f, scp, refs, limit)?;
+        const (exp, tp, arg) = parse_exp(f, scp, refs, limit, fun.param[argc])?;
         if(argc == 0){
             out = fmt::asprintf("{}{} {}", out, get_qbe_t(tp, 1), arg);
         } else {
             out = fmt::asprintf("{}, {} {}", out, get_qbe_t(tp, 1), arg);
         };
-        hdr = fmt::asprintf("{}{}\n", hdr, exp);
+        hdr = fmt::asprintf("{}{}", hdr, exp);
         argc += 1;
         if(argc > argmax){
             next = nxttk(f, true)?;
@@ -732,7 +746,7 @@ fn parse_fcall(fun: *func, f: *file, scp: *scope, refs: *[]idref) (str | CMP_ERR
         };
     };
     next = nxttk(f)?;
-    return strings::concat(out, ")");
+    return (hdr, strings::concat(out, ")"));
 };
 
 fn parse_asg(f: *file, dest: idt, oper: opr, scp: *scope, defn: (*nmsp | *func | void) = void, mutbl: bool = false) (str | CMP_ERR) = {
@@ -825,7 +839,7 @@ fn parse_asg(f: *file, dest: idt, oper: opr, scp: *scope, defn: (*nmsp | *func |
         if(need_ext(tp, store_t)){
             src_id = fmt::asprintf("%{}.l", dest);
             exp = fmt::asprintf("{}    {} =l ext{} {}\n",
-                exp, src_id, get_qbe_t(tp, 3), val_id);
+                exp, src_id, get_qbe_t(tp, 2), val_id);
         };
         out = fmt::asprintf("{}{}{}    store{} {}, %{}\n",
             out, solve_ref(&refs), exp, get_qbe_t(store_t), src_id, dest);
@@ -841,12 +855,12 @@ fn parse_asg(f: *file, dest: idt, oper: opr, scp: *scope, defn: (*nmsp | *func |
     return out;
 };
 
-fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [eol]) ((str, kwd, str) | CMP_ERR) = {
+fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [eol], ini_t: kwd = kwd::NOT_KWRD) ((str, kwd, str) | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("parsing expression at {}", gen_pos(f))!;
     let exp = "";
     let single = true;
-    let expr_t = kwd::NOT_KWRD;
+    let expr_t = ini_t;
     let dest = "";
 
     // TODO: handle idt, opr, "+" | "-" | "~"
@@ -857,17 +871,23 @@ fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [eol]) ((str,
         next, f, void: EXPECTD, "valid operand")?: (num | txt | idt);
     match(vall){
     case let n: num =>
-        exp = fmt::asprint(n: u64);
-        expr_t = parse_cast(f, kwd::NUMBER_T)?;
-            next = nxttk(f)?;
-            if(is_limit(next, limit)){
-                return ("", expr_t, exp);
-            };
+        dest = fmt::asprint(n: u64);
+        if(expr_t == kwd::NOT_KWRD){
+            expr_t = parse_cast(f, kwd::NUMBER_T)?;
+        } else {
+            expr_t = parse_cast(f, expr_t)?;
+        };
+        next = nxttk(f)?;
+        if(is_limit(next, limit)){
+            return ("", expr_t, dest);
+        };
     case let t: txt =>
         const val = tostr(t);
         const idx = pushstr(val);
         exp = idx;
-        
+        expct(is_subt(kwd::STRING_T, expr_t), vall, f, void: MISMTCH,
+            "argument and parameter types", cast_err(kwd::STRING_T, expr_t))?;
+
         next = nxttk(f, true)?;
         // TODO: acept casting to union types
         expct(is_limit(next, limit), next, f, void: EXPECTD,
@@ -880,7 +900,10 @@ fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [eol]) ((str,
             pushref(nm, f, scp, refs)?;
             if(nm.orign is kernel){
                 skip_field(f)?;
-                expr_t = parse_cast(f, nm.vtype)?;
+                const cast = parse_cast(f, nm.vtype)?;
+                expct(is_subt(cast, expr_t), vall, f, void: MISMTCH,
+                    "argument and parameter types", cast_err(cast, expr_t))?;
+                expr_t = cast;
                 dest = fmt::asprintf("%{}.{}.g", nm.ident, get_qbe_t(expr_t, 1));
 
                 let src_id = fmt::asprintf("%{}.{}.g", nm.ident, get_qbe_t(nm.vtype, 1));
@@ -889,7 +912,7 @@ fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [eol]) ((str,
                     src_id = fmt::asprintf("%{}.l.g", nm.ident);
 
                     const cast = fmt::asprintf("    {} =l ext{} {}\n",
-                        src_id, get_qbe_t(nm.vtype, 3), val_id);
+                        src_id, get_qbe_t(nm.vtype, 2), val_id);
 
                     if(src_id != dest){
                         exp = fmt::asprintf("{}    store{} {}, {}\n",
@@ -912,7 +935,7 @@ fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [eol]) ((str,
                     src_id = fmt::asprintf("%{}.l", nm.ident);
 
                     const cast = fmt::asprintf("    {} =l ext{} {}\n",
-                        src_id, get_qbe_t(nm.vtype, 3), val_id);
+                        src_id, get_qbe_t(nm.vtype, 2), val_id);
 
                     if(src_id != dest){
                         exp = fmt::asprintf("{}    store{} {}, {}\n",
@@ -935,16 +958,19 @@ fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [eol]) ((str,
             if(fun.orign is kernel){
                 skip_field(f)?;
             };
-            exp = parse_fcall(fun, f, scp, refs)?;
+            const (newexp, call) = parse_fcall(fun, f, scp, refs)?;
+            const qbet = get_qbe_t(fun.retrn, 1);
+            dest = fmt::asprintf("%{}.{}", fun.fname, qbet);
+            exp = fmt::asprintf("{}    {} ={} {}\n", newexp, dest, qbet, call);
             expr_t = fun.retrn;
             next = nxttk(f)?;
             if(is_limit(next, limit)){
-                return ("", expr_t, exp);
+                return (exp, expr_t, dest);
             };
         };
     };
     // keep reading until end of expression
-    for(!is_limit(next, limit); next = nxttk(f)?){
+    for(!is_limit(next, limit); next = nxttk(f, true)?){
         expct(next is opr || next is eol, next, f,
             void: EXPECTD, "operator or end of expression")?;
         if(next is opr){
@@ -958,7 +984,7 @@ fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [eol]) ((str,
                     const old = dest;
                     dest = fmt::asprintf("%val.{}", get_qbe_t(cast, 1));
                     exp = fmt::asprintf("{}{}    {} ={} ext{} {}\n", exp, dest,
-                        exp, get_qbe_t(expr_t, 1), get_qbe_t(expr_t, 3), old);
+                        exp, get_qbe_t(expr_t, 1), get_qbe_t(expr_t, 2), old);
                 };
                 const old_t = expr_t;
                 expr_t = cast_to(expr_t, cast, next, f)?;
@@ -992,6 +1018,7 @@ fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [eol]) ((str,
             };
         };
     };
+    setptr(f, true);
     return (exp, expr_t, dest);
 };
 
@@ -1010,7 +1037,7 @@ fn parse_opr(f: *file, oper: opr, expr_t: kwd, scp: *scope, refs: *[]idref) ((st
     let next = nxttk(f)?;
     const rgth = expct(next is num || next is idt, next, f,
         void: EXPECTD, "numeric literal or identifier")?;
-    
+
     const val_id = fmt::asprintf("%val.{}", get_qbe_t(expr_t, 1));
     const asg_tp = get_qbe_t(expr_t, 1);
 
@@ -1059,9 +1086,9 @@ fn parse_opr(f: *file, oper: opr, expr_t: kwd, scp: *scope, refs: *[]idref) ((st
             if(opeable(cast, expr_t, oper)){
                 const (hdr, wrp) = fix_sizes(expr_t, fun);
                 expr_t = cast;
-                const call = parse_fcall(fun, f, scp, refs)?;
-                const exp = fmt::asprintf("    {} ={} {} {}, {}\n",
-                    val_id, asg_tp, inst[oper], val_id, wrp);
+                const (newexp, call) = parse_fcall(fun, f, scp, refs)?;
+                const exp = fmt::asprintf("{}    {} ={} {} {}, {}\n",
+                    newexp, val_id, asg_tp, inst[oper], val_id, wrp);
                 const out = fmt::asprintf("{}{}{}", solve_ref(refs), call, exp);
 
                 free(dup);
@@ -1225,7 +1252,11 @@ fn gen_params(param_t: []kwd, param_n: []idt) (str, str) = {
 
 fn is_limit(tkn: tok, lmt: []tok) bool = {
     for(let l .. lmt){
-        if(cmp_tok(tkn, l)) return true;
+        if(cmp_tok(tkn, l)){
+            if(stacktrace)
+                fmt::println("reached expression limit")!;
+            return true;
+        };
     };
     return false;
 };
@@ -1273,7 +1304,7 @@ fn fix_sizes(dest: kwd, id: (*nmsp | *func)) (str, str) = {
         val = fmt::asprintf("%{}.{}", nm.ident, get_qbe_t(nm.vtype, 1));
         if(is_subt(dest, kwd::NUMBER_T) && dest != kwd::NUMBER_T){
             if(need_ext(nm.vtype, dest)){
-                hdr = fmt::asprintf("%{}.l =l ext{1} {}", nm.ident, get_qbe_t(nm.vtype, 3), val);
+                hdr = fmt::asprintf("%{}.l =l ext{1} {}", nm.ident, get_qbe_t(nm.vtype, 2), val);
                 val = fmt::asprintf("%{0}.l", nm.ident);
             };
         };
@@ -1284,7 +1315,7 @@ fn fix_sizes(dest: kwd, id: (*nmsp | *func)) (str, str) = {
             val = fmt::asprintf("%{}.{}", fun.fname, get_qbe_t(fun.retrn, 1));
         if(is_subt(dest, kwd::NUMBER_T) && dest != kwd::NUMBER_T){
             if(need_ext(fun.retrn, dest)){
-                hdr = fmt::asprintf("%{}.l =l ext{1} {}", fun.fname, get_qbe_t(fun.retrn, 3), val);
+                hdr = fmt::asprintf("%{}.l =l ext{1} {}", fun.fname, get_qbe_t(fun.retrn, 2), val);
                 val = fmt::asprintf("%{0}.l", fun.fname);
             };
         };
