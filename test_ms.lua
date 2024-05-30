@@ -2,13 +2,16 @@
 local init = os.execute("./build.sh")
 if not init then os.exit(1) end
 
-local tests = { "mile_1", "mile_2", "mile_3", "test_exp", "test_fun", "test_mem" }
+local tests = { "mile_1", "mile_2", "mile_3", "mile_3", "mile_3", "test_exp", "test_fun", "test_mem" }
 local results = {
-    -- output / input --
-    {}, { "mornin' sailor!\n" },
-    { "workin!\n" },
-    {}, { "working!\n" },
-    { "working!\n", "working!\n" }
+    {},                             -- mile_1
+    { "mornin' sailor!\n" },        -- mile_2
+    { "hi\n", "hiii!\n" },          -- mile_3
+    { "bye\n", "bye bye!\n" },
+    { "yo\n", "hop!\n" },
+    {},                             -- test_exp
+    { "working!\n" },               -- test_fun
+    { "working!\n", "working!\n" }  -- test_mem
 }
 local fails = 0
 for i, t in pairs(tests) do
@@ -18,7 +21,7 @@ for i, t in pairs(tests) do
         print(t .. " failed on compilation")
         fails = fails + 1 
     else
-        if #results[i] < 2 then
+        if #results[i] <= 1 then
             ok = os.execute("./bin/tmp/" .. t .. " > " .. t .. ".log")
             if not ok then os.exit(1) end
         
@@ -38,7 +41,7 @@ for i, t in pairs(tests) do
             end
         else
             local input = io.open(t ..".input", "w")
-            input:write(results[i][2])
+            input:write(results[i][1])
             input:close()
             ok = os.execute("(./bin/tmp/" .. t .. " < " .. t .. ".input) > " .. t .. ".log")
             if not ok then os.exit(1) end

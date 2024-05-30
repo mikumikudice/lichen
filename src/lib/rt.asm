@@ -160,16 +160,16 @@ strcmp:
         dec rdx
         jmp .rpt
     .f:
-        mov rax, 0
         pop rbx
         pop rsi
         pop rdi
+        mov rax, 0
         ret
     .t:
-        mov rax, 1
         pop rbx
         pop rsi
         pop rdi
+        mov rax, 1
         ret
 
 ; memset = fn(dest : raw, src : u8, size : u64) : unit
@@ -188,8 +188,8 @@ memset:
         jz .end
         jmp .next
     .end:
-    lea rax, t.unt
     pop rdi
+    lea rax, t.unt
     ret
 
 ; absb = fn(i8) : u8

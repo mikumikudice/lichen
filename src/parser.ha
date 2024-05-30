@@ -383,13 +383,21 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0, fun_tp: kwd = kwd::UN
                     funs = [],
                 };
                 const endp = f.lin + 1;
+                const limit = [ sym::OPN_CRLY ]: []tok;
                 for(cmp_tok(next, kwd::IF___BLK)){
                     let refs = []: []idref;
                     let dup = alloc(*f);
                     const idx = dup.lin + 1;
-                    const limit = [ sym::OPN_CRLY ]: []tok;
-                    const (exp, _, chk) = parse_exp(f, &if_scp, &refs, limit)?;
+                    const (exp, tp, chk) = parse_exp(f, &if_scp, &refs, limit)?;
                     nxttk(f)!;
+                    // fix checking for strings and arrays
+                    const eval =
+                        if(tp == kwd::STRING_T || tp == kwd::ARRAY__T){
+                            exp = fmt::asprintf("{}    %val.l =l loadl {}\n    %val.l =l sub %val.l, 8\n", exp, chk);
+                            yield "%val.l";
+                        } else {
+                            yield chk;
+                        };
                     const (body, if_tp) = parse(f, &if_scp, mtchs(sym::OPN_CRLY, f)?)?;
                     if(if_tp != kwd::UNITTYPE){
                         expct(is_subt(if_tp, ret_tp), if_tp, dup, void: MISMTCH,
@@ -397,7 +405,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0, fun_tp: kwd = kwd::UN
                     };
                     free(dup);
                     out = fmt::asprintf("{0}{1}{2}    jnz {3}, @t.{4}, @f.{4}\n@t.{4}\n{5}    jmp @end.{6}\n@f.{4}\n",
-                        out, solve_ref(&refs), exp, chk, idx, body, endp);
+                        out, solve_ref(&refs), exp, eval, idx, body, endp);
                     next = nxttk(f, true)?;
                     if(cmp_tok(next, kwd::ELSE_BLK)){
                         if(stacktrace)
