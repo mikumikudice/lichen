@@ -9,6 +9,9 @@ local tmp = ".test/"
 local init = exec("./build.sh")
 if not init then os.exit(1) end
 
+local tdir = exec("mkdir -p " .. tmp)
+if not tdir then os.exit(1) end
+
 local tests = { "mile_1", "mile_2", "mile_3", "mile_3", "mile_3", "test_exp", "test_fun", "test_mem", "demo" }
 local results = {
     {},                             -- mile_1

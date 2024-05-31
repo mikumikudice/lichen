@@ -192,7 +192,7 @@ memset:
     lea rax, t.unt
     ret
 
-; absb = fn(i8) : u8
+; absb = fn(num : i8) : u8
 absb:
     xor rax, rax
     xor rbx, rbx
@@ -203,7 +203,7 @@ absb:
     sub al, bl
     ret
 
-; absh = fn(i16) : u16
+; absh = fn(num : i16) : u16
 absh:
     xor rax, rax
     xor rbx, rbx
@@ -214,7 +214,7 @@ absh:
     sub ax, bx
     ret
 
-; absw = fn(i32) : u32
+; absw = fn(num : i32) : u32
 absw:
     xor rax, rax
     xor rbx, rbx
@@ -225,7 +225,7 @@ absw:
     sub eax, ebx
     ret
 
-; absl = fn(i64) : 64
+; absl = fn(num : i64) : 64
 absl:
     mov rbx, rdi
     mov rax, rdi
