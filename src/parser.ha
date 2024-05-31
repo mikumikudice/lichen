@@ -1142,7 +1142,7 @@ fn parse_fcall(fun: *func, f: *file, scp: *scope, refs: *[]idref) ((str, str) | 
         if(cmp_tok(next, sym::CLOSEPAR) || next is eol) break;
         if(cmp_tok(next, sym::SYMCOMMA)) nxttk(f)!;
 
-        const (exp, tp, arg) = parse_exp(f, scp, refs, limit, fun.param[argc])?;
+        const (exp, tp, arg) = parse_exp(f, scp, refs, limit)?;
         expct(is_subt(tp, fun.param[argc]), next, f, void: MISMTCH,
             fmt::asprintf("function parameter {} and argument types", argc + 1), cast_err(tp, fun.param[argc]))?;
 
@@ -1333,8 +1333,10 @@ fn parse_exp(f: *file, scp: *scope, refs: *[]idref, limit: []tok = [ eol ], ini_
             if(nm.orign is kernel){
                 skip_field(f)?;
                 const cast = parse_cast(f, nm.vtype)?;
-                expct(is_subt(cast, expr_t), vall, f, void: MISMTCH,
-                    "argument and parameter types", cast_err(cast, expr_t))?;
+                if(expr_t != kwd::NOT_KWRD){
+                    expct(is_subt(cast, expr_t), vall, f, void: MISMTCH,
+                        "member types", cast_err(cast, expr_t))?;
+                };
                 expr_t = cast;
                 dest = fmt::asprintf("%{}.{}.g", nm.ident, get_qbe_t(expr_t, 1));
 
