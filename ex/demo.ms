@@ -1,5 +1,5 @@
 use fmt;
 
-pub main = fn() : unit \ fmt {
-    fmt::putl("mornin' sailor!")!;
+pub main = fn() : unit {
+    fmt::putl("mornin' sailor!");
 };

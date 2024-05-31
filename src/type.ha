@@ -172,6 +172,6 @@ type kernel = enum size
     };
 type module = struct {
     name : str,
-    funs : []func,
-    vars : []nmsp,
+    funs : []*func,
+    defs : []*nmsp,
 };

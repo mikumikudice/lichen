@@ -128,6 +128,24 @@ export fn lowercase(s: str) str = {
     return strings::fromutf8(src)!;
 };
 
+// returns true if `src` starts with `pat`, false otherwise
+export fn startswith(src: str, pat: str) bool = {
+    const offst = len(pat);
+    const strlen = len(src);
+    if(strlen < offst) return false;
+    if(strlen == offst) return src == pat;
+    return pat == strings::sub(src, 0, offst);
+};
+
+// returns true if `src` ends with `pat`, false otherwise
+export fn endswith(src: str, pat: str) bool = {
+    const offst = len(pat);
+    const strlen = len(src);
+    if(strlen < offst) return false;
+    if(strlen == offst) return src == pat;
+    return pat == strings::sub(src, strlen - offst);
+};
+
 // searches for `needle` in `haystack`. returns the index
 // if found, otherwise returnd void
 export fn findl(haystack: []str, needle: str) (size | void) = {

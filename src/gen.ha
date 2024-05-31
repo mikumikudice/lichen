@@ -10,30 +10,50 @@ use strlib;
 
 const fix_entry = "export function $_start(){\n@start\n    call $main()\n    hlt\n}\n";
 
-fn build(src: str, dest: str, silent: bool = false) void = {
+let also_link = []: []str;
+
+fn build(src: str, dest: str, libpath: str, scpref: (void | *scope) = void, silent: bool = false) (void | CMP_ERR) = {
     let global = scope {
         over = void,
         defs = [],
         funs = [],
     };
-    const qbe_ir = match(parse(src, &global)){
-        case let e: CMP_ERR => cmperr(e);
+    const ismod = !(scpref is void);
+    let scp =
+        if(ismod){
+            yield scpref: *scope;
+        } else {
+            yield &global;
+        };
+    const path =
+        if(strlib::endswith(libpath, "/")){
+            yield libpath;
+        } else {
+            yield strings::concat(libpath, "/");
+        };
+    const qbe_ir =
+        match(parse(src, scp, path, ismod)){
+        case let e: CMP_ERR =>
+            if(!ismod) cmperr(e);
+            return e;
         case let s: (str, kwd) => yield s.0;
-    };
-    const code = fmt::asprintf("# moss {}\n{}{}", version, fix_entry, qbe_ir);
-    const root = "./bin";
-    const temp = "./bin/tmp";
-    const (objf, _) = rem_path(dest);
+        };
+    const code =
+        if(!ismod){
+            yield fmt::asprintf("# moss {}\n{}{}", version, fix_entry, qbe_ir);
+        } else {
+            yield fmt::asprintf("# moss {}\n{}", version, qbe_ir);
+        };
+    const temp = ".tmp";
+    runc(silent, "mkdir", "-p", temp);
     
-    const rt_src = fmt::asprintf("{}/../src/lib/rt.asm", root);
+    const (objf, _) = rem_path(dest);
+    const rt_src = fmt::asprintf("{}rt.asm", path);
     const rt_out = fmt::asprintf("{}/rt.o", temp);
 
     const qbe_out = fmt::asprintf("{}/{}.ssa", temp, objf);
     const bin_src = fmt::asprintf("{}/{}.asm", temp, objf);
     const bin_out = fmt::asprintf("{}/{}.o", temp, objf);
-
-    runc(silent, "mkdir", "-p", "bin");
-    runc(silent, "mkdir", "-p", "bin/tmp");
 
     const file = match(os::create(qbe_out, fs::mode::USER_RWX)){
         case let f: io::file => yield f;
@@ -45,11 +65,19 @@ fn build(src: str, dest: str, silent: bool = false) void = {
 
     runc(silent, "qbe", "-o", bin_src, qbe_out);
     runc(silent, "as" , "-o", bin_out, bin_src);
-
+    if(ismod){
+        append(also_link, bin_out);
+        fmt::printfln(col("successfully compiled {}", cmd::GRN), src)!;
+        return;
+    };
     runc(silent, "nasm", "-felf64", "-o", rt_out, rt_src);
-    runc(silent, "mold", "-o", dest, bin_out, rt_out);
 
-    //runc("rm", qbe_out, bin_src, bin_out);
+    let mold_args = []: []str;
+    append(mold_args, ["-o", dest, bin_out, rt_out]...);
+    append(mold_args, also_link...);
+    runc(silent, "mold", mold_args...);
+
+    if(!stacktrace) runc(silent, "rm", "-r", temp);
     fmt::printfln(col("successfully compiled {} in {}", cmd::GRN), src, dest)!;
 };
 
@@ -168,6 +196,7 @@ fn cmperr(e: CMP_ERR) never = {
         fmt::errorfln(out)!;
     } else {
         const pos = ptr: *file;
+        defer free(pos);
         if(pos.iseol){
             pos = pos.eolat: *file;
         };
@@ -181,7 +210,7 @@ fn cmperr(e: CMP_ERR) never = {
         const num = fmt::asprintf("{} ", pos.lin + 1);
 
         fmt::errorfln("{} {}", col(fmt::asprintf("error at {}:{}:{}:",
-            os::args[1], pos.lin + 1, pos.cln + 1), cmd::BOX_RED), out)!;
+            pos.name, pos.lin + 1, pos.cln + 1), cmd::BOX_RED), out)!;
 
         const line = strings::concat(num, src);
         const ofst = len(line) - len(src);
@@ -194,7 +223,6 @@ fn cmperr(e: CMP_ERR) never = {
                 arw = strings::concat(arw, "~");
             };
         };
-        free(pos);
         arw = fmt::asprintf("{}^\n", arw);
         fmt::errorfln(
             "\n{}\n{}",

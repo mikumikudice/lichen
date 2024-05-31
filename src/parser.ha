@@ -663,7 +663,7 @@ let ldd_mods = []: []module;
 // itself, parses a new scope withih `within`. returns a header containing global definitions,
 // the parsed source itself in the QBE IR and the final type of return, in the case of parsing
 // a function body. in case of any parsing error, returns a compilation error
-fn parse(from: (str | *file), scp: *scope, stop: size = 0, fun_tp: kwd = kwd::UNITTYPE) ((str, kwd) | CMP_ERR) = {
+fn parse(from: (str | *file), scp: *scope, libpath: str, nomain: bool, stop: size = 0, fun_tp: kwd = kwd::UNITTYPE) ((str, kwd) | CMP_ERR) = {
     let out = "";
     let ret_tp = kwd::NOT_KWRD;
     let f =
@@ -673,7 +673,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0, fun_tp: kwd = kwd::UN
                 fmt::printfln("parsing file \"{}\"", fname)!;
 
             const _f =  load(fname)?;
-            out = parse_globl(_f, scp)?;
+            out = parse_globl(_f, scp, libpath, nomain)?;
             yield _f;
         case let _f: *file =>
             if(stacktrace)
@@ -689,7 +689,6 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0, fun_tp: kwd = kwd::UN
         match(next: tok){
         case let k: kwd =>
             switch(k){
-            // "pub", [ "type", ] idt, "=", expr
             case kwd::PUBFIELD =>
                 if(stacktrace)
                     fmt::printfln("parsing pubdef at {}", gen_pos(f))!;
@@ -707,7 +706,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0, fun_tp: kwd = kwd::UN
                 next = nxttk(f, true)?;
                 if(is_asg_opr(next)){
                     setptr(f, true);
-                    const asg = parse_asg(f, i, next: opr, scp)?;
+                    const asg = parse_asg(f, i, next: opr, scp, libpath, nomain)?;
                     out = fmt::asprintf("{}export {}", out, asg);
                 } else if(cmp_tok(next, opr::CASTTOTP)){
                     todo(f, "typedefs")?;
@@ -743,7 +742,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0, fun_tp: kwd = kwd::UN
                         } else {
                             yield chk;
                         };
-                    const (body, if_tp) = parse(f, &if_scp, mtchs(sym::OPN_CRLY, f)?)?;
+                    const (body, if_tp) = parse(f, &if_scp, libpath, nomain, mtchs(sym::OPN_CRLY, f)?)?;
                     if(if_tp != kwd::UNITTYPE){
                         expct(is_subt(if_tp, ret_tp), if_tp, dup, void: MISMTCH,
                         "return types", "union types are not implemented yet")?;
@@ -764,7 +763,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0, fun_tp: kwd = kwd::UN
                         dup = alloc(*f);
                         expct(cmp_tok(next, sym::OPN_CRLY), next, f, void: EXPECTD,
                             "else body declaration")?;
-                        const (body, el_tp) = parse(f, &if_scp, mtchs(sym::OPN_CRLY, f)?)?;
+                        const (body, el_tp) = parse(f, &if_scp, libpath, nomain, mtchs(sym::OPN_CRLY, f)?)?;
                         if(el_tp != kwd::UNITTYPE){
                             expct(is_subt(el_tp, ret_tp), el_tp, dup, void: MISMTCH,
                             "return types", "union types are not implemented yet")?;
@@ -781,7 +780,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0, fun_tp: kwd = kwd::UN
                 const i = expct(next is idt,
                     next, f, void: EXPECTD, "variable definition")?: idt;
 
-                const asg = parse_asg(f, i, next: opr, scp, void, true)?;
+                const asg = parse_asg(f, i, next: opr, scp, libpath, nomain, void, true)?;
                 out = fmt::asprintf("{}{}", out, asg);
             case kwd::USE__MOD =>
                 if(stacktrace)
@@ -798,133 +797,58 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0, fun_tp: kwd = kwd::UN
                     "module name identifier")?: idt;
                 
                 match(strlib::findl(krnls, mod: str)){
-                case let i: size =>
+                case let krnl: size =>
                     // TODO: un-hardcode these definitions
-                    switch(i){
+                    switch(krnl){
                     case kernel::IO =>
                         const mod_io = module {
                             name = mod: str,
-                            funs =
-                                [ func { // read = fn(handle : u32, size : str) : @str
-                                    fname = "read",
-                                    param = [ kwd::U32_TYPE, kwd::STRING_T ],
-                                    retrn = kwd::U32_TYPE,
-                                    ret_n = "",
-                                    orign = kernel::IO,
-                                    ...
-                                }
-                                , func { // write = fn(handle : u32, data : str) : u32
-                                    fname = "write",
-                                    param = [ kwd::U32_TYPE, kwd::STRING_T ],
-                                    retrn = kwd::U32_TYPE,
-                                    ret_n = "",
-                                    orign = kernel::IO,
-                                    ...
-                                }
-                                ],
-                            vars =
-                                [ nmsp {
-                                    ident = "stdin",
-                                    vtype = kwd::U32_TYPE,
-                                    mutbl = false,
-                                    asgnd = true,
-                                    orign = kernel::IO,
-                                    globl = true,
-                                    value = 0: u64: num,
-                                    ...
-                                }
-                                , nmsp {
-                                    ident = "stdout",
-                                    vtype = kwd::U32_TYPE,
-                                    mutbl = false,
-                                    asgnd = true,
-                                    orign = kernel::IO,
-                                    globl = true,
-                                    value = 1: u64: num,
-                                    ...
-                                }
-                                , nmsp {
-                                    ident = "stderr",
-                                    vtype = kwd::U32_TYPE,
-                                    mutbl = false,
-                                    asgnd = true,
-                                    orign = kernel::IO,
-                                    globl = true,
-                                    value = 2: u64: num,
-                                    ...
-                                }
-                                ],
+                            funs = io_funs,
+                            defs = io_vars,
                         };
                         append(ldd_mods, mod_io);
                     case kernel::MEM =>
                         const mod_mem = module {
                             name = mod: str,
-                            funs =
-                                [ func { // alloc = fn(size: u32) : raw
-                                    fname = "alloc",
-                                    param = [ kwd::U64_TYPE ],
-                                    retrn = kwd::RAW_TYPE,
-                                    ret_n = "",
-                                    orign = kernel::MEM,
-                                    ...
-                                }
-                                , func { // free = fn(obj : raw) : unit
-                                    fname = "free",
-                                    param = [ kwd::RAW_TYPE ],
-                                    retrn = kwd::UNITTYPE,
-                                    ret_n = "",
-                                    orign = kernel::MEM,
-                                    ...
-                                }
-                                , func { // copy = fn(dest : raw, src : raw, size : u64) : raw
-                                    fname = "copy",
-                                    param = [ kwd::RAW_TYPE, kwd::RAW_TYPE, kwd::U64_TYPE ],
-                                    retrn = kwd::RAW_TYPE,
-                                    ret_n = "",
-                                    orign = kernel::MEM,
-                                    ...
-                                }
-                                , func { // strlset = fnfn(dest : str, size : u64) : unit
-                                    fname = "strlset",
-                                    param = [ kwd::STRING_T, kwd::U64_TYPE ],
-                                    retrn = kwd::UNITTYPE,
-                                    ret_n = "",
-                                    orign = kernel::MEM,
-                                    ...
-                                }
-                                , func { // strcpy = fn(dest : str, src : sre, size : u64) : unit
-                                    fname = "strcpy",
-                                    param = [ kwd::STRING_T, kwd::STRING_T, kwd::U64_TYPE ],
-                                    retrn = kwd::UNITTYPE,
-                                    ret_n = "",
-                                    orign = kernel::MEM,
-                                    ...
-                                }
-                                , func { // memset = fn(dest : raw, src : u8, size : u64) : unit
-                                    fname = "memset",
-                                    param = [ kwd::RAW_TYPE, kwd::U8__TYPE, kwd::U64_TYPE ],
-                                    retrn = kwd::UNITTYPE,
-                                    ret_n = "",
-                                    orign = kernel::MEM,
-                                    ...
-                                }
-                                ],
-                            vars = [],
+                            funs = mem_funs,
+                            defs = mem_defs,
                         };
                         append(ldd_mods, mod_mem);
                     case =>
                         const err = fmt::asprintf("module {} not matched", mod: str);
                         return (err, f): UNREACH;
                     };
-                case void =>
-                    todo(f, "local modules not implemented yet")?;
+                case =>
+                    let lmod = scope {
+                        over = void,
+                        defs = [],
+                        funs = [],
+                    };
+                    const filename = fmt::asprintf("{}{}.ms", libpath, mod: str);
+                    match(build(filename, mod: str, libpath, &lmod)){
+                    case let e: CMP_ERR =>
+                        if(e is LDDFAIL){
+                            return unimsg {
+                                msg = fmt::asprintf("source file for module \"{}\" not found", col(mod: str, cmd::BLU)),
+                                tip = "try to specify the libpath with the flag -l",
+                                ptr = f,
+                            }: GENERIC;
+                        } else return e;
+                    case =>
+                        const newmod = module {
+                            name = mod: str,
+                            funs = lmod.funs,
+                            defs = lmod.defs,
+                        };
+                        append(ldd_mods, newmod);
+                    };
                 };
             case kwd::RETURNTO =>
                 if(stacktrace)
                     fmt::printfln("parsing return at {}", gen_pos(f))!;
                 let add = []: []idref;
                 const dup = alloc(*f);
-                const (exp, expr_t, val_id) = parse_exp(f, scp, &add)?;
+                const (exp, expr_t, val_id) = parse_exp(f, scp, &add, [eol], fun_tp)?;
                 expct(is_subt(expr_t, ret_tp), expr_t, dup, void: MISMTCH,
                     "return types", "union types are not implemented yet")?;
                 ret_tp = expr_t;
@@ -948,7 +872,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0, fun_tp: kwd = kwd::UN
                 let refs = []: []idref;
                 match(get_idt(i, f, scp)){
                 case =>
-                    const asg = parse_asg(f, i, next: opr, scp)?;
+                    const asg = parse_asg(f, i, next: opr, scp, libpath, nomain)?;
                     out = fmt::asprintf("{}{}", out, asg);
                 case let nm: *nmsp =>
                     // these fields have already been parsed
@@ -957,7 +881,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0, fun_tp: kwd = kwd::UN
                         jmpto(eol, f)?;
                         continue;
                     };
-                    const asg = parse_asg(f, i, next: opr, scp, nm)?;
+                    const asg = parse_asg(f, i, next: opr, scp, libpath, nomain, nm)?;
                     out = fmt::asprintf("{}{}", out, asg);
                 case let fun: *func =>
                     if(fun.orign is kernel){
@@ -969,7 +893,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0, fun_tp: kwd = kwd::UN
                     next = nxttk(f, true)?;
                     if(is_asg_opr(next)){
                         setptr(f, true);
-                        const asg = parse_asg(f, i, next: opr, scp, fun)?;
+                        const asg = parse_asg(f, i, next: opr, scp, libpath, nomain, fun)?;
                         out = fmt::asprintf("{}{}", out, asg);
                     } else {
                         setptr(f, true);
@@ -988,6 +912,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0, fun_tp: kwd = kwd::UN
                 };
                 const (newexp, call) = parse_fcall(fun, f, scp, &refs)?;
                 out = fmt::asprintf("{}{}{}    {}\n", out, solve_ref(&refs), newexp, call);
+                finsh(f, void: EXPECTD, "end of function call")?;
             };
         case let s: sym =>
             switch(s){
@@ -1011,7 +936,7 @@ fn parse(from: (str | *file), scp: *scope, stop: size = 0, fun_tp: kwd = kwd::UN
     return (out, ret_tp);
 };
 
-fn parse_globl(_f: *file, scp: *scope) (str | CMP_ERR) = {
+fn parse_globl(_f: *file, scp: *scope, libpath: str, nomain: bool) (str | CMP_ERR) = {
     if(stacktrace)
         fmt::println("parsing global definitions")!;
     const f = alloc(*_f);
@@ -1030,7 +955,7 @@ fn parse_globl(_f: *file, scp: *scope) (str | CMP_ERR) = {
             };
             next = nxttk(f, true)?;
             if(cmp_tok(next, kwd::FUNCTION)){
-                parse_fun(f, i, scp, true)?;
+                parse_fun(f, i, scp, libpath, nomain, true)?;
             // TODO: expect for unary operators
             } else if(next is num || next is txt || next is idt){
                 setptr(f, true);
@@ -1089,14 +1014,14 @@ fn parse_field(mod: idt, f: *file, scp: *scope) (*nmsp | *func | CMP_ERR) = {
                 next, f, void: EXPECTD, "field name")?: idt;
             let max = len(m.funs);
             for(let i = 0z; i < max; i += 1){
-                const fun = &m.funs[i];
+                const fun = m.funs[i];
                 if(field == fun.fname){
                     return fun;
                 };
             };
-            let max = len(m.vars);
+            let max = len(m.defs);
             for(let i = 0z; i < max; i += 1){
-                const var = &m.vars[i];
+                const var = m.defs[i];
                 if(field: str == var.ident){
                     return var;
                 };
@@ -1142,7 +1067,7 @@ fn parse_fcall(fun: *func, f: *file, scp: *scope, refs: *[]idref) ((str, str) | 
         if(cmp_tok(next, sym::CLOSEPAR) || next is eol) break;
         if(cmp_tok(next, sym::SYMCOMMA)) nxttk(f)!;
 
-        const (exp, tp, arg) = parse_exp(f, scp, refs, limit)?;
+        const (exp, tp, arg) = parse_exp(f, scp, refs, limit, fun.param[argc])?;
         expct(is_subt(tp, fun.param[argc]), next, f, void: MISMTCH,
             fmt::asprintf("function parameter {} and argument types", argc + 1), cast_err(tp, fun.param[argc]))?;
 
@@ -1173,7 +1098,7 @@ fn parse_fcall(fun: *func, f: *file, scp: *scope, refs: *[]idref) ((str, str) | 
     return (hdr, strings::concat(out, ")"));
 };
 
-fn parse_asg(f: *file, dest: idt, oper: opr, scp: *scope, defn: (*nmsp | *func | void) = void, mutbl: bool = false) (str | CMP_ERR) = {
+fn parse_asg(f: *file, dest: idt, oper: opr, scp: *scope, libpath: str, nomain: bool, defn: (*nmsp | *func | void) = void, mutbl: bool = false) (str | CMP_ERR) = {
     if(stacktrace){
         if(defn is void){
             fmt::printfln("parsing assignment to \"{}\" at {}", dest, gen_pos(f))!;
@@ -1225,7 +1150,7 @@ fn parse_asg(f: *file, dest: idt, oper: opr, scp: *scope, defn: (*nmsp | *func |
                     ptr = dup,
                 }: CANT_DO;
             };
-            return parse_fun(f, dest, scp)?;
+            return parse_fun(f, dest, scp, libpath, nomain)?;
         } else {
             setptr(f, true);
         };
@@ -1576,7 +1501,7 @@ fn parse_opr(f: *file, oper: opr, expr_t: kwd, scp: *scope, refs: *[]idref) ((st
     };
 };
 
-fn parse_fun(f: *file, dest: idt, scp: *scope, skip: bool = false) (str | CMP_ERR) = {
+fn parse_fun(f: *file, dest: idt, scp: *scope, libpath: str, nomain: bool, skip: bool = false) (str | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("parsing function \"{}\" at {}", dest: str, gen_pos(f))!;
 
@@ -1663,7 +1588,7 @@ fn parse_fun(f: *file, dest: idt, scp: *scope, skip: bool = false) (str | CMP_ER
             const bgn = expct(cmp_tok(next, sym::OPN_CRLY), next, f, void: EXPECTD,
                 "function body declaration")?: sym;
 
-            const (body, ret_tp) = parse(f, &fn_scp, mtchs(bgn, f)?)?;
+            const (body, ret_tp) = parse(f, &fn_scp, libpath, nomain, mtchs(bgn, f)?)?;
             expct(cmp_tok(ret_tp, kwd::UNITTYPE), ret_tp, dup, void: GENERIC,
                 "the expected return type for main is `unit`")?;
             free(dup);
@@ -1687,7 +1612,7 @@ fn parse_fun(f: *file, dest: idt, scp: *scope, skip: bool = false) (str | CMP_ER
         const bgn = expct(cmp_tok(next, sym::OPN_CRLY), next, f, void: EXPECTD,
             "function body declaration")?: sym;
 
-        let (body, ret_tp) = parse(f, &fn_scp, mtchs(bgn, f)?, ret)?;
+        let (body, ret_tp) = parse(f, &fn_scp, libpath, nomain, mtchs(bgn, f)?, ret)?;
         expct(is_subt(ret_tp, ret), ret_tp, dup, void: MISMTCH,
             "function return type and body type", cast_err(ret_tp, ret))?;
         free(dup);

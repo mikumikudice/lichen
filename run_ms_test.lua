@@ -1,8 +1,15 @@
 #! /usr/bin/lua
-local init = os.execute("./build.sh")
+function exec(cmd)
+    print("+ " .. cmd)
+    return os.execute(cmd)
+end
+
+local tmp = ".test/"
+
+local init = exec("./build.sh")
 if not init then os.exit(1) end
 
-local tests = { "mile_1", "mile_2", "mile_3", "mile_3", "mile_3", "test_exp", "test_fun", "test_mem" }
+local tests = { "mile_1", "mile_2", "mile_3", "mile_3", "mile_3", "test_exp", "test_fun", "test_mem", "demo" }
 local results = {
     {},                             -- mile_1
     { "mornin' sailor!\n" },        -- mile_2
@@ -11,21 +18,22 @@ local results = {
     { "yo\n", "hop!\n" },
     {},                             -- test_exp
     { "working!\n" },               -- test_fun
-    { "working!\n", "working!\n" }  -- test_mem
+    { "working!\n", "working!\n" }, -- test_mem
+    { "mornin' sailor!\n" },        -- demo
 }
 local fails = 0
 for i, t in pairs(tests) do
-    local cmd = "./bin/mossy ex/" .. t .. ".ms bin/tmp/" .. t
-    local ok = os.execute(cmd)
+    local cmd = "./bin/mossy ex/" .. t .. ".ms " .. tmp .. t
+    local ok = exec(cmd)
     if not ok then
         print(t .. " failed on compilation")
         fails = fails + 1 
     else
         if #results[i] <= 1 then
-            ok = os.execute("./bin/tmp/" .. t .. " > " .. t .. ".log")
+            ok = exec(tmp .. t .. " > " .. tmp .. t .. ".log")
             if not ok then os.exit(1) end
         
-            local log = io.open(t .. ".log") or os.exit(1)
+            local log = io.open(tmp .. t .. ".log") or os.exit(1)
             local res = log:read("a")
             log:close()
         
@@ -40,13 +48,13 @@ for i, t in pairs(tests) do
                 fails = fails + 1
             end
         else
-            local input = io.open(t ..".input", "w")
+            local input = io.open(tmp .. t ..".input", "w")
             input:write(results[i][1])
             input:close()
-            ok = os.execute("(./bin/tmp/" .. t .. " < " .. t .. ".input) > " .. t .. ".log")
+            ok = exec("(" .. tmp .. t .. " < " .. tmp .. t .. ".input) > " .. tmp .. t .. ".log")
             if not ok then os.exit(1) end
 
-            local log = io.open(t .. ".log") or os.exit(1)
+            local log = io.open(tmp .. t .. ".log") or os.exit(1)
             local res = log:read("a")
             if res ~= results[i][2] then
                 res = res:gsub("\n", "\\n")
@@ -54,9 +62,7 @@ for i, t in pairs(tests) do
                 print(t .. "'s ouput is incorrect:\n\tgot: \"" .. res .. "\"\n\texpected: \"" .. expct .. "\"")
                 fails = fails + 1
             end
-            os.remove(t .. ".input")
         end
-        os.remove(t .. ".log")
     end
     io.write("\n")
 end
