@@ -103,5 +103,8 @@ moss is written in the [hare programming language](https://hare-lang.org), uses 
 
 optionally, you can run `test.sh` to run the moss compiler tests. also, if you have lua 5.3, you can run an automated test unit for all milestones with `test.ms.lua`.
 
+## IMPORTANT
+moss is not being stalled globally in your machine, which means it can't look up for its files in a fixed directory; when running the compiler, make sure to run it on the root path of the repository, not from any inner or outer path.
+
 # learning moss
 you can learn moss in a course of one to three days. [this](doc/tut.md) is the tutorial.
