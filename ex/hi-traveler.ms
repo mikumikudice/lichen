@@ -1,0 +1,13 @@
+use fmt;
+use MEM;
+
+pub main = fn() : unit {
+    fmt::put("what's your name?\n > ");
+    name = fmt::get(256);
+
+    fmt::put("hello, traveller ");
+    fmt::put(name);
+    fmt::putl("!");
+
+    MEM::free(name);
+};

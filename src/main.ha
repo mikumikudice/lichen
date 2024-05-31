@@ -55,5 +55,17 @@ export fn main() void = {
             if(lib != "lib/") yield os::args[3];
             yield os::args[2];
         };
-    build(src, outf, lib)!;
+    let mods = []: []*module;
+    let glob = scope {
+        over = void,
+        defs = [],
+        funs = [],
+    };
+    let ctxt = context {
+        scp = &glob,
+        uses = &mods,
+        libpath = lib,
+        nomain = false,
+    };
+    build(src, outf, &ctxt)!;
 };

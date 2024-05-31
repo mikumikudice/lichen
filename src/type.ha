@@ -19,6 +19,7 @@ type UNDEFNS = !(void | unimsg);
 type MISMTCH = !(void | unimsg);
 type CANT_DO = !(void | unimsg);
 type IDTCDUP = !(void | bi_msg);
+type MODCDUP = !(void | bi_msg);
 type NOTCALL = !(void | unimsg);
 type GENERIC = !(void | unimsg);
 type GENTODO = !(void | unimsg);
@@ -32,6 +33,7 @@ type CMP_ERR = !
     | MISMTCH
     | CANT_DO
     | IDTCDUP
+    | MODCDUP
     | NOTCALL
     | GENERIC
     | GENTODO
@@ -153,6 +155,13 @@ type scope = struct {
     defs : []*nmsp,
     funs : []*func,
 };
+type context = struct {
+    scp: *scope,
+    uses : *[]*module,
+    libpath: str,
+    nomain: bool,
+};
+
 type tkind = enum {
     PRIMITIVE,
     COMPOSITE,
@@ -174,4 +183,5 @@ type module = struct {
     name : str,
     funs : []*func,
     defs : []*nmsp,
+    addp : (size, size),
 };

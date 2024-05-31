@@ -11,35 +11,29 @@ use strlib;
 const fix_entry = "export function $_start(){\n@start\n    call $main()\n    hlt\n}\n";
 
 let also_link = []: []str;
+let cmpd_mods = []: []str;
 
-fn build(src: str, dest: str, libpath: str, scpref: (void | *scope) = void, silent: bool = false) (void | CMP_ERR) = {
-    let global = scope {
-        over = void,
-        defs = [],
-        funs = [],
-    };
-    const ismod = !(scpref is void);
-    let scp =
-        if(ismod){
-            yield scpref: *scope;
-        } else {
-            yield &global;
-        };
+fn build(src: str, dest: str, ctxt: *context, silent: bool = false) (void | CMP_ERR) = {
     const path =
-        if(strlib::endswith(libpath, "/")){
-            yield libpath;
+        if(strlib::endswith(ctxt.libpath, "/")){
+            yield ctxt.libpath;
         } else {
-            yield strings::concat(libpath, "/");
+            yield strings::concat(ctxt.libpath, "/");
         };
+    if(strlib::findl(cmpd_mods, src) is size && ctxt.nomain){
+        return;
+    } else {
+        append(cmpd_mods, src);
+    };
     const qbe_ir =
-        match(parse(src, scp, path, ismod)){
+        match(parse(src, ctxt)){
         case let e: CMP_ERR =>
-            if(!ismod) cmperr(e);
+            if(!ctxt.nomain) cmperr(e);
             return e;
         case let s: (str, kwd) => yield s.0;
         };
     const code =
-        if(!ismod){
+        if(!ctxt.nomain){
             yield fmt::asprintf("# moss {}\n{}{}", version, fix_entry, qbe_ir);
         } else {
             yield fmt::asprintf("# moss {}\n{}", version, qbe_ir);
@@ -65,7 +59,7 @@ fn build(src: str, dest: str, libpath: str, scpref: (void | *scope) = void, sile
 
     runc(silent, "qbe", "-o", bin_src, qbe_out);
     runc(silent, "as" , "-o", bin_out, bin_src);
-    if(ismod){
+    if(ctxt.nomain){
         append(also_link, bin_out);
         fmt::printfln(col("successfully compiled {}", cmd::GRN), src)!;
         return;
@@ -171,7 +165,13 @@ fn errstr(e: CMP_ERR) (str, (*file | void), (str | void)) = {
 
     case let uni: IDTCDUP =>
         const err = uni as bi_msg;
-        const msg = fmt::asprintf("the identifier {} is already in use. it was previously defined at {}",
+        const msg = fmt::asprintf("the identifier \"{}\" is already in use. it was previously defined at {}",
+            col(err.lft, cmd::BLU), col(err.rgt, cmd::BLU));
+        return (msg, err.ptr, err.tip);
+
+    case let uni: MODCDUP =>
+        const err = uni as bi_msg;
+        const msg = fmt::asprintf("the module \"{}\" was already imported. it was previously required at {}",
             col(err.lft, cmd::BLU), col(err.rgt, cmd::BLU));
         return (msg, err.ptr, err.tip);
 
