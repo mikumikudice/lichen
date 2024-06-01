@@ -40,9 +40,9 @@ fn todo(f: *file, msg: str) (void | CMP_ERR) = {
 // returns the default value for each primitive type
 fn getdefval(vtp: kwd) str = {
     switch(vtp){
-    case kwd::RATIO__T =>
-        return "0"; // TODO
-    case kwd::STRING_T, kwd::ARRAY__T =>
+    case kwd::STRING_T =>
+        return "$empty.str";
+    case kwd::ARRAY__T =>
         return "$empty.arr";
     case kwd::UNITTYPE =>
         return "$t.unt";
@@ -137,7 +137,7 @@ fn get_t_tag(vtp: kwd) str = {
 let datasec = "";
 let str_lit = []: []str;
 fn pushstr(l: str) str = {
-    //if(len(l) == 0) return "$empty.arr";
+    if(len(l) == 0) return "$empty.str";
     const max = len(str_lit);
     for(let i = 0z; i < max; i += 1){
         if(l == str_lit[i]){
@@ -1090,6 +1090,22 @@ fn parse_fcall(fun: *func, f: *file, ctxt: *context, refs: *[]idref) ((str, str)
     const max = len(f.src);
     for(f.ptr < max){
         next = nxttk(f, true)?;
+        if(cmp_tok(next, opr::COMPLETE)){
+            for(argc < argmax; argc += 1){
+                // TODO: default values for function parameters
+                if(argc == 0){
+                    out = fmt::asprintf("{}{} {}", out,
+                        get_qbe_t(fun.param[argc], 1), getdefval(fun.param[argc]));
+                } else {
+                    out = fmt::asprintf("{}, {} {}", out,
+                        get_qbe_t(fun.param[argc], 1), getdefval(fun.param[argc]));
+                };
+            };
+            next = nxttk(f)?;
+            expct(cmp_tok(next, sym::CLOSEPAR), next, f, void: GENERIC, "too many parameters on function call",
+                fmt::asprintf("the function \"{}\" takes {} arguments", fun.fname, argmax))?;
+            break;
+        };
         setptr(f, true);
         if(cmp_tok(next, sym::CLOSEPAR) || next is eol) break;
         if(cmp_tok(next, sym::SYMCOMMA)) nxttk(f)!;
@@ -1111,16 +1127,6 @@ fn parse_fcall(fun: *func, f: *file, ctxt: *context, refs: *[]idref) ((str, str)
             expct(cmp_tok(next, sym::CLOSEPAR), next, f, void: GENERIC, "too many parameters on function call",
                 fmt::asprintf("the function \"{}\" takes {} arguments", fun.fname, argmax))?;
             break;
-        };
-    };
-    for(argc < argmax; argc += 1){
-        // TODO: default values for function parameters
-        if(argc == 0){
-            out = fmt::asprintf("{}{} {}", out,
-                get_qbe_t(fun.param[argc], 1), getdefval(fun.param[argc]));
-        } else {
-            out = fmt::asprintf("{}, {} {}", out,
-                get_qbe_t(fun.param[argc], 1), getdefval(fun.param[argc]));
         };
     };
     return (hdr, strings::concat(out, ")"));

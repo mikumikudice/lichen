@@ -5,9 +5,12 @@ segment .rod
     
     t.unt dd 0xcafe00
 
+    empty.str:
+        dq 8
+        db 0
     empty.arr:
-        dd 0
-        dd 0
+        dq 16
+        dq 0
         db 0
 segment .text
 global stdin
@@ -16,6 +19,7 @@ global stderr
 
 global t.unt
 
+global empty.str
 global empty.arr
 
 global read
