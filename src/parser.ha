@@ -1085,7 +1085,7 @@ fn parse_fcall(fun: *func, f: *file, ctxt: *context, refs: *[]idref) ((str, str)
     if(argmax == 0){
         next = nxttk(f)?;
         expct(cmp_tok(next, sym::CLOSEPAR), next, f, void: GENERIC, "too many parameters on function call",
-            fmt::asprintf("the function \"{}\" takes {} arguments", fun.fname, argmax))?;
+            fmt::asprintf("the function \"{}\" takes {}", fun.fname, plural("{} argument", argmax)))?;
     };
     const max = len(f.src);
     for(f.ptr < max){
@@ -1102,14 +1102,23 @@ fn parse_fcall(fun: *func, f: *file, ctxt: *context, refs: *[]idref) ((str, str)
                 };
             };
             next = nxttk(f)?;
-            expct(cmp_tok(next, sym::CLOSEPAR), next, f, void: GENERIC, "too many parameters on function call",
-                fmt::asprintf("the function \"{}\" takes {} arguments", fun.fname, argmax))?;
+            expct(cmp_tok(next, sym::CLOSEPAR), next, f, void: GENERIC, "too many arguments on function call",
+                fmt::asprintf("the function \"{}\" takes {}", fun.fname, plural("{} argument", argmax)))?;
             break;
         };
         setptr(f, true);
-        if(cmp_tok(next, sym::CLOSEPAR) || next is eol) break;
+        if(cmp_tok(next, sym::CLOSEPAR) || next is eol){
+            if(argc != argmax){
+                return unimsg {
+                    msg = "too few arguments on function call",
+                    tip = fmt::asprintf("the function \"{}\" takes {}.\ntry using the `...` operator to fill on default values",
+                        fun.fname, plural("{} argument", argmax)),
+                    ptr = f,
+                } : GENERIC;
+            };
+            break;
+        };
         if(cmp_tok(next, sym::SYMCOMMA)) nxttk(f)!;
-
         const (exp, tp, arg) = parse_exp(f, ctxt, refs, limit, (argc + 1, fun.param[argc]))?;
         expct(is_subt(tp, fun.param[argc]), next, f, void: MISMTCH,
             fmt::asprintf("function parameter {} and argument types", argc + 1),
@@ -1124,8 +1133,8 @@ fn parse_fcall(fun: *func, f: *file, ctxt: *context, refs: *[]idref) ((str, str)
         argc += 1;
         if(argc == argmax){
             next = nxttk(f)?;
-            expct(cmp_tok(next, sym::CLOSEPAR), next, f, void: GENERIC, "too many parameters on function call",
-                fmt::asprintf("the function \"{}\" takes {} arguments", fun.fname, argmax))?;
+            expct(cmp_tok(next, sym::CLOSEPAR), next, f, void: GENERIC, "too many arguments on function call",
+                fmt::asprintf("the function \"{}\" takes {}", fun.fname, plural("{} argument", argmax)))?;
             break;
         };
     };
@@ -1710,6 +1719,14 @@ fn is_limit(tkn: tok, lmt: []tok) bool = {
         };
     };
     return false;
+};
+
+fn plural(pat: str, cnt: u64) str = {
+    if(cnt == 1){
+        return fmt::asprintf(pat, cnt);
+    } else {
+        return strings::concat(fmt::asprintf(pat, cnt), "s");
+    };
 };
 
 // TODO: linear types
