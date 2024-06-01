@@ -177,6 +177,12 @@ fn errstr(e: CMP_ERR) (str, (*file | void), (str | void)) = {
             col(err.lft, cmd::BLU), col(err.rgt, cmd::BLU));
         return (msg, err.ptr, err.tip);
 
+    case let uni: NOTPUBL =>
+        const err = uni as bi_msg;
+        const msg = fmt::asprintf("the field \"{}\" from the {} module is not public and hence not accessible",
+            col(err.lft, cmd::BLU), col(err.rgt, cmd::BLU));
+        return (msg, err.ptr, err.tip);
+
     case let uni: NOTCALL =>
         const err = uni as unimsg;
         const msg = fmt::asprintf("the namespace \"{}\" is not callable", err.msg);

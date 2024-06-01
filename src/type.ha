@@ -20,6 +20,7 @@ type MISMTCH = !(void | unimsg);
 type CANT_DO = !(void | unimsg);
 type IDTCDUP = !(void | bi_msg);
 type MODCDUP = !(void | bi_msg);
+type NOTPUBL = !(void | bi_msg);
 type NOTCALL = !(void | unimsg);
 type GENERIC = !(void | unimsg);
 type GENTODO = !(void | unimsg);
@@ -34,6 +35,7 @@ type CMP_ERR = !
     | CANT_DO
     | IDTCDUP
     | MODCDUP
+    | NOTPUBL
     | NOTCALL
     | GENERIC
     | GENTODO
@@ -129,6 +131,7 @@ type func = struct {
     retrn: kwd,
     ret_n: str,
     orign: (str | kernel),
+    public: bool,
     lin: size,
     cln: size,
 };
@@ -141,6 +144,7 @@ type nmsp = struct {
     globl: bool,
     orign: (str | kernel),
     value: tok,
+    public: bool,
     lin: size,
     cln: size,
 };

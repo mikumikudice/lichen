@@ -220,7 +220,7 @@ fn get_idpos(id: (*nmsp | *func)) str = {
     };
 };
 
-fn push_idt(nm: idt, mut: bool, tp: kwd, f: *file, ctxt: *context) (*nmsp | IDTCDUP) = {
+fn push_idt(nm: idt, mut: bool, pub: bool, tp: kwd, f: *file, ctxt: *context) (*nmsp | IDTCDUP) = {
     if(stacktrace)
         fmt::printfln("pushing identifier \"{}\" at {}", nm, gen_pos(f))!;
 
@@ -249,6 +249,7 @@ fn push_idt(nm: idt, mut: bool, tp: kwd, f: *file, ctxt: *context) (*nmsp | IDTC
             globl = false,
             orign = f.name,
             value = eol,
+            public = pub,
             lin = f.lin,
             cln = f.cln,
         });
@@ -284,7 +285,7 @@ fn get_idt(nm: idt, f: *file, scp: *scope, ctxt: *context) (*nmsp | *func | CMP_
     }: UNDEFNS;
 };
 
-fn push_glob(id: idt, f: *file, ctxt: *context) (str | CMP_ERR) = {
+fn push_glob(id: idt, pub: bool, f: *file, ctxt: *context) (str | CMP_ERR) = {
     if(!(ctxt.scp.over is void)){
         return unimsg {
             msg = "define mutable variables at global scope",
@@ -319,6 +320,7 @@ fn push_glob(id: idt, f: *file, ctxt: *context) (str | CMP_ERR) = {
                 globl = true,
                 orign = f.name,
                 value = res,
+                public = pub,
                 lin = dup.lin,
                 cln = dup.cln,
             });
@@ -363,6 +365,7 @@ fn push_glob(id: idt, f: *file, ctxt: *context) (str | CMP_ERR) = {
                         param = false,
                         globl = true,
                         orign = f.name,
+                        public = pub,
                         value = res,
                         lin = dup.lin,
                         cln = dup.cln,
@@ -603,6 +606,7 @@ fn push_glob(id: idt, f: *file, ctxt: *context) (str | CMP_ERR) = {
         globl = true,
         orign = f.name,
         value = res,
+        public = pub,
         lin = dup.lin,
         cln = dup.cln,
     });
@@ -617,7 +621,7 @@ fn push_glob(id: idt, f: *file, ctxt: *context) (str | CMP_ERR) = {
     };
 };
 
-fn push_fun(name: idt, f: *file, parm_l: []kwd, parm_n : []idt, retrn: kwd, ctxt: *context) (*func | CMP_ERR) = {
+fn push_fun(name: idt, pub: bool, f: *file, parm_l: []kwd, parm_n : []idt, retrn: kwd, ctxt: *context) (*func | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("pushing function \"{}\" at {}", name, gen_pos(f))!;
     assert(ctxt.scp.over is void);
@@ -646,6 +650,7 @@ fn push_fun(name: idt, f: *file, parm_l: []kwd, parm_n : []idt, retrn: kwd, ctxt
             retrn = retrn,
             ret_n = "",
             orign = f.name,
+            public = pub,
             lin = f.lin,
             cln = f.cln,
         });
@@ -701,7 +706,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 next = nxttk(f, true)?;
                 if(is_asg_opr(next)){
                     setptr(f, true);
-                    const asg = parse_asg(f, i, next: opr, ctxt)?;
+                    const asg = parse_asg(f, i, true, next: opr, ctxt)?;
                     out = fmt::asprintf("{}export {}", out, asg);
                 } else if(cmp_tok(next, opr::CASTTOTP)){
                     todo(f, "typedefs")?;
@@ -778,7 +783,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 const i = expct(next is idt,
                     next, f, void: EXPECTD, "variable definition")?: idt;
 
-                const asg = parse_asg(f, i, next: opr, ctxt, void, true)?;
+                const asg = parse_asg(f, i, false, next: opr, ctxt, void, true)?;
                 out = fmt::asprintf("{}{}", out, asg);
             case kwd::USE__MOD =>
                 if(stacktrace)
@@ -891,7 +896,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 let refs = []: []idref;
                 match(get_idt(i, f, ctxt.scp, ctxt)){
                 case =>
-                    const asg = parse_asg(f, i, next: opr, ctxt)?;
+                    const asg = parse_asg(f, i, false, next: opr, ctxt)?;
                     out = fmt::asprintf("{}{}", out, asg);
                 case let nm: *nmsp =>
                     // these fields have already been parsed
@@ -900,7 +905,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                         jmpto(eol, f)?;
                         continue;
                     };
-                    const asg = parse_asg(f, i, next: opr, ctxt, nm)?;
+                    const asg = parse_asg(f, i, false, next: opr, ctxt, nm)?;
                     out = fmt::asprintf("{}{}", out, asg);
                 case let fun: *func =>
                     if(fun.orign is kernel){
@@ -912,7 +917,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                     next = nxttk(f, true)?;
                     if(is_asg_opr(next)){
                         setptr(f, true);
-                        const asg = parse_asg(f, i, next: opr, ctxt, fun)?;
+                        const asg = parse_asg(f, i, false, next: opr, ctxt, fun)?;
                         out = fmt::asprintf("{}{}", out, asg);
                     } else {
                         setptr(f, true);
@@ -962,6 +967,7 @@ fn parse_globl(_f: *file, ctxt: *context) (str | CMP_ERR) = {
     const max = len(f.src);
     
     let defs = "";
+    let new_pub = false;
     for(f.ptr < max){
         let next = nxttk(f)?;
         if(next is eol) continue;
@@ -974,11 +980,12 @@ fn parse_globl(_f: *file, ctxt: *context) (str | CMP_ERR) = {
             };
             next = nxttk(f, true)?;
             if(cmp_tok(next, kwd::FUNCTION)){
-                parse_fun(f, i, ctxt, true)?;
+                parse_fun(f, i, new_pub, ctxt, true)?;
             // TODO: expect for unary operators
             } else if(next is num || next is txt || next is idt){
                 setptr(f, true);
-                const gdef = push_glob(i, f, ctxt)?;
+                const gdef = push_glob(i, new_pub, f, ctxt)?;
+                new_pub = false;
                 defs = strings::concat(defs, gdef);
             } else {
                 jmpto(eol, f)?;
@@ -988,6 +995,7 @@ fn parse_globl(_f: *file, ctxt: *context) (str | CMP_ERR) = {
             // TODO: parse typedefs
             switch(k){
             case kwd::PUBFIELD =>
+                new_pub = true;
                 continue;
             case kwd::DMUTABLE =>
                 next = nxttk(f)?;
@@ -1043,14 +1051,26 @@ fn parse_field(mod: idt, f: *file, ctxt: *context) (*nmsp | *func | CMP_ERR) = {
         for(let i = 0z; i < max; i += 1){
             const fun = m.funs[i];
             if(field == fun.fname){
-                return fun;
+                if(fun.public) return fun;
+                return bi_msg {
+                    lft = field,
+                    rgt = mod: str,
+                    tip = void, // TODO: add a tip when the module is not from stdlib
+                    ptr = f,
+                }: NOTPUBL;
             };
         };
         let max = len(m.defs);
         for(let i = 0z; i < max; i += 1){
-            const var = m.defs[i];
-            if(field: str == var.ident){
-                return var;
+            const nm = m.defs[i];
+            if(field: str == nm.ident){
+                if(nm.public) return nm;
+                return bi_msg {
+                    lft = field,
+                    rgt = mod: str,
+                    tip = void, // TODO: add a tip when the module is not from stdlib
+                    ptr = f,
+                }: NOTPUBL;
             };
         };
         return unimsg {
@@ -1141,7 +1161,7 @@ fn parse_fcall(fun: *func, f: *file, ctxt: *context, refs: *[]idref) ((str, str)
     return (hdr, strings::concat(out, ")"));
 };
 
-fn parse_asg(f: *file, dest: idt, oper: opr, ctxt: *context, defn: (*nmsp | *func | void) = void, mutbl: bool = false) (str | CMP_ERR) = {
+fn parse_asg(f: *file, dest: idt, pub: bool, oper: opr, ctxt: *context, defn: (*nmsp | *func | void) = void, mutbl: bool = false) (str | CMP_ERR) = {
     if(stacktrace){
         if(defn is void){
             fmt::printfln("parsing assignment to \"{}\" at {}", dest, gen_pos(f))!;
@@ -1178,7 +1198,7 @@ fn parse_asg(f: *file, dest: idt, oper: opr, ctxt: *context, defn: (*nmsp | *fun
         const tp = expct(is_type(next), next, f, void: EXPECTD,
             "valid type notation")?: kwd;
 
-        push_idt(dest, mutbl, tp, f, ctxt)?;
+        push_idt(dest, mutbl, pub, tp, f, ctxt)?;
         out = fmt::asprintf("    %{0} =l alloc4 {1}\n    store{2} {3}, %{0}\n",
             dest: str, get_t_len(tp), get_qbe_t(tp), getdefval(tp));
 
@@ -1193,7 +1213,7 @@ fn parse_asg(f: *file, dest: idt, oper: opr, ctxt: *context, defn: (*nmsp | *fun
                     ptr = dup,
                 }: CANT_DO;
             };
-            return parse_fun(f, dest, ctxt)?;
+            return parse_fun(f, dest, pub, ctxt)?;
         } else {
             setptr(f, true);
         };
@@ -1206,7 +1226,7 @@ fn parse_asg(f: *file, dest: idt, oper: opr, ctxt: *context, defn: (*nmsp | *fun
                 "untyped definition of namespace")?;
 
             store_t = tp;
-            const nm = push_idt(dest, mutbl, tp, f, ctxt)?;
+            const nm = push_idt(dest, mutbl, pub, tp, f, ctxt)?;
             nm.asgnd = true;
             out = fmt::asprintf("    %{} =l alloc4 {}\n", dest: str, get_t_len(tp));
         } else {
@@ -1562,7 +1582,7 @@ fn parse_opr(f: *file, oper: opr, expr_t: kwd, ctxt: *context, refs: *[]idref) (
     };
 };
 
-fn parse_fun(f: *file, dest: idt, ctxt: *context, skip: bool = false) (str | CMP_ERR) = {
+fn parse_fun(f: *file, dest: idt, pub: bool, ctxt: *context, skip: bool = false) (str | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("parsing function \"{}\" at {}", dest: str, gen_pos(f))!;
 
@@ -1605,6 +1625,7 @@ fn parse_fun(f: *file, dest: idt, ctxt: *context, skip: bool = false) (str | CMP
                 globl = false,
                 orign = f.name,
                 value = eol,
+                public = false,
                 lin = f.lin,
                 cln = cln,
             }));
@@ -1626,7 +1647,7 @@ fn parse_fun(f: *file, dest: idt, ctxt: *context, skip: bool = false) (str | CMP
         "valid function return type")?: kwd;
     
     if(skip){
-        push_fun(dest, dup, params, parm_n, ret, ctxt)?;
+        push_fun(dest, pub, dup, params, parm_n, ret, ctxt)?;
         jmpto(sym::OPN_CRLY, f)?;
         mtchs(sym::OPN_CRLY, f, false)?;
         return "";
