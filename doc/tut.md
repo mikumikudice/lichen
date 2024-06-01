@@ -29,8 +29,8 @@ this is a list of the 32 tokens used as keywords for the language and as such ca
 | ------------- | --------------------- | ------------------ | ------------- |
 | `use`         | `u8, u16, u32, u64`   | `if, else, match`  | `mut`         |
 | `pub`         | `i8, i16, i32, i64`   | `for, next, break` | `test`        |
-|               | `rat, str, any, raw`  | `yield, return`    | `is, and, or` |
-|               | `unit, fn, uni, rec`  | `defer`            |               |
+|               | `rat, str, raw, unit` | `yield, return`    | `is, and, or` |
+|               | `fn, rec, uni, enum`  | `defer`            |               |
 
 # types and variables
 these are all primitive and composite types in moss.
@@ -38,16 +38,17 @@ these are all primitive and composite types in moss.
 u8, u16, u32, u64       // unsigned integers
 i8, i16, i32, i64       // signed integers
 rat                     // ratios
+fn                      // functions
 rec                     // records
 uni                     // tagged unions
+enum                    // enumerators
 str                     // string types
-any                     // generic tagged unions for any type
 raw                     // untyped 64-bit raw data
 unit                    // "nothing" type
 ```
 
 ## numbers and ratios
-numbers can be represented in decimal or hexadecimal, ocatal and binary using the prefix `0x`, `0o` and `0b`, respectively. numbers also can use digit separators (`_`) at any place. moss also doesn't support floats by default, but instead ratios. that means your divisions results in an integer part and a ratio. you can see more about ratios in [its section](#ratios). these all are valid numerical values:
+numbers can be represented in decimal or hexadecimal, octal and binary using the prefix `0x`, `0o` and `0b`, respectively. numbers also can use digit separators (`_`) at any place. moss also doesn't support floats by default, but instead ratios. that means your divisions results in an integer part and a ratio. you can see more about ratios in [its section](#ratios). these all are valid numerical values:
 ```rust
 123_456 : u64;      // 123456
 99 * 99 : i64;      // 9801
@@ -59,10 +60,10 @@ numbers can be represented in decimal or hexadecimal, ocatal and binary using th
 ```
 * note that in the first example, it's shown how moss allows digit separators.
 
-numerical literals have no concrete type and always must be casted to some type. casting uneven divisions to interger types results in rounding down the number (i.e. resulting only in the integer part of the division) and signed values to unsigned results in the absolute type. casting a bigger literal e.g. 2048 to an u8 results in a compilation error.
+numerical literals have no concrete type and always must be casted to some type. casting uneven divisions to integer types results in rounding down the number (i.e. resulting only in the integer part of the division) and signed values to unsigned results in the absolute type. casting a bigger literal e.g. 2048 to an u8 results in a compilation error.
 
 ## strings
-strings in moss are an immutable array of bytes, not null terminated, in contrast with C-like `char*` strings, and are UTF-8 encoded. as immutable data, you can't change their bytesm but you can access them individually.
+strings in moss are an immutable array of bytes, not null terminated, in contrast with C-like `char*` strings, and are UTF-8 encoded. as immutable data, you can't change their bytes, but you can access them individually.
 ```rust
 foo = "mornin'";            // immutable value and namespace
 mut bar = " sailor!\n";     // immutable value, but mutable namespace
@@ -80,7 +81,7 @@ and these are the only supported escape-characters in moss.
 - `\\` backslash
 - `\'` single quote
 - `\"` double quote
-* note that there are no backwards compatibility with legacy stuff like vertical tab. formated printing have its own special set of escape chars (that also includes these listed above).
+* note that there are no backwards compatibility with legacy stuff like vertical tab. formatted printing have its own special set of escape chars (that also includes these listed above).
 
 ## unit type
 in constrast with the already known type `void` from other languages, which caries no value and usually is found as a return type for functions that return nothing, the unit type actually has one and only one value, `_`, which is implicitly returned by all functions without a return statement or named return.
@@ -90,11 +91,26 @@ nothing = fn() : unit { };
 test nothing() == _; // succeeds
 ```
 
-## any type
-TODO
-
 ## raw type
-TODO
+raw type is a typeless value that can't be operated on. you can only pass it around or cast to any type, since it's typeless. you should really avoid using this type once it has minimal safety checking. it may be used only and ideally only for kernel function calls i.e. low-level operations. most of its usage relates to pointers, once moss has no semantic concept of references i.e. no arbitrary reference to mutable data across function stack-frames.
+
+here's an example from the standard library of a usage case of the raw type:
+```rust
+use MEM;
+
+// receives an union of a any-record or raw type array
+// and returns a heap-allocated copy of the given data
+// value. returns !u32 in case of allocation failure.
+alloc = fn(data : rec | []raw) : @raw ! u32 \ MEM {
+    res = MEM::alloc(data.len);
+    if res < 0 {
+        return res : !u32;
+    } else {
+        MEM::copy(rs, data, len);
+        return res;
+    };
+};
+```
 
 # declaration, definition assignment and type casting
 ```rust
@@ -119,7 +135,7 @@ c = 5 * (42 + 3): u16;  // no operator precedence, use parenthesis to enclose an
 * note the casting affects the whole expression. if you need to cast only one value, do `(foo : type)`
 
 # records
-also called "structs" by other languages, these are collections of data whithin fields of a single data structure.
+also called "structs" by other languages, these are collections of data within fields of a single data structure.
 ```rust
 dog : rec {
     age   : u8,
@@ -127,6 +143,71 @@ dog : rec {
     owner : str,
 };
 ```
+
+# unions
+(tagged) unions are a special composite type that caries a data of any type and a tag indicating its type. you can't operate on them directly, but you can match against the possible values or directly cast them to one of the possible values. unions can also carry a single error type which is used on [error handling](#unions-error-handling-and-pattern-matching). unions can't be recursive, so the spread operator (`...`) must be used to unpack unions.
+```rust
+signed : uni i8 | i16 | i32 | i64; 
+unsigned : uni u8 | u16 | u32 | u64;
+primitive : uni signed... | unsigned ... | str | raw | unit;
+
+x = 64 : u64 : primitive;
+y = x  : u64;
+
+match x {
+    u8  => fmt::putl("unsigned 8-bit integer (byte)")!;
+    u16 => fmt::putl("unsigned 16-bit integer (half word)")!;
+    u32 => fmt::putl("unsigned 32-bit integer (word)")!;
+    u64 => fmt::putl("unsigned 64-bit integer (long word)")!;
+    ... =>
+        fmt::putl("something else!")!;
+};
+```
+
+# enums
+enums in moss are a middle-ground between C-like enums and the ones found in languages like rust. it can't accept types, but they can be of any type:
+```rust
+weekday : enum u32 {
+    monday    = 1,          // from now on, they'll be incremented by 1
+    tuesday, wednesday,
+    thursday, friday,
+    saturday, sunday,
+};
+
+bit_mask : enum u8 * 2 {
+    foo = 0, bar = 1,       // from now on, the next value will be the
+    egg, fiz, buz, bub,     // previous one multiplied by 2 
+};
+
+names : enum str {
+    bob = "bob",
+    ray = "ray",
+    kau = "kau",
+    mia = "mia",
+};
+```
+any instance of an enum can only be assigned by a variation of the enum, but it can be compared with primitives normally
+```rust
+person = names.bob;
+if person == "mia" or person == names.kau {
+    fmt::putfl("hi, {s}!", person)!;
+};
+```
+you also can, indeed, mix types, but then they'll be unions that must be matched-against:
+```rust
+token : enum str | unit {
+    tok_if = "if",
+    tok_for = "for",
+    not_tok = _,
+};
+
+tok = token.tok_if;
+match tok {
+    t : str => fmt::putfl("token {s}", t)!;
+    unit => fmt::putfl("not a token")!;
+};
+```
+* note you can't cast a type to a union variant, but you can cast a union to any compatible type variation.
 
 # control flow
 these are the control flow blocks that can be used in moss.
@@ -159,7 +240,7 @@ x = 4 : u32;
 match x {
     0     => fmt::putl("x is zero")!;
     1..10 => fmt::putl("x is under 10")!;
-    _    => fmt::putl("x is bigger or equal to 10")!; // `_` means any case
+    ...   => fmt::putl("x is bigger or equal to 10")!; // `...` means any case
 };
 ```
 * note that there's no need to use break in either of these uses.
@@ -171,13 +252,12 @@ match {                                                         // empty match s
     x == 'a'..'z' => fmt::putl("x is a lowercase rune")!;       // comparison can be used with ranges
     x == 'A'..'Z' => fmt::putl("x is a uppercase rune")!;
     x == '0'..'9' => fmt::putl("x is a numeral")!;
-    _ => {
+    ... =>
         if x == '.' {
             fmt::putl("x is a dot!")!;
         } else if x == ',' {
             fmt::putl("x is a comma!")!;
         };
-    };
 };
 ```
 
@@ -199,7 +279,7 @@ for r < 100 {
     };
 };
 
-num = [ 2, 3, 5, 7, 11, 13, 17, 23 ] : []u32;
+num = [ 2, 3, 5, 7, 11, 13, 17, 23 ] : [*]u32;
 for n .. num {
     fmt::putfl("{}", n)!;
 };
@@ -214,14 +294,14 @@ for c, r = 0 .. 127 : u32 {
 ```
 the previous example is the same as:
 ```rust
-for c = 0 .. 127 : u32 {
+for c = 0 .. 127 : u32 { 
     for r = 0 .. 127 : u32 {
         z = c + r;
     };
 };
 ```
 # truthy values and comparisons
-if moss, there are no first-class boolean types (althogh there's a bool type in the `types` module from the standard library), but the truthness of values on if/for blocks are not like C languages. for instance, empty strings and arrays, unit type and 0 are considered falsey, anything else is considered true. you can put any type on a if/for block for truth-checking, execpt for structures, once these are not semantically meaninful to be considered checkable.
+if moss, there are no first-class boolean types (although there's a bool type in the `types` module from the standard library), but the truthiness of values on if/for blocks are not like C languages. for instance, empty strings and arrays, unit type and 0 are considered falsy, anything else is considered true. you can put any type on a if/for block for truth-checking, except for structures, once these are not semantically meaningful to be considered checkable.
 
 when doing comparisons, you can check equality and inequality with any two types, but greater/lesser comparisons are only allowed between subtypes i.e. numerical types between numerical types, strings with strings, arrays with arrays. these last two are compared only using their length. in this case, lists, unions and structures are prohibited to be compared for the same reason of equality. in the specific case of lists, these have no size to be compared. see more on [their own topic](#lists).
 
@@ -248,11 +328,11 @@ use fmt;
 
 int : uni i32 ! u8;
 
-pub main = fn() : u32 \ fmt {
+pub main = fn() : unit \ fmt {
     mut res = myfn(7, 2);
 
     match res {
-        int => fmt::putfl("7 divided by 2 is {}", r: i32)!;
+        int => fmt::putfl("7 divided by 2 is {}", r: i32)?;
         nan => fmt::panic("error! division by zero");
     };
     res = myfn(6, 2)!;
@@ -261,7 +341,7 @@ pub main = fn() : u32 \ fmt {
 
 myfn = fn(n, d: i32) : int {
     if d == 0 {
-        return !0;
+        return 0: !u8;
     } else {
         return n / d;
     };
@@ -270,7 +350,7 @@ myfn = fn(n, d: i32) : int {
 * note that only one type can be the error case for an union.
 
 # named returns
-functions, just as it can have named parammeters, can have a named return value.
+functions, just as it can have named parameters, can have a named return value.
 ```rust
 myfn = fn(x, y: i64) r: i64 {
     r = x * x + y;
@@ -319,6 +399,14 @@ all_even = [0 .. 10; %2 == 0];              // all numbers from 0 up to 10 that 
 ```
 * note that in `all_even`, the `%2 == 0` is a rule for the filling. only n % 2 == 0 will be assigned (up to 10).
 
+## multi dimensional arrays
+in contrast with languages like C, moss truly implements multidimensional arrays by making arrays of arrays. the syntax is like that:
+```rust
+mut matrix = [ [0...]... ] : [16, 16]u32;
+matrix[3, 5] = 7;
+```
+* note that the syntax `foo[4][7]` is not allowed.
+
 # lists
 TODO
 
@@ -342,7 +430,7 @@ pub new_map = fn(ptr : @raw, vals : []raw, keys : []raw) : @hashmap ! u32 {
 pub get = fn(self : hashmap, key : raw) : raw | unit {
     match find_key(self, key) {
     k : u32 => return self.val[k];
-    _ => return _;
+    ... => return _;
     }
 };
 
@@ -352,7 +440,7 @@ pub set = fn(self : @hashmap, key : raw, val : raw) : @hashmap ! u32 {
         mut copy = self;
         key.vals[ik] = val;
         return copy;
-    _ => return !1;
+    ... => return !1;
     };
 };
 
@@ -385,11 +473,11 @@ pub write = fn(handle : u32, data : str) unit ! u32 \ IO { // impure function
 
 pub etos = fn(err : !u32) : str { // pure function
     match err {
-    01 => return "operation not permitted";
-    09 => return "bad file descriptor";
-    13 => return "permission denied";
-    17 => return "file exists";
-    _  => return "generic error exit code";
+    01  => return "operation not permitted";
+    09  => return "bad file descriptor";
+    13  => return "permission denied";
+    17  => return "file exists";
+    ... => return "generic error exit code";
     };
 };
 
@@ -400,23 +488,23 @@ pub main = fn() : unit \ io {
     res = io::write(io::stdout, "mornin' sailor!\n");
     match wrap(res) {
     e : str => fmt::panl(e);
-    _ => _;
+    ... => _;
     };
 };
 
 pub wrap = fn(status : unit ! u32) : unit | str {
     match status {
     err : !u32 => return io::etos(err); // etos is pure, no need for effect tags
-    _ => return _;
+    ... => return _;
     };
 };
 ```
-this code would not compile if any function that calls an impure function was not tagged as impure with the coresponding effect.
+this code would not compile if any function that calls an impure function was not tagged as impure with the corresponding effect.
 
 effects can be grouped together in-line using the `&` operator or hidden behind a local effect tag. for example, you can combine two module effects, `io` and `mem` doing `my_eff = io & mem`.
 
 # linear types
-a linear type is needed whenever you allocate memory or if you have to follow the pattern create-use-dispose. once created, a linear type must be used once, only once and at least once. "using" it is either copying it when assigning to another variable (and creating a new linear type), passing it to another function that accepts a linear objcet or returning it to the higher stack frame. once used, a linear object is consumed and cannot be used anymore.
+a linear type is needed whenever you allocate memory or if you have to follow the pattern create-use-dispose. once created, a linear type must be used once, only once and at least once. "using" it is either copying it when assigning to another variable (and creating a new linear type), passing it to another function that accepts a linear object or returning it to the higher stack frame. once used, a linear object is consumed and cannot be used anymore.
 
 when you pass it to a function that accepts a linear object, it cannot be returned, but it still must be either copied or passed to another function, so then it may be consumed. the following example explains it:
 ```rust
@@ -438,7 +526,7 @@ consume = fn(obj : @[]u32) : @[]u32 {
 
 pub main = fn() : unit \ mem {
     mut arr = mem::alloc([ 1, 2, 3, 5, 7 ], [6]u32)!; // alloc returns a new linear object
-    arr[5] = append(arr, 11); // not consuming it once append doen't accept a linear object
+    arr[5] = append(arr, 11); // not consuming it once append doesn't accept a linear object
     new_arr = consume(arr); // despite being the same allocated memory chunk, new_arr is a new instance of a linear object
 
     // from now on, you can't use `arr` anymore

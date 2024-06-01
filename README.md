@@ -1,4 +1,4 @@
-# a small, simple and consice language for delightful tiny jobs
+# a small, simple and concise language for delightful tiny jobs
 moss is a strongly typed, imperatively functional, AOT compiled programming language designed specifically to do things in a reliable and simple way.
 ## code example
 this is a demo code for printing a hello world (in a mossy way):
@@ -61,10 +61,13 @@ these are the current goals of this project:
             - [x] casting for function arguments
         - [ ] arrays
             - [ ] sugar syntax
+            - [ ] multidimensional arrays
+            - [ ] indexing of function returns
         - [ ] lists
         - [ ] ratios
         - [ ] records
-            - [] default values for record fields
+            - [ ] default values for record fields
+            - [ ] field access of function returns
         - [ ] unions
         - [ ] error tags
         - [ ] error assertion and bubble operator
@@ -85,10 +88,9 @@ these are the current goals of this project:
 - [ ] compile-time tests
 - [ ] improve helpfulness of error messages
 - [ ] code optimizations.
-    - [ ] compile-time constant values are optmized-out in the final code
+    - [ ] compile-time constant values are optimized-out in the final code
     - [ ] runtime constant values evaluated at compile time
 - [ ] core lib and kernels
-    - [ ] io
     - [ ] os
     - [ ] rt
     - [ ] fmt
