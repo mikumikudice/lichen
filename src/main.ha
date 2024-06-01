@@ -16,7 +16,7 @@ export fn main() void = {
         col("$ ", cmd::YEL), col(os::args[0], cmd::GRN),
         col(" [flags] <main file> [output file name]", cmd::BLU));
 
-    const flg = fmt::asprint(col("-l <lib path>", cmd::BLU));
+    const flg = fmt::asprint(col("-l<lib path>", cmd::BLU));
     const hlp = fmt::asprintf("get help on learning how to use moss in {}",
         col(tut, cmd::GRN));
 
