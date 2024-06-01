@@ -149,7 +149,7 @@ dog : rec {
 ```rust
 signed : uni i8 | i16 | i32 | i64; 
 unsigned : uni u8 | u16 | u32 | u64;
-primitive : uni signed... | unsigned ... | str | raw | unit;
+primitive : uni signed... | unsigned... | str | raw | unit;
 
 x = 64 : u64 : primitive;
 y = x  : u64;
@@ -168,7 +168,7 @@ match x {
 enums in moss are a middle-ground between C-like enums and the ones found in languages like rust. it can't accept types, but they can be of any type:
 ```rust
 weekday : enum u32 {
-    monday    = 1,          // from now on, they'll be incremented by 1
+    monday = 1,             // from now on, they'll be incremented by 1
     tuesday, wednesday,
     thursday, friday,
     saturday, sunday,
@@ -213,12 +213,12 @@ match tok {
 these are the control flow blocks that can be used in moss.
 ## if-else blocks
 ```rust
-if x = 5 * 5; x > 64 {
+if x = 5 * 5 : u32; x > 64 {
     fmt::putl("5^2 is bigger than 8^2")!;
 } else if x > 16 {
-    fmt::putfl("5 squared is greater than 4 squared by a factor of {} units", x - 16)!;
+    fmt::putfl("5 squared is greater than 4 squared by a factor of {u32} units", x - 16)!;
 } else {
-    fmt::putfl("5 squared is {}", x)!;
+    fmt::putfl("5 squared is {u32}", x)!;
 };
 ```
 * note that all blocks must have a body with brackets, but there's no parenthesis enclosing the evaluated portion.
@@ -266,7 +266,7 @@ for loops are the only available kind of loop in moss. they work as a normal for
 ```rust
 // no incrementing or decrementing, we use ranges
 for i = 2 .. 20 : u32 {
-    fmt::putfl("{}", i)!;
+    fmt::putfl("{u32}", i)!;
 };
 
 mut r = 0;
@@ -281,7 +281,7 @@ for r < 100 {
 
 num = [ 2, 3, 5, 7, 11, 13, 17, 23 ] : [*]u32;
 for n .. num {
-    fmt::putfl("{}", n)!;
+    fmt::putfl("{u32}", n)!;
 };
 ```
 * note that, contextually, `next` is more logical than `continue`, once you want skip to the next interaction, not continue on the current one.
@@ -332,8 +332,8 @@ pub main = fn() : unit \ fmt {
     mut res = myfn(7, 2);
 
     match res {
-        int => fmt::putfl("7 divided by 2 is {}", r: i32)?;
-        nan => fmt::panic("error! division by zero");
+        i32 => fmt::putfl("7 divided by 2 is {i32}", r: i32)?;
+        !u8 => fmt::panic("error! division by zero");
     };
     res = myfn(6, 2)!;
     return 0;
@@ -357,20 +357,25 @@ myfn = fn(x, y: i64) r: i64 {
     if r < 0 {
         r = y * y - x;
     };
-    return;
 };
 ```
+the example above dispenses the need for a return keyword because the return value is the value of the `r` variable. if no value is set, it returns its zero value.
 
 # default values
-you can set default attributions for your parameters when creating functions.
+you can set default attributions for your parameters when creating functions. when instantiating a record or calling a function with default values, you must explicitly use the `...` operator to fill up the "unassigned namespaces".
 ```rust
-div = fn(n, d = 1, 1: i64) : i64 { // both parameters will be set to 1 if no argument is given
-    return n / d;
+person : rec {
+    name = "bill",      // these will be the default values of these
+    age  = 18: u32      // fields when instantiating the `person` record
 };
 
-person : rec {
-    name = "bob",   // these will be the default values of these fields when instantiating the `person` record
-    age  = 18: u32
+pub main = fn() : unit {
+    bill = person { ... };
+    half = div(bill.age, ...);
+};
+
+div = fn(n = 1: i64, d = 2: i64) : i64 {
+    return n / d;
 };
 ```
 
@@ -395,9 +400,10 @@ you can also define ranges when assigning to arrays or even set default values t
 ```rust
 all_ones = [1...]: [32]u32;                 // fill all 32
 mytenths = [10...; 5]: [10]u32;             // every 5th number, starting from 10
-all_even = [0 .. 10; %2 == 0];              // all numbers from 0 up to 10 that are even
+all_even = [0 .. 10; %2 == 0] :[*]u32;      // all numbers from 0 up to 10 that are even
 ```
 * note that in `all_even`, the `%2 == 0` is a rule for the filling. only n % 2 == 0 will be assigned (up to 10).
+* also note the use of `[*]` to denote a dynamic length deduction.
 
 ## multi dimensional arrays
 in contrast with languages like C, moss truly implements multidimensional arrays by making arrays of arrays. the syntax is like that:
