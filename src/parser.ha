@@ -108,9 +108,8 @@ fn get_t_len(vtp: kwd) int = {
         return 2;
     case kwd::U32_TYPE, kwd::I32_TYPE =>
         return 4;
-    case kwd::U64_TYPE, kwd::I64_TYPE, kwd::RATIO__T,
-        kwd::STRING_T, kwd::ANY_TYPE, kwd::RAW_TYPE,
-        kwd::UNITTYPE, kwd::ARRAY__T, kwd::NUMBER_T  =>
+    case kwd::U64_TYPE, kwd::I64_TYPE, kwd::RATIO__T, kwd::STRING_T,
+        kwd::RAW_TYPE, kwd::UNITTYPE, kwd::ARRAY__T, kwd::NUMBER_T  =>
         return 8;
     case =>
         assert(false);
@@ -1715,7 +1714,6 @@ fn match_linear() bool = {
 // TODO: if/else & enhance operations' type checking
 fn operable(lft: kwd, rgt: kwd, oper: opr) bool = {
     if(lft == kwd::RAW_TYPE || rgt == kwd::RAW_TYPE) return false;
-    if(lft == kwd::ANY_TYPE || rgt == kwd::ANY_TYPE) return false;
     switch(oper){
     case opr::BOOL_LSS, opr::BOOL_GRT, opr::BOOL_LEQ, opr::BOOL_GEQ =>
         return (is_num(lft) && is_num(rgt)) ||
@@ -1781,7 +1779,7 @@ fn fix_sizes(dest: kwd, id: (*nmsp | *func)) (str, str) = {
 
 fn is_subt(tp: kwd, set: kwd) bool = {
     switch(set){
-    case kwd::RAW_TYPE, kwd::ANY_TYPE =>
+    case kwd::RAW_TYPE =>
         return true;
     case kwd::U8__TYPE, kwd::U16_TYPE, kwd::U32_TYPE,
         kwd::U64_TYPE =>
@@ -1835,8 +1833,8 @@ fn cast_to(s: kwd, d: kwd, t: tok, f: *file) (kwd | CMP_ERR) = {
 };
 
 fn castable(s: kwd, d: kwd) bool = {
-    if(s == kwd::NOT_KWRD || s == kwd::RAW_TYPE || s == kwd::ANY_TYPE) return true;
-    if(d == kwd::RAW_TYPE || d == kwd::ANY_TYPE) return true;
+    if(s == kwd::NOT_KWRD || s == kwd::RAW_TYPE) return true;
+    if(d == kwd::RAW_TYPE) return true;
     if((is_num(s) || is_num(s, true)) &&
         (is_num(d) || is_num(d, true))) return true;
     return s == d;

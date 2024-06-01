@@ -4,7 +4,7 @@ pub main = fn() : unit {
     rule =
         [ 0, 1, 1, 1
         , 0, 1, 1, 0
-        ];
+        ] : [4]u8;
     mut map = 0;
     mut old = 1 << 31;
     for g = 0 .. 31 {

@@ -72,7 +72,7 @@ these are the current goals of this project:
         - [ ] error tags
         - [ ] error assertion and bubble operator
         - [ ] linear types
-        - [ ] generics
+        - [ ] test statement
     - [ ] control flow
         - [x] if/else
         - [ ] for loop

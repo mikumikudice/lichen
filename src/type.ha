@@ -62,8 +62,8 @@ type kwd = enum int
     , EVAL_STT, RETURNTO, DEFERSTT
     , U8__TYPE, U16_TYPE, U32_TYPE, U64_TYPE    // 12
     , I8__TYPE, I16_TYPE, I32_TYPE, I64_TYPE    // 16
-    , RATIO__T, STRING_T, ANY_TYPE, RAW_TYPE    // 20
-    , UNITTYPE, RECORD_T, TUNION_T, FUNCTION    // 24
+    , RATIO__T, STRING_T, RAW_TYPE, UNITTYPE    // 20
+    , FUNCTION, RECORD_T, TUNION_T, ENUMTYPE    // 24
     , IS__OPER, DMUTABLE, AND_OPER, OR__OPER
     , KWRD_END, NOT_KWRD, NUMBER_T, ARRAY__T, LLIST__T, EFFECT_T // 32
 };
@@ -74,8 +74,8 @@ const kwdv =
     , "yield", "return", "defer"
     , "u8"   , "u16"  , "u32", "u64"
     , "i8"   , "i16"  , "i32", "i64"
-    , "rat"  , "str"  , "any", "raw"
-    , "unit" , "rec"  , "uni", "fn"
+    , "rat"  , "str"  , "raw", "unit"
+    , "fn"   , "rec"  , "uni", "enum"
     , "is"   , "mut"  , "and", "or"
     ];
 const stou = kwd::I8__TYPE - kwd::U8__TYPE;
