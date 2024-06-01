@@ -297,6 +297,27 @@ fn nxttk(f: *file, rev: bool = false) (tok | CMP_ERR) = {
     return eol;
 };
 
+// jumps `num` tokens and checks if it's is/in `tkns`.
+// returns it if yes, otherwise returns void.
+fn ahead(f: *file, num: size, tkns: (tok | []tok)) (tok | void | CMP_ERR) = {
+    const valid =
+        match(tkns){
+        case let one: tok =>
+            yield [one]: []tok;
+        case let lot: []tok =>
+            yield lot;
+        };
+    setptr(f);
+    let next = eol: tok;
+    for(let i = 0z; i < num; i += 1){
+        next = nxttk(f)?;
+    };
+    for(let tkn .. valid){
+        if(cmp_tok(next, tkn)) return next;
+    };
+    setptr(f, true);
+};
+
 // asserts `eql`, returning an error if false
 fn expct(eql: bool, tk: tok, f: *file, e: CMP_ERR, msg: str, tip: (str | void) = void) (tok | CMP_ERR) = {
     if(!eql){

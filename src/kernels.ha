@@ -4,8 +4,9 @@ const io_read =
         param = [ kwd::U32_TYPE, kwd::STRING_T ],
         retrn = kwd::U32_TYPE,
         ret_n = "",
-        orign = kernel::IO,
+        origin = kernel::IO,
         public = true,
+        effect = [ "IO" ],
         ...
     };
 const io_write =
@@ -14,8 +15,9 @@ const io_write =
         param = [ kwd::U32_TYPE, kwd::STRING_T ],
         retrn = kwd::U32_TYPE,
         ret_n = "",
-        orign = kernel::IO,
+        origin = kernel::IO,
         public = true,
+        effect = [ "IO" ],
         ...
     };
 const io_stdin =
@@ -24,8 +26,8 @@ const io_stdin =
         vtype = kwd::U32_TYPE,
         mutbl = false,
         asgnd = true,
-        orign = kernel::IO,
-        globl = true,
+        origin = kernel::IO,
+        global = true,
         value = 0: u64: num,
         public = true,
         ...
@@ -36,8 +38,8 @@ const io_stdout =
         vtype = kwd::U32_TYPE,
         mutbl = false,
         asgnd = true,
-        orign = kernel::IO,
-        globl = true,
+        origin = kernel::IO,
+        global = true,
         value = 1: u64: num,
         public = true,
         ...
@@ -48,8 +50,8 @@ const io_stderr =
         vtype = kwd::U32_TYPE,
         mutbl = false,
         asgnd = true,
-        orign = kernel::IO,
-        globl = true,
+        origin = kernel::IO,
+        global = true,
         value = 2: u64: num,
         public = true,
         ...
@@ -63,8 +65,9 @@ const mem_alloc =
         param = [ kwd::U64_TYPE ],
         retrn = kwd::RAW_TYPE,
         ret_n = "",
-        orign = kernel::MEM,
+        origin = kernel::MEM,
         public = true,
+        effect = [ "MEM" ],
         ...
     };
 const mem_free =
@@ -73,8 +76,9 @@ const mem_free =
         param = [ kwd::RAW_TYPE ],
         retrn = kwd::UNITTYPE,
         ret_n = "",
-        orign = kernel::MEM,
+        origin = kernel::MEM,
         public = true,
+        effect = [ "MEM" ],
         ...
     };
 const mem_copy =
@@ -83,8 +87,9 @@ const mem_copy =
         param = [ kwd::RAW_TYPE, kwd::RAW_TYPE, kwd::U64_TYPE ],
         retrn = kwd::RAW_TYPE,
         ret_n = "",
-        orign = kernel::MEM,
+        origin = kernel::MEM,
         public = true,
+        effect = [ "MEM" ],
         ...
     };
 const mem_strlset =
@@ -93,8 +98,9 @@ const mem_strlset =
         param = [ kwd::STRING_T, kwd::U64_TYPE ],
         retrn = kwd::UNITTYPE,
         ret_n = "",
-        orign = kernel::MEM,
+        origin = kernel::MEM,
         public = true,
+        effect = [ "MEM" ],
         ...
     };
 const mem_strcpy =
@@ -103,8 +109,9 @@ const mem_strcpy =
         param = [ kwd::STRING_T, kwd::STRING_T, kwd::U64_TYPE ],
         retrn = kwd::UNITTYPE,
         ret_n = "",
-        orign = kernel::MEM,
+        origin = kernel::MEM,
         public = true,
+        effect = [ "MEM" ],
         ...
     };
 const mem_memset =
@@ -113,8 +120,9 @@ const mem_memset =
         param = [ kwd::RAW_TYPE, kwd::U8__TYPE, kwd::U64_TYPE ],
         retrn = kwd::UNITTYPE,
         ret_n = "",
-        orign = kernel::MEM,
+        origin = kernel::MEM,
         public = true,
+        effect = [ "MEM" ],
         ...
     };
 const mem_funs =

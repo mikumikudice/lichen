@@ -22,6 +22,7 @@ type IDTCDUP = !(void | bi_msg);
 type MODCDUP = !(void | bi_msg);
 type NOTPUBL = !(void | bi_msg);
 type NOTCALL = !(void | unimsg);
+type EFX_ERR = !(void | bi_msg);
 type GENERIC = !(void | unimsg);
 type GENTODO = !(void | unimsg);
 type CMP_ERR = !
@@ -37,6 +38,7 @@ type CMP_ERR = !
     | MODCDUP
     | NOTPUBL
     | NOTCALL
+    | EFX_ERR
     | GENERIC
     | GENTODO
     );
@@ -130,8 +132,9 @@ type func = struct {
     prm_n: []idt,
     retrn: kwd,
     ret_n: str,
-    orign: (str | kernel),
+    origin: (str | kernel),
     public: bool,
+    effect: []str,
     lin: size,
     cln: size,
 };
@@ -141,8 +144,8 @@ type nmsp = struct {
     mutbl: bool,
     asgnd: bool,
     param: bool,
-    globl: bool,
-    orign: (str | kernel),
+    global: bool,
+    origin: (str | kernel),
     value: tok,
     public: bool,
     lin: size,
@@ -151,8 +154,8 @@ type nmsp = struct {
 type idref = struct {
     idt: str,
     vtp: kwd,
-    globl: bool,
-    orign: (str | kernel),
+    global: bool,
+    origin: (str | kernel),
 };
 type scope = struct {
     over : (*scope | void),
@@ -164,6 +167,8 @@ type context = struct {
     uses : *[]*module,
     libpath: str,
     nomain: bool,
+    hostfn: str,
+    effect: []str,
 };
 
 type tkind = enum {
@@ -174,7 +179,7 @@ type tkind = enum {
 type moss_t = struct {
     tdef: []kwd,
     kind: tkind,
-    orign: str,
+    origin: str,
     error: bool,
     linear: bool,
     public: bool,
@@ -185,6 +190,7 @@ type kernel = enum size
     };
 type module = struct {
     name : str,
+    origin: str,
     funs : []*func,
     defs : []*nmsp,
     addp : (size, size),

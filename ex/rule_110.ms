@@ -1,6 +1,6 @@
-use IO;
+use fmt;
 
-pub main = fn() : unit {
+pub main = fn() : unit \ fmt {
     rule =
         [ 0, 1, 1, 1
         , 0, 1, 1, 0
@@ -12,12 +12,12 @@ pub main = fn() : unit {
             pat = (old >> i) & 7;
             map = map | (rule[pat] << i);
             if rule[pat] == 1 {
-                IO::write(IO::stdout, " #");
+                fmt::put(" #");
             } else {
-                IO::write(IO::stdout, "  ");
+                fmt::put("  ");
             };
         };
-        IO::write(IO::stdout, "\n");
+        fmt::putl(...);
         old = map;
         map = 0;
     };

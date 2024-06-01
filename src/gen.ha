@@ -149,7 +149,7 @@ fn errstr(e: CMP_ERR) (str, (*file | void), (str | void)) = {
 
     case let uni: UNDEFNS =>
         const err = uni as unimsg;
-        const msg = fmt::asprintf("the variable \"{}\" is undefined at this point",
+        const msg = fmt::asprintf("the variable {} is undefined at this point",
             col(err.msg, cmd::YEL));
         return (msg, err.ptr, err.tip);
 
@@ -167,26 +167,33 @@ fn errstr(e: CMP_ERR) (str, (*file | void), (str | void)) = {
 
     case let uni: IDTCDUP =>
         const err = uni as bi_msg;
-        const msg = fmt::asprintf("the identifier \"{}\" is already in use. it was previously defined at {}",
-            col(err.lft, cmd::BLU), col(err.rgt, cmd::BLU));
+        const msg = fmt::asprintf("the identifier {} is already in use. it was previously defined at {}",
+            col(err.lft, cmd::YEL), col(err.rgt, cmd::BLU));
         return (msg, err.ptr, err.tip);
 
     case let uni: MODCDUP =>
         const err = uni as bi_msg;
-        const msg = fmt::asprintf("the module \"{}\" was already imported. it was previously required at {}",
-            col(err.lft, cmd::BLU), col(err.rgt, cmd::BLU));
+        const msg = fmt::asprintf("the module {} was already imported. it was previously required at {}",
+            col(err.lft, cmd::YEL), col(err.rgt, cmd::BLU));
         return (msg, err.ptr, err.tip);
 
     case let uni: NOTPUBL =>
         const err = uni as bi_msg;
-        const msg = fmt::asprintf("the field \"{}\" from the {} module is not public and hence not accessible",
-            col(err.lft, cmd::BLU), col(err.rgt, cmd::BLU));
+        const msg = fmt::asprintf("the field {} from the {} module is not public and hence not accessible",
+            col(err.lft, cmd::YEL), col(err.rgt, cmd::YEL));
         return (msg, err.ptr, err.tip);
 
     case let uni: NOTCALL =>
         const err = uni as unimsg;
-        const msg = fmt::asprintf("the namespace \"{}\" is not callable", err.msg);
+        const msg = fmt::asprintf("the namespace {} is not callable", col(err.msg, cmd::YEL));
         return (msg, err.ptr, err.tip);
+    
+    case let uni: EFX_ERR =>
+        const err = uni as bi_msg;
+        const msg = fmt::asprintf("the function {} produces unhandled by the function caller {}",
+            col(err.lft, cmd::YEL), col(err.rgt, cmd::YEL));
+        return (msg, err.ptr, err.tip);
+
     case let uni: GENERIC =>
         const err = uni as unimsg;
         return (err.msg, err.ptr, err.tip);

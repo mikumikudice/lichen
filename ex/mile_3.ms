@@ -2,7 +2,7 @@ use IO;
 use MEM;
 
 // third milestone of the compiler
-pub main = fn() : unit {
+pub main = fn() : unit \ IO & MEM {
     input = scan(128);
     if input == "hi\n" {
         IO::write(IO::stdout, "hiii!\n");
@@ -14,7 +14,7 @@ pub main = fn() : unit {
     MEM::free(input);
 };
 
-scan = fn(max : u64) : str {
+scan = fn(max : u64) : str \ IO & MEM {
     buff = MEM::alloc(max + 8) : str;
     MEM::strlset(buff, max + 8);
 

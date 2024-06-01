@@ -84,7 +84,7 @@ these are the current goals of this project:
     - [ ] default values for function arguments
     - [x] modules
     - [ ] FFI
-    - [ ] effect system
+    - [x] effect system
 - [ ] compile-time tests
 - [ ] improve helpfulness of error messages
 - [ ] code optimizations.

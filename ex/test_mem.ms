@@ -1,7 +1,7 @@
 use IO;
 use MEM;
 
-pub main = fn() : unit {
+pub main = fn() : unit \ IO & MEM {
     buff = MEM::alloc(128 + 8) : str;
     MEM::strlset(buff, 128 + 8);
 

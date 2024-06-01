@@ -150,7 +150,7 @@ fn pushstr(l: str) str = {
     return fmt::asprintf("$.{}", max);
 };
 
-fn cmp_orign(ths: (str | kernel), tht: (str | kernel)) bool = {
+fn cmp_origin(ths: (str | kernel), tht: (str | kernel)) bool = {
     if(ths is str && tht is str) return ths: str == tht: str;
     if(ths is kernel && tht is kernel) return ths: kernel == tht: kernel;
     return false;
@@ -165,15 +165,15 @@ fn pushref(nm : *nmsp, f: *file, ctxt: *context, add: *[]idref) (kwd | CMP_ERR) 
     if(nm.param) return nm.vtype;
 
     for(let i = 0z; i < max; i += 1){
-        if(add[i].idt == nm.ident && cmp_orign(add[i].orign, nm.orign)){
+        if(add[i].idt == nm.ident && cmp_origin(add[i].origin, nm.origin)){
             return add[i].vtp;
         };
     };
     append(add, idref {
         idt = nm.ident,
         vtp = nm.vtype,
-        globl = nm.globl,
-        orign = nm.orign,
+        global = nm.global,
+        origin = nm.origin,
     });
     return nm.vtype;
 };
@@ -182,10 +182,10 @@ fn solve_ref(refs: *[]idref) str = {
     let hdr = "";
     const max = len(refs);
     for(let i = 0z; i < max; i += 1){
-        if(refs[i].orign is kernel){
+        if(refs[i].origin is kernel){
             hdr = fmt::asprintf("{0}    %{1}.{2}.g ={2} load{2} ${1}\n",
                 hdr, refs[i].idt, get_qbe_t(refs[i].vtp, 1));
-        } else if(refs[i].globl){
+        } else if(refs[i].global){
             if(refs[i].vtp != kwd::STRING_T && refs[i].vtp != kwd::ARRAY__T){
                 hdr = fmt::asprintf("{0}    %{1}.{2} ={2} load{2} ${1}\n",
                     hdr, refs[i].idt, get_qbe_t(refs[i].vtp, 1));
@@ -204,14 +204,14 @@ fn solve_ref(refs: *[]idref) str = {
 fn get_idpos(id: (*nmsp | *func)) str = {
     match(id){
     case let var: *nmsp =>
-        match(var.orign){
+        match(var.origin){
         case let fname: str =>
             return fmt::asprintf("{}:{}:{}", fname, var.lin + 1, var.cln + 1);
         case let kid: kernel =>
             return fmt::asprintf("the {} kernel", krnls[kid]);
         };
     case let fun: *func =>
-        match(fun.orign){
+        match(fun.origin){
         case let fname: str =>
             return fmt::asprintf("{}:{}:{}", fname, fun.lin + 1, fun.cln + 1);
         case let kid: kernel =>
@@ -246,8 +246,8 @@ fn push_idt(nm: idt, mut: bool, pub: bool, tp: kwd, f: *file, ctxt: *context) (*
             mutbl = mut,
             asgnd = false,
             param = false,
-            globl = false,
-            orign = f.name,
+            global = false,
+            origin = f.name,
             value = eol,
             public = pub,
             lin = f.lin,
@@ -317,8 +317,8 @@ fn push_glob(id: idt, pub: bool, f: *file, ctxt: *context) (str | CMP_ERR) = {
                 mutbl = false,
                 asgnd = false,
                 param = false,
-                globl = true,
-                orign = f.name,
+                global = true,
+                origin = f.name,
                 value = res,
                 public = pub,
                 lin = dup.lin,
@@ -340,7 +340,7 @@ fn push_glob(id: idt, pub: bool, f: *file, ctxt: *context) (str | CMP_ERR) = {
     case let i: idt =>
         match(get_idt(i, f, ctxt.scp, ctxt)?){
         case let nm: *nmsp =>
-            assert(nm.globl);            
+            assert(nm.global);            
             res = nm.value;
             expr_t = parse_cast(f, nm.vtype)?;
 
@@ -363,8 +363,8 @@ fn push_glob(id: idt, pub: bool, f: *file, ctxt: *context) (str | CMP_ERR) = {
                         mutbl = false,
                         asgnd = false,
                         param = false,
-                        globl = true,
-                        orign = f.name,
+                        global = true,
+                        origin = f.name,
                         public = pub,
                         value = res,
                         lin = dup.lin,
@@ -417,7 +417,7 @@ fn push_glob(id: idt, pub: bool, f: *file, ctxt: *context) (str | CMP_ERR) = {
                     yield
                     match(get_idt(i, f, ctxt.scp, ctxt)?){
                     case let nm: *nmsp =>
-                        assert(nm.globl);           
+                        assert(nm.global);           
                         assert(nm.value is num); 
                         const cast = parse_cast(f, nm.vtype)?;
                         yield (nm.value: num, cast);
@@ -603,8 +603,8 @@ fn push_glob(id: idt, pub: bool, f: *file, ctxt: *context) (str | CMP_ERR) = {
         mutbl = false,
         asgnd = false,
         param = false,
-        globl = true,
-        orign = f.name,
+        global = true,
+        origin = f.name,
         value = res,
         public = pub,
         lin = dup.lin,
@@ -621,7 +621,7 @@ fn push_glob(id: idt, pub: bool, f: *file, ctxt: *context) (str | CMP_ERR) = {
     };
 };
 
-fn push_fun(name: idt, pub: bool, f: *file, parm_l: []kwd, parm_n : []idt, retrn: kwd, ctxt: *context) (*func | CMP_ERR) = {
+fn push_fun(name: idt, pub: bool, f: *file, parm_l: []kwd, parm_n : []idt, retrn: kwd, efx: []str, ctxt: *context) (*func | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("pushing function \"{}\" at {}", name, gen_pos(f))!;
     assert(ctxt.scp.over is void);
@@ -649,8 +649,9 @@ fn push_fun(name: idt, pub: bool, f: *file, parm_l: []kwd, parm_n : []idt, retrn
             prm_n = parm_n,
             retrn = retrn,
             ret_n = "",
-            orign = f.name,
+            origin = f.name,
             public = pub,
+            effect = efx,
             lin = f.lin,
             cln = f.cln,
         });
@@ -673,7 +674,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 fmt::printfln("parsing file \"{}\"", fname)!;
 
             const _f =  load(fname)?;
-            out = parse_globl(_f, ctxt)?;
+            out = parse_global(_f, ctxt)?;
             yield _f;
         case let _f: *file =>
             if(stacktrace)
@@ -801,11 +802,13 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 
                 match(strlib::findl(krnls, mod: str)){
                 case let krnl: size =>
+                    const filename = fmt::asprintf("{}{}.asm", ctxt.libpath, mod: str);
                     // TODO: un-hardcode these definitions
                     switch(krnl){
                     case kernel::IO =>
                         const mod_io = alloc(module {
                             name = mod: str,
+                            origin = filename,
                             funs = io_funs,
                             defs = io_vars,
                             addp = (f.lin + 1, f.cln + 1),
@@ -814,6 +817,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                     case kernel::MEM =>
                         const mod_mem = alloc(module {
                             name = mod: str,
+                            origin = filename,
                             funs = mem_funs,
                             defs = mem_defs,
                             addp = (f.lin + 1, f.cln + 1),
@@ -845,6 +849,8 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                             uses = &mods,
                             libpath = ctxt.libpath,
                             nomain = true,
+                            hostfn = "",
+                            effect = [],
                         };
                         const filename = fmt::asprintf("{}{}.ms", modctxt.libpath, mod: str);
                         match(build(filename, mod: str, &modctxt)){
@@ -859,6 +865,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                         case =>
                             const newmod = alloc(module {
                                 name = mod: str,
+                                origin = filename,
                                 funs = lmod.funs,
                                 defs = lmod.defs,
                                 addp = (f.lin + 1, f.cln + 1),
@@ -900,7 +907,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                     out = fmt::asprintf("{}{}", out, asg);
                 case let nm: *nmsp =>
                     // these fields have already been parsed
-                    if(nm.globl && !nm.asgnd){
+                    if(nm.global && !nm.asgnd){
                         nm.asgnd = true;
                         jmpto(eol, f)?;
                         continue;
@@ -908,8 +915,9 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                     const asg = parse_asg(f, i, false, next: opr, ctxt, nm)?;
                     out = fmt::asprintf("{}{}", out, asg);
                 case let fun: *func =>
-                    if(fun.orign is kernel){
+                    if(fun.origin is kernel){
                         skip_field(f)?;
+                        check_efx(f, fun, ctxt)?;
                         const (newexp, call) = parse_fcall(fun, f, ctxt, &refs)?;
                         out = fmt::asprintf("{}{}{}    {}\n", out, solve_ref(&refs), newexp, call);
                         continue;
@@ -921,6 +929,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                         out = fmt::asprintf("{}{}", out, asg);
                     } else {
                         setptr(f, true);
+                        check_efx(f, fun, ctxt)?;
                         const (newexp, call) = parse_fcall(fun, f, ctxt, &refs)?;
                         out = fmt::asprintf("{}{}{}    {}\n", out, solve_ref(&refs), newexp, call);
                     };
@@ -931,9 +940,10 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 const id = get_idt(i, f, ctxt.scp, ctxt)?;
                 expct(id is *func, i, f, void: NOTCALL, i)?;
                 const fun = id: *func;
-                if(fun.orign is kernel){
+                if(fun.origin is kernel){
                     skip_field(f)?;
                 };
+                check_efx(f, fun, ctxt)?;
                 const (newexp, call) = parse_fcall(fun, f, ctxt, &refs)?;
                 out = fmt::asprintf("{}{}{}    {}\n", out, solve_ref(&refs), newexp, call);
                 finsh(f, void: EXPECTD, "end of function call")?;
@@ -960,7 +970,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
     return (out, ret_tp);
 };
 
-fn parse_globl(_f: *file, ctxt: *context) (str | CMP_ERR) = {
+fn parse_global(_f: *file, ctxt: *context) (str | CMP_ERR) = {
     if(stacktrace)
         fmt::println("parsing global definitions")!;
     const f = alloc(*_f);
@@ -1324,7 +1334,7 @@ fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], i
         match(get_idt(i, f, ctxt.scp, ctxt)?){
         case let nm: *nmsp =>
             pushref(nm, f, ctxt, refs)?;
-            if(nm.orign is kernel){
+            if(nm.origin is kernel){
                 skip_field(f)?;
                 const cast = parse_cast(f, nm.vtype)?;
                 if(expr_t != kwd::NOT_KWRD){
@@ -1390,9 +1400,10 @@ fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], i
             };
             // TODO: assert for composite types
         case let fun: *func =>
-            if(fun.orign is kernel){
+            if(fun.origin is kernel){
                 skip_field(f)?;
             };
+            check_efx(f, fun, ctxt)?;
             const (newexp, call) = parse_fcall(fun, f, ctxt, refs)?;
             const qbet = get_qbe_t(fun.retrn, 1);
             dest = fmt::asprintf("%{}.{}", fun.fname, qbet);
@@ -1562,6 +1573,7 @@ fn parse_opr(f: *file, oper: opr, expr_t: kwd, ctxt: *context, refs: *[]idref) (
                 } else {
                     expr_t = kwd::NUMBER_T;
                 };
+                check_efx(f, fun, ctxt)?;
                 const (newhdr, call) = parse_fcall(fun, f, ctxt, refs)?;
                 const exp = fmt::asprintf("{}    {} ={} {} {}, {}\n",
                     newhdr, val_id, asg_tp, inst[oper], val_id, wrp);
@@ -1622,8 +1634,8 @@ fn parse_fun(f: *file, dest: idt, pub: bool, ctxt: *context, skip: bool = false)
                 mutbl = false,
                 asgnd = true,
                 param = true,
-                globl = false,
-                orign = f.name,
+                global = false,
+                origin = f.name,
                 value = eol,
                 public = false,
                 lin = f.lin,
@@ -1646,8 +1658,32 @@ fn parse_fun(f: *file, dest: idt, pub: bool, ctxt: *context, skip: bool = false)
     const ret = expct(is_type(next), next, f, void: EXPECTD,
         "valid function return type")?: kwd;
     
+    // parse effects
+    let tags = []: []str;
+    next = nxttk(f, true)?;
+    if(cmp_tok(next, opr::EFFCTTAG)){
+        next = nxttk(f)?;
+        let tag = expct(next is idt, next, f, void: EXPECTD, "effect tag")?: idt;
+        append(tags, tag: str);
+
+        next = nxttk(f, true)?;
+        expct(cmp_tok(next, opr::LOGICAND) || cmp_tok(next, sym::OPN_CRLY),
+            next, f, void: EXPECTD, "`&` operator or function body")?: idt;
+
+        for(cmp_tok(next, opr::LOGICAND)){
+            next = nxttk(f, true)?;
+            tag = expct(next is idt,
+                next, f, void: EXPECTD, "effect tag")?: idt;
+            append(tags, next: str);
+
+            next = nxttk(f, true)?;
+            expct(cmp_tok(next, opr::LOGICAND) || cmp_tok(next, sym::OPN_CRLY),
+                next, f, void: EXPECTD, "`&` operator or function body")?;
+        };
+    };
+    setptr(f, true);
     if(skip){
-        push_fun(dest, pub, dup, params, parm_n, ret, ctxt)?;
+        push_fun(dest, pub, dup, params, parm_n, ret, tags, ctxt)?;
         jmpto(sym::OPN_CRLY, f)?;
         mtchs(sym::OPN_CRLY, f, false)?;
         return "";
@@ -1666,12 +1702,16 @@ fn parse_fun(f: *file, dest: idt, pub: bool, ctxt: *context, skip: bool = false)
                 funs = [],
             };
             ctxt.scp = &fn_scp;
+            ctxt.hostfn = dest;
+            ctxt.effect = tags;
             next = nxttk(f)?;
             const bgn = expct(cmp_tok(next, sym::OPN_CRLY), next, f, void: EXPECTD,
                 "function body declaration")?: sym;
 
             const (body, ret_tp) = parse(f, ctxt, mtchs(bgn, f)?)?;
             ctxt.scp = fn_scp.over: *scope;
+            ctxt.hostfn = "";
+            ctxt.effect = [];
             expct(cmp_tok(ret_tp, kwd::UNITTYPE), ret_tp, dup, void: GENERIC,
                 "the expected return type for main is `unit`")?;
             free(dup);
@@ -1691,13 +1731,17 @@ fn parse_fun(f: *file, dest: idt, pub: bool, ctxt: *context, skip: bool = false)
             defs = defs,
             funs = [],
         };
-        ctxt.scp = &fn_scp;
         next = nxttk(f)?;
         const bgn = expct(cmp_tok(next, sym::OPN_CRLY), next, f, void: EXPECTD,
             "function body declaration")?: sym;
 
+        ctxt.scp = &fn_scp;
+        ctxt.hostfn = dest;
+        ctxt.effect = tags;
         let (body, ret_tp) = parse(f, ctxt, mtchs(bgn, f)?, ret)?;
         ctxt.scp = fn_scp.over: *scope;
+        ctxt.hostfn = "";
+        ctxt.effect = [];
         expct(is_subt(ret_tp, ret), ret_tp, dup, void: MISMTCH,
             "function return type and body type", cast_err(ret_tp, ret))?;
         free(dup);
@@ -1748,6 +1792,58 @@ fn plural(pat: str, cnt: u64) str = {
     } else {
         return strings::concat(fmt::asprintf(pat, cnt), "s");
     };
+};
+
+fn check_efx(f: *file, fun: *func, ctxt: *context) (void | CMP_ERR) = {
+    const effect =
+        match(fun.origin){
+        case kernel =>
+            yield krnls[fun.origin: kernel];
+        case let mod: str =>
+            const (name, _) = rem_path(mod);
+            yield strings::replace(name, ".ms", "");
+        };
+    if(fun.origin is str && fun.origin: str == f.name){
+        for(let f_efx .. fun.effect){
+            for(let tag .. ctxt.effect){
+                if(f_efx == tag) return;
+            };
+        };
+        return bi_msg {
+            lft = fun.fname,
+            rgt = ctxt.hostfn,
+            tip = get_efx(fun),
+            ptr = f,
+        }: EFX_ERR;
+    } else {
+        for(let tag .. ctxt.effect){
+            if(tag == effect) return;
+        };
+        return bi_msg {
+            lft = fun.fname,
+            rgt = ctxt.hostfn,
+            tip = get_efx(fun, effect),
+            ptr = f,
+        }: EFX_ERR;
+    };
+};
+
+fn get_efx(fun: *func, mod: str = "") str = {
+    let out = fmt::asprintf("the function {} produces these effects:", fun.fname);
+    let first = true;
+    if(mod != ""){
+        return fmt::asprintf("{} {}", out, mod);
+    };
+    assert(len(fun.effect) > 0);
+    for(let efx .. fun.effect){
+        if(first){
+            out = fmt::asprintf("{} {}", out, efx);
+            first = false;
+        } else {
+            out = fmt::asprintf("{}, {}", out, efx);
+        };
+    };
+    return out;
 };
 
 // TODO: linear types
@@ -1803,7 +1899,7 @@ fn fix_sizes(dest: kwd, id: (*nmsp | *func)) (str, str) = {
                 val = fmt::asprintf("%{0}.l", nm.ident);
             };
         };
-        if(nm.orign is kernel){
+        if(nm.origin is kernel){
             val = strings::concat(val, ".g");
         };
     case let fun: *func =>
@@ -1814,7 +1910,7 @@ fn fix_sizes(dest: kwd, id: (*nmsp | *func)) (str, str) = {
                 val = fmt::asprintf("%{0}.l", fun.fname);
             };
         };
-        if(fun.orign is kernel){
+        if(fun.origin is kernel){
             val = strings::concat(val, ".g");
         };
     };

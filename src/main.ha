@@ -66,6 +66,8 @@ export fn main() void = {
         uses = &mods,
         libpath = lib,
         nomain = false,
+        hostfn = "",
+        effect = [],
     };
     build(src, outf, &ctxt)!;
 };

@@ -2,14 +2,14 @@ use IO;
 use MEM;
 
 // prints `data` to stdout.
-pub put = fn(data : str) : unit {
+pub put = fn(data : str) : unit \ IO {
     if data {
         IO::write(IO::stdout, data);
     };
 };
 
 // prints `data` followed by a line feed to stdout
-pub putl = fn(data : str) : unit {
+pub putl = fn(data : str) : unit \ IO {
     put(data);
     put("\n");
 };
@@ -17,7 +17,7 @@ pub putl = fn(data : str) : unit {
 // reads `size` bytes from the stdin and consumes the
 // trailing line feed. the returned data is allocated
 // on the heap and hence must be freed.
-pub get = fn(size : u64) : str {
+pub get = fn(size : u64) : str \ IO & MEM {
     buff = MEM::alloc(size + 8) : str;
     MEM::strlset(buff, size + 8);
 
