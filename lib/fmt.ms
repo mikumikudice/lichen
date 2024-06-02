@@ -22,10 +22,10 @@ pub get = fn(size : u64) : str \ IO & MEM {
     MEM::strlset(buff, size + 8);
 
     res = IO::read(IO::stdin, buff) + 7;
-    read = MEM::alloc(res) : str;
+    buff' = MEM::alloc(res) : str;
 
-    MEM::strcpy(read, buff, res);
+    MEM::strcpy(buff', buff, res);
     MEM::free(buff);
 
-    return read : str;
+    return buff' : str;
 };

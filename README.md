@@ -31,7 +31,7 @@ pub main = fn() : unit \ fmt {
 moss is directly inspired by [hare](https://harelang.org), [Flix](https://flix.dev/), [Odin](https://odin-lang.org), jai, [elm](https://elm-lang.org) and [Rust](https://rust-lang.org).
 
 # disclaimer
-moss is still heavily in development. not only the compiler, but everything related to the project. despite it being not very likely to change during _implementation_, it still can change. currently we're at:
+moss is still heavily in development. not only the compiler, but everything related to the project. despite it being not very likely to change a lot during the _implementation_, it still can change. currently we're at:
 
 ## roadmap
 these are the current goals of this project:
@@ -70,7 +70,7 @@ these are the current goals of this project:
             - [ ] field access of function returns
         - [ ] unions
         - [ ] error tags
-        - [ ] error assertion and bubble operator
+        - [ ] error assertion and bubble operators
         - [ ] linear types
         - [ ] test statement
     - [ ] control flow
@@ -103,10 +103,10 @@ these are the current goals of this project:
 # building moss
 moss is written in the [hare programming language](https://hare-lang.org), uses the [QBE](https://c9x.me/compile/) IR as a backend to generate the binaries, [nasm](https://nasm.us) as assembler for the language kernels and [mold](https://github.com/rui314/mold) as a linker. once all dependencies are installed, you're ready to both build the compiler and use it with no other dependencies. note that each of moss' dependencies have theirs own dependencies. once everything is set, simply run the `build.sh`. it will generate the compiler binary by the name `mossy`.
 
-optionally, you can run `test.sh` to run the moss compiler tests. also, if you have lua 5.3, you can run an automated test unit for all milestones with `test.ms.lua`.
+optionally, you can run `test.sh` to run the moss compiler tests. also, if you have lua 5.3, you can run an automated test unit for all milestones with `ms_test.lua`.
 
-## IMPORTANT
-moss is not being installed globally in your machine, which means it can't look up for its files in a fixed directory; when running the compiler, make sure to run it on the root path of the repository or specify the lib path with the flag `-l`.
+## installation
+moss can be installed locally in your home directory by running `install.sh`. it will copy the built binary and the runtime and standard library to `~/.local/bin` and `~/.local/lib/lime`, respectively, and will be available only for your current user. you also can specify which directory the compiler should look for the runtime and standard library using the `-l` flag.
 
 # learning moss
 you can learn moss in a course of one to three days. [this](doc/tut.md) is the tutorial.

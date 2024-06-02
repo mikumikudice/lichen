@@ -5,6 +5,7 @@ function exec(cmd)
 end
 
 local tmp = ".test/"
+local flags = "-l./lib/"
 
 local init = exec("./build.sh")
 if not init then os.exit(1) end
@@ -27,7 +28,7 @@ local results = {
 local fails = 0
 local failed = {}
 for i, t in pairs(tests) do
-    local cmd = "./bin/mossy ex/" .. t .. ".ms " .. tmp .. t
+    local cmd = "./bin/mossy " .. flags .. " ex/" .. t .. ".ms " .. tmp .. t
     local ok = exec(cmd)
     if not ok then
         failed[#failed + 1] = t .. " failed on compilation"

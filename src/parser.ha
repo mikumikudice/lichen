@@ -998,7 +998,8 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 ptr = f,
             }: GENERIC;
         };
-        return (strings::concat(datasec, out), kwd::NOT_KWRD);
+        const qbe_src = strings::concat(datasec, out); 
+        return (qbe_src, kwd::NOT_KWRD);
     };
     if(ret_tp == kwd::NOT_KWRD) ret_tp = kwd::UNITTYPE;
     return (out, ret_tp);

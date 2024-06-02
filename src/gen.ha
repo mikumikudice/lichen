@@ -15,7 +15,7 @@ const fix_entry = "export function $_start(){\n@start\n    call $main()\n    hlt
 let also_link = []: []str;
 let cmpd_mods = []: []str;
 
-fn build(src: str, dest: str, ctxt: *context, silent: bool = false) (void | CMP_ERR) = {
+fn build(src: str, dest: str, ctxt: *context) (void | CMP_ERR) = {
     const path =
         if(strlib::endswith(ctxt.libpath, "/")){
             yield ctxt.libpath;
@@ -41,7 +41,7 @@ fn build(src: str, dest: str, ctxt: *context, silent: bool = false) (void | CMP_
             yield fmt::asprintf("# moss {}\n{}", version, qbe_ir);
         };
     const temp = ".tmp";
-    runc(silent, "mkdir", "-p", temp);
+    runc(!stacktrace, "mkdir", "-p", temp);
     
     const (objf, _) = rem_path(dest);
     const rt_src = fmt::asprintf("{}rt.asm", path);
@@ -59,22 +59,25 @@ fn build(src: str, dest: str, ctxt: *context, silent: bool = false) (void | CMP_
     io::write(file, strings::toutf8(code))!;
     io::close(file)!;
 
-    runc(silent, "qbe", "-o", bin_src, qbe_out);
-    runc(silent, "as" , "-o", bin_out, bin_src);
+    runc(!stacktrace, "qbe", "-o", bin_src, qbe_out);
+    runc(!stacktrace, "as" , "-o", bin_out, bin_src);
     if(ctxt.nomain){
         append(also_link, bin_out);
-        fmt::printfln(col("successfully compiled {}", cmd::GRN), src)!;
+        const (name, _) = rem_path(src);
+        fmt::printfln(col("successfully compiled {}", cmd::GRN), name)!;
         return;
     };
-    runc(silent, "nasm", "-felf64", "-o", rt_out, rt_src);
+    runc(!stacktrace, "nasm", "-felf64", "-o", rt_out, rt_src);
 
     let mold_args = []: []str;
     append(mold_args, ["-o", dest, bin_out, rt_out]...);
     append(mold_args, also_link...);
-    runc(silent, "mold", mold_args...);
+    runc(!stacktrace, "mold", mold_args...);
 
-    if(!stacktrace || keep_tmp) runc(silent, "rm", "-r", temp);
-    fmt::printfln(col("successfully compiled {} in {}", cmd::GRN), src, dest)!;
+    if(!(stacktrace || keep_tmp)) runc(!stacktrace, "rm", "-r", temp);
+
+    const (name, _) = rem_path(src);
+    fmt::printfln(col("successfully compiled {} in {}", cmd::GRN), name, dest)!;
 };
 
 fn runc(silent: bool, cmd: str, args: str...) void = {
@@ -98,12 +101,7 @@ fn peek(silent: bool, cmd: str, proc: * exec::process) void = {
     let stat = exec::wait(proc)!;
     match(exec::check(&stat)){
         case void => void;
-        case =>
-            if(silent){
-                assert(false, cmd);
-            } else {
-                os::exit(1);
-            };
+        case => os::exit(1);
     };
 };
 
@@ -228,6 +226,7 @@ fn cmperr(e: CMP_ERR) never = {
             };
         const src = strings::sub(txt, pos.lst, end);
         const num = fmt::asprintf("{} ", pos.lin + 1);
+        defer free(num);
 
         fmt::errorfln("{} {}", col(fmt::asprintf("error at {}:{}:{}:",
             pos.name, pos.lin + 1, pos.cln + 1), cmd::BOX_RED), out)!;
