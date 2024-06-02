@@ -107,8 +107,8 @@ const inst =
     [ "neg", "and", "or"
     , "shr", "shl"
     , "ceq", "cne"
-    , "cls", "cgt"
-    , "cle", "cge"
+    , "ls", "gt"
+    , "le", "ge"
     , "add", "sub", "mul", "div", "rem"
     ];
 
@@ -118,8 +118,8 @@ type sym = enum int
     , SYMB_ANY, SYMB_END, NOT_SYMB
 };
 const symv =
-    [ "{" , "}", "[", "]", "(", ")"
-    , ";", ",", "_"
+    [ "{", "}", "[", "]", "("
+    , ")", ";", ",", "_"
     ];
 static assert(sym::SYMB_END: size == len(symv), "symbol values not updated");
 
@@ -166,6 +166,8 @@ type context = struct {
     scp: *scope,
     uses : *[]*module,
     libpath: str,
+    onloop: bool,
+    loopid: size,
     nomain: bool,
     hasmain: bool,
     hostfn: str,

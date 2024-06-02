@@ -74,10 +74,14 @@ these are the current goals of this project:
         - [ ] linear types
         - [ ] test statement
     - [ ] control flow
-        - [x] if/else
+        - [ ] if/else
+            - [ ] basic functionality
+            - [ ] local statement definitions 
         - [ ] for loop
+            - [x] for while
             - [ ] for each
-            - [ ] for range
+            - [x] for range
+            - [ ] local statement definitions
         - [ ] match
         - [ ] defer
     - [ ] local functions

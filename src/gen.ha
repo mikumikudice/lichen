@@ -41,7 +41,7 @@ fn build(src: str, dest: str, ctxt: *context) (void | CMP_ERR) = {
             yield fmt::asprintf("# moss {}\n{}", version, qbe_ir);
         };
     const temp = ".tmp";
-    runc(!stacktrace, "mkdir", "-p", temp);
+    runc(silent, "mkdir", "-p", temp);
     
     const (objf, _) = rem_path(dest);
     const rt_src = fmt::asprintf("{}rt.asm", path);
@@ -59,33 +59,33 @@ fn build(src: str, dest: str, ctxt: *context) (void | CMP_ERR) = {
     io::write(file, strings::toutf8(code))!;
     io::close(file)!;
 
-    runc(!stacktrace, "qbe", "-o", bin_src, qbe_out);
-    runc(!stacktrace, "as" , "-o", bin_out, bin_src);
+    runc(silent, "qbe", "-o", bin_src, qbe_out);
+    runc(silent, "as" , "-o", bin_out, bin_src);
     if(ctxt.nomain){
         append(also_link, bin_out);
         const (name, _) = rem_path(src);
         fmt::printfln(col("successfully compiled {}", cmd::GRN), name)!;
         return;
     };
-    runc(!stacktrace, "nasm", "-felf64", "-o", rt_out, rt_src);
+    runc(silent, "nasm", "-felf64", "-o", rt_out, rt_src);
 
     let mold_args = []: []str;
     append(mold_args, ["-o", dest, bin_out, rt_out]...);
     append(mold_args, also_link...);
-    runc(!stacktrace, "mold", mold_args...);
+    runc(silent, "mold", mold_args...);
 
-    if(!(stacktrace || keep_tmp)) runc(!stacktrace, "rm", "-r", temp);
+    if(!(stacktrace || keep_tmp)) runc(silent, "rm", "-r", temp);
 
     const (name, _) = rem_path(src);
     fmt::printfln(col("successfully compiled {} in {}", cmd::GRN), name, dest)!;
 };
 
-fn runc(silent: bool, cmd: str, args: str...) void = {
+fn runc(noprint: bool, cmd: str, args: str...) void = {
     let argf = "";
     for(let a .. args){
         argf = fmt::asprintf("{} {}", argf, a);
     };
-    if(!silent)
+    if(!noprint)
         fmt::printfln("{}{}{}", col("exec: ", cmd::BLU), cmd, argf)!;
 
     const exe = exec::cmd(cmd, args...)!;
@@ -93,15 +93,11 @@ fn runc(silent: bool, cmd: str, args: str...) void = {
     case void =>
         exec::exec(&exe);
     case let proc: exec::process =>
-        peek(silent, fmt::asprintf("{}{}", cmd, argf), &proc);
-    };
-};
-
-fn peek(silent: bool, cmd: str, proc: * exec::process) void = {
-    let stat = exec::wait(proc)!;
-    match(exec::check(&stat)){
-        case void => void;
-        case => os::exit(1);
+        let stat = exec::wait(&proc)!;
+        match(exec::check(&stat)){
+            case void => void;
+            case => os::exit(1);
+        };
     };
 };
 

@@ -113,12 +113,26 @@ fn is_type(tp: tok) bool = {
     };
 };
 
+fn is_num(tp: kwd, sign: bool = false) bool = {
+    if(tp == kwd::NUMBER_T) return true;
+    if(!sign){
+        return kwd::U8__TYPE <= tp && tp <= kwd::U64_TYPE;
+    } else {
+        return kwd::I8__TYPE <= tp && tp <= kwd::I64_TYPE;
+    };
+};
+
 fn is_asg_opr(oper: tok) bool = {
     if(oper is opr){
         const op = oper: opr;
         return op == opr::ASSIGNMT || op == opr::INCREMNT || op == opr::DECREMNT;
     };
     return false;
+};
+
+fn is_cmp(oper: opr) bool = {
+    return oper == opr::BOOL_EQL || oper == opr::BOOL_DIF || oper == opr::BOOL_LSS ||
+        oper == opr::BOOL_GRT || oper == opr::BOOL_LEQ || oper == opr::BOOL_GEQ;
 };
 
 // loads the file `fname` and instantiates
@@ -484,7 +498,10 @@ fn ahead(f: *file, num: size, tkns: (tok | []tok)) (tok | void | CMP_ERR) = {
         next = nxttk(f)?;
     };
     for(let tkn .. valid){
-        if(cmp_tok(next, tkn)) return next;
+        if(cmp_tok(next, tkn)){
+            setptr(f, true);
+            return next;
+        };
     };
     setptr(f, true);
 };

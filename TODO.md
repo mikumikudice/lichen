@@ -1,0 +1,5 @@
+- use stack allocated buffers/copies when possible more often
+- add under/overflow for arithmetic instructions
+- implement arrays
+- implement unions
+- implement error unions and error operators
