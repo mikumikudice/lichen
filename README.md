@@ -50,9 +50,9 @@ these are the current goals of this project:
         - [ ] parallel assignment
         - [ ] range comparisons
     - [x] mutability checking
-    - [ ] hex, oct and bin literals
-    - [ ] prime notation
-    - [ ] multi-line, nestable comments
+    - [x] hex, oct and bin literals
+    - [x] prime notation
+    - [x] multi-line, nestable comments
     - [ ] type system
         - [ ] type checking
             - [x] on expressions

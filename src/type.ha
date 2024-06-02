@@ -167,6 +167,7 @@ type context = struct {
     uses : *[]*module,
     libpath: str,
     nomain: bool,
+    hasmain: bool,
     hostfn: str,
     effect: []str,
 };

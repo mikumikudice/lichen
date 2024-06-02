@@ -149,8 +149,9 @@ fn errstr(e: CMP_ERR) (str, (*file | void), (str | void)) = {
 
     case let uni: UNDEFNS =>
         const err = uni as unimsg;
+        const idt = strings::replace(err.msg, ".p", "'");
         const msg = fmt::asprintf("the variable {} is undefined at this point",
-            col(err.msg, cmd::YEL));
+            col(idt, cmd::YEL));
         return (msg, err.ptr, err.tip);
 
     case let uni: MISMTCH =>
@@ -167,8 +168,9 @@ fn errstr(e: CMP_ERR) (str, (*file | void), (str | void)) = {
 
     case let uni: IDTCDUP =>
         const err = uni as bi_msg;
+        const idt = strings::replace(err.lft, ".p", "'");
         const msg = fmt::asprintf("the identifier {} is already in use. it was previously defined at {}",
-            col(err.lft, cmd::YEL), col(err.rgt, cmd::BLU));
+            col(idt, cmd::YEL), col(err.rgt, cmd::BLU));
         return (msg, err.ptr, err.tip);
 
     case let uni: MODCDUP =>
@@ -185,13 +187,16 @@ fn errstr(e: CMP_ERR) (str, (*file | void), (str | void)) = {
 
     case let uni: NOTCALL =>
         const err = uni as unimsg;
-        const msg = fmt::asprintf("the namespace {} is not callable", col(err.msg, cmd::YEL));
+        const idt = strings::replace(err.msg, ".p", "'");
+        const msg = fmt::asprintf("the namespace {} is not callable", col(idt, cmd::YEL));
         return (msg, err.ptr, err.tip);
     
     case let uni: EFX_ERR =>
         const err = uni as bi_msg;
+        const lft = strings::replace(err.lft, ".p", "'");
+        const rgt = strings::replace(err.rgt, ".p", "'");
         const msg = fmt::asprintf("the function {} produces unhandled by the function caller {}",
-            col(err.lft, cmd::YEL), col(err.rgt, cmd::YEL));
+            col(lft, cmd::YEL), col(rgt, cmd::YEL));
         return (msg, err.ptr, err.tip);
 
     case let uni: GENERIC =>

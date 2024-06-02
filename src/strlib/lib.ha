@@ -109,7 +109,7 @@ export fn uppercase(s: str) str = {
     for(let i = 0z; i < max; i += 1){
         const c = src[i];
         if(c >= 'a' && c <= 'z'){
-            src[i] = c - ('a': u8 - 'A': u8);
+            src[i] = c ^ 0b0100000;
         };
     };
     return strings::fromutf8(src)!;
@@ -122,7 +122,7 @@ export fn lowercase(s: str) str = {
     for(let i = 0z; i < max; i += 1){
         const c = src[i];
         if(c >= 'A' && c <= 'Z'){
-            src[i] = c + ('a': u8 - 'A': u8);
+            src[i] = c | 0b0100000;
         };
     };
     return strings::fromutf8(src)!;

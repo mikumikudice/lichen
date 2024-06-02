@@ -6,12 +6,12 @@ pub main = fn() : unit \ IO & MEM {
     MEM::strlset(buff, 128 + 8);
 
     res = IO::read(IO::stdin, buff);
-    read = MEM::alloc(res + 8) : str;
+    buff' = MEM::alloc(res + 8) : str;
 
-    MEM::strcpy(read, buff, res + 8);
+    MEM::strcpy(buff', buff, res + 8);
     MEM::free(buff);
 
-    text = read : str;
-    IO::write(IO::stdout, read);
-    MEM::free(read);
+    text = buff' : str;
+    IO::write(IO::stdout, text);
+    MEM::free(text);
 };

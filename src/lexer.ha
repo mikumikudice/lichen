@@ -193,28 +193,70 @@ fn nxttk(f: *file, rev: bool = false) (tok | CMP_ERR) = {
             return eol;
         } else {
             // comments
-            // TODO: multiple line comments
-            if(chr == '/' && f.src[f.ptr + 1] == '/'){
-                f.end = 0;
-                match(strlib::finda(tostr(f.src), "\n", f.ptr)){
-                case let i: size =>
-                    f.ptr = i + 1;        
-                    f.lin += 1;
-                    f.lst = f.ptr;
+            if(chr == '/' && f.ptr + 1 < max){
+                // single line
+                if(f.src[f.ptr + 1] == '/'){
                     f.end = 0;
-                    f.cln = f.end;
-                    return eol;
-                case =>
-                    assert(false);
-                    return eol;
+                    match(strlib::finda(tostr(f.src), "\n", f.ptr)){
+                    case let i: size =>
+                        f.ptr = i + 1;        
+                        f.lin += 1;
+                        f.lst = f.ptr;
+                        f.end = 0;
+                        f.cln = f.end;
+                        return eol;
+                    case =>
+                        assert(false);
+                        return eol;
+                    };
+                // multiple lines
+                } else if(f.src[f.ptr + 1] == '*'){
+                    let depth = 1z;
+                    setptr(f);
+                    incptr(f);
+                    for(f.ptr < max; incptr(f)){
+                        if(f.ptr + 1 < max){
+                            if(f.src[f.ptr] == '/' && f.src[f.ptr + 1] == '*'){
+                                setptr(f);
+                                depth += 1;
+                            } else if(f.src[f.ptr] == '*' && f.src[f.ptr + 1] == '/'){
+                                if(depth == 0){
+                                    return unimsg {
+                                        msg = "invalid trailing symbol found here",
+                                        tip = void,
+                                        ptr = f,
+                                    }: GENERIC;
+                                };
+                                depth -= 1;
+                                incptr(f);
+                                if(depth == 0) break;
+                            };
+                        };
+                    };
+                    if(depth > 0){
+                        setptr(f, true);
+                        return unimsg {
+                            msg = "unclosed symbol found here",
+                            tip = void,
+                            ptr = f,
+                        }: GENERIC;
+                    };
                 };
+            };
+            // trailing closing commend block
+            if(f.ptr + 1 < max && f.src[f.ptr] == '*' && f.src[f.ptr + 1] == '/'){
+                incptr(f);
+                return unimsg {
+                    msg = "invalid trailing symbol found here",
+                    tip = void,
+                    ptr = f,
+                }: GENERIC;
             };
             // just text
             if(istxt(chr)){
                 append(tkv, chr);
-
                 // it's the last valid character
-                if(f.ptr == max - 1 || !istxt(f.src[f.ptr + 1])){
+                if(!istxt(f.src[f.ptr + 1]) || f.ptr == max - 1){
                     let val = tostr(tkv);
                     for(let k = 0; k < kwd::KWRD_END; k += 1){
                         if(val == kwdv[k]){
@@ -222,13 +264,142 @@ fn nxttk(f: *file, rev: bool = false) (tok | CMP_ERR) = {
                             return k: kwd;
                         };
                     };
-                    // TODO: handle different numerical bases
-                    match(strconv::stou64(strlib::replace(val, "_", ""))){
+                    const numexp = strlib::replace(val, "_", "");
+                    const numlen = len(numexp);
+                    match(strconv::stou64(numexp)){
                     case let n: u64 =>
                         incptr(f);
                         return n: num;
+                    case strconv::overflow =>
+                        return unimsg {
+                            msg = fmt::asprintf("number overflow: this literal exceeds 64-bits"),
+                            tip = void,
+                            ptr = f,
+                        }: GENERIC;
                     case =>
+                        // check number base prefix
+                        if(strlib::startswith(numexp, "0x")){
+                            const chk =
+                                if(len(numexp) > 2){
+                                    let i = 2z;
+                                    for(i < numlen; i += 1){
+                                        if(i + 1 < numlen)
+                                        if(strings::sub(numexp, i, i + 1) != "0") break;
+                                        if(i == numlen - 1){
+                                            incptr(f);
+                                            return 0: u64: num;
+                                        };
+                                    };
+                                    yield i;
+                                } else {
+                                    return unimsg {
+                                        msg = fmt::asprintf("invalid hex literal"),
+                                        tip = void,
+                                        ptr = f,
+                                    }: GENERIC;
+                                };
+                            match(strconv::stou64(strings::sub(numexp, chk), strconv::base::HEX_LOWER)){
+                            case let n: u64 =>
+                                incptr(f);
+                                return n: num;
+                            case strconv::overflow =>
+                                return unimsg {
+                                    msg = fmt::asprintf("number overflow: this literal exceeds 64-bits"),
+                                    tip = void,
+                                    ptr = f,
+                                }: GENERIC;
+                            case =>
+                                return unimsg {
+                                    msg = fmt::asprintf("invalid hex literal"),
+                                    tip = void,
+                                    ptr = f,
+                                }: GENERIC;
+                            };
+                        };
+                        if(strlib::startswith(numexp, "0o")){
+                            const chk =
+                                if(len(numexp) > 2){
+                                    let i = 2z;
+                                    for(i < numlen; i += 1){
+                                        if(i + 1 < numlen)
+                                        if(strings::sub(numexp, i, i + 1) != "0") break;
+                                        if(i == numlen - 1){
+                                            incptr(f);
+                                            return 0: u64: num;
+                                        };
+                                    };
+                                    yield i;
+                                } else {
+                                    return unimsg {
+                                        msg = fmt::asprintf("invalid hex literal"),
+                                        tip = void,
+                                        ptr = f,
+                                    }: GENERIC;
+                                };
+                            match(strconv::stou64(strings::sub(numexp, chk), strconv::base::OCT)){
+                            case let n: u64 =>
+                                incptr(f);
+                                return n: num;
+                            case strconv::overflow =>
+                                return unimsg {
+                                    msg = fmt::asprintf("number overflow: this literal exceeds 64-bits"),
+                                    tip = void,
+                                    ptr = f,
+                                }: GENERIC;
+                            case =>
+                                return unimsg {
+                                    msg = fmt::asprintf("invalid octal literal"),
+                                    tip = void,
+                                    ptr = f,
+                                }: GENERIC;
+                           };
+                        };
+                        if(strlib::startswith(numexp, "0b")){
+                            const chk =
+                                if(len(numexp) > 2){
+                                    let i = 2z;
+                                    for(i < numlen; i += 1){
+                                        if(i + 1 < numlen)
+                                        if(strings::sub(numexp, i, i + 1) != "0") break;
+                                        if(i == numlen - 1){
+                                            incptr(f);
+                                            return 0: u64: num;
+                                        };
+                                    };
+                                    yield i;
+                                } else {
+                                    return unimsg {
+                                        msg = fmt::asprintf("invalid hex literal"),
+                                        tip = void,
+                                        ptr = f,
+                                    }: GENERIC;
+                                };
+                            match(strconv::stou64(strings::sub(numexp, chk), strconv::base::OCT)){
+                            case let n: u64 =>
+                                incptr(f);
+                                return n: num;
+                            case strconv::overflow =>
+                                return unimsg {
+                                    msg = fmt::asprintf("number overflow: this literal exceeds 64-bits"),
+                                    tip = void,
+                                    ptr = f,
+                                }: GENERIC;
+                            case =>
+                                return unimsg {
+                                    msg = fmt::asprintf("invalid binary literal"),
+                                    tip = void,
+                                    ptr = f,
+                                }: GENERIC;
+                           };
+                        };
                         incptr(f);
+                        if(f.src[f.ptr] == '\''){
+                            for(f.ptr < max && f.src[f.ptr] == '\''; incptr(f)){
+                                append(tkv, '.');
+                                append(tkv, 'p');
+                            };
+                            val = tostr(tkv);
+                        };
                         return val: idt;
                     };
                 };
@@ -388,10 +559,13 @@ fn mtchs(s: sym, f: *file, restore: bool = true) (u64 | CMP_ERR) = {
 
     let depth = 1z;
     const max = len(f.src);
+    let dup = alloc(*f);
     for(let next = nxttk(f)?; f.ptr < max; next = nxttk(f)?){
         if(next is eol) continue;
         if(cmp_tok(next: tok, s: tok)){
             depth += 1;
+            free(dup);
+            dup = alloc(*f);
         } else if(cmp_tok(next: tok, (s + 1): tok)){
             if(depth == 0){
                 return unimsg {
@@ -403,6 +577,7 @@ fn mtchs(s: sym, f: *file, restore: bool = true) (u64 | CMP_ERR) = {
             depth -= 1;
             if(depth == 0) {
                 if(restore) setptr(f, true);
+                free(dup);
                 return f.ptr;
             };
         };
@@ -411,7 +586,7 @@ fn mtchs(s: sym, f: *file, restore: bool = true) (u64 | CMP_ERR) = {
         return unimsg {
             msg = "unclosed symbol found here",
             tip = void,
-            ptr = f,
+            ptr = dup,
         }: GENERIC;
     };
     assert(false);
@@ -627,24 +802,11 @@ fn parsechar(f: *file) (num | CMP_ERR) = {
 };
 
 fn setptr(f: *file, reset: bool = false) void = {
-    static let safe_l = 0z;
-    static let safe_p = 0z;
-    static let safe_c = 0z;
-    static let safe_e = 0z;
-    static let safels = 0z;
-
+    static let safe = file { ... };
     if(!reset){
-        safe_l = f.lin;
-        safe_p = f.ptr;
-        safe_c = f.cln;
-        safe_e = f.end;
-        safels = f.lst;
+        safe = *f;
     } else {
-        f.lin = safe_l;
-        f.ptr = safe_p;
-        f.cln = safe_c;
-        f.end = safe_e;
-        f.lst = safels;
+        *f = safe;
     };
 };
 
@@ -661,7 +823,6 @@ fn incptr(f: *file, onstr: bool = false) void = {
         if(chr == '\n'){
             f.iseol = true;
             f.eolat = alloc(*f);
-
             f.lin += 1;
             f.ptr += 1;
             f.lst = f.ptr;

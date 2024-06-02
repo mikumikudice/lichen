@@ -1,7 +1,7 @@
 segment .rod
-    stdin dd 0
-    stdout dd 1
-    stderr dd 2
+    IO.stdin dd 0
+    IO.stdout dd 1
+    IO.stderr dd 2
     
     t.unt dd 0xcafe00
 
@@ -13,26 +13,26 @@ segment .rod
         dq 0
         db 0
 segment .text
-global stdin
-global stdout
-global stderr
+global IO.stdin
+global IO.stdout
+global IO.stderr
 
 global t.unt
 
 global empty.str
 global empty.arr
 
-global read
-global write
+global IO.read
+global IO.write
 
-global alloc
-global free
-global copy
-global strlset
-global strcpy
+global MEM.alloc
+global MEM.free
+global MEM.copy
+global MEM.strlset
+global MEM.strcpy
+global MEM.memset
+
 global strcmp
-global memset
-
 global absb
 global absh
 global absw
@@ -41,7 +41,7 @@ global absl
 global exit
 
 ; write = fn(handler : u32, data : str) : u32
-write:
+IO.write:
     push rsi
     mov ecx, edi
     xor rdi, rdi        ; clear residual bytes
@@ -55,7 +55,7 @@ write:
     ret
 
 ; read = fn(handler : u32, buff : str) : u32
-read:
+IO.read:
     push rsi
     mov ecx, edi
     xor rdi, rdi        ; clear residual bytes
@@ -69,7 +69,7 @@ read:
     ret
 
 ; alloc = fn(len : u64) : raw
-alloc:
+MEM.alloc:
     mov rsi, rdi        ; get memory size
     xor rdi, rdi        ; clear register for null
     mov rdx, 7          ; prot
@@ -79,7 +79,7 @@ alloc:
     ret
 
 ; free = fn(ptr : raw) : unit
-free:
+MEM.free:
     push rdi
     xor rdx, rdx
     mov edx, [rdi]      ; get length from pointer
@@ -91,7 +91,7 @@ free:
     ret
 
 ; copy = fn(dest : raw, src : raw, size : u64) : raw
-copy:
+MEM.copy:
     push rdi
     push rsi
 
@@ -116,25 +116,45 @@ copy:
     ret
 
 ; strcpy = fn(dest : str, size : u64) : unit
-strlset:
+MEM.strlset:
     mov [rdi], rsi
     lea rax, t.unt
     ret
 
 ; strcpy = fn(dest : str, src : str, size : u64) : unit
-strcpy:
+MEM.strcpy:
     push rdi
     push rsi
     push rdx
 
     add rdi, 8
     add rsi, 8
-    call copy
+    call MEM.copy
 
     pop rdx
     pop rsi
     pop rdi
     mov [rdi], rdx
+    lea rax, t.unt
+    ret
+
+; memset = fn(dest : raw, src : u8, size : u64) : unit
+MEM.memset:
+    push rdi
+    cmp rdx, 0
+    jz .end
+    .next:
+        mov rcx, rsi
+        mov [rdi], cl
+
+        inc rdi
+        dec rdx
+
+        cmp rdx, 0
+        jz .end
+        jmp .next
+    .end:
+    pop rdi
     lea rax, t.unt
     ret
 
@@ -175,26 +195,6 @@ strcmp:
         pop rdi
         mov rax, 1
         ret
-
-; memset = fn(dest : raw, src : u8, size : u64) : unit
-memset:
-    push rdi
-    cmp rdx, 0
-    jz .end
-    .next:
-        mov rcx, rsi
-        mov [rdi], cl
-
-        inc rdi
-        dec rdx
-
-        cmp rdx, 0
-        jz .end
-        jmp .next
-    .end:
-    pop rdi
-    lea rax, t.unt
-    ret
 
 ; absb = fn(num : i8) : u8
 absb:

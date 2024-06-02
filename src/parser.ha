@@ -156,6 +156,26 @@ fn cmp_origin(ths: (str | kernel), tht: (str | kernel)) bool = {
     return false;
 };
 
+fn solve_origin(id: (*nmsp | *func | *idref)) str = {
+    match(id){
+    case let ref: *idref =>
+        match(ref.origin){
+        case let name: str => return name;
+        case let kid: kernel => return krnls[kid];
+        };
+    case let nm: *nmsp =>
+        match(nm.origin){
+        case let name: str => return name;
+        case let kid: kernel => return krnls[kid];
+        };
+    case let fun: *func =>
+        match(fun.origin){
+        case let name: str => return name;
+        case let kid: kernel => return krnls[kid];
+        };
+    };
+};
+
 fn pushref(nm : *nmsp, f: *file, ctxt: *context, add: *[]idref) (kwd | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("pushing new reference to \"{}\" at {}", nm.ident, gen_pos(f))!;
@@ -178,13 +198,16 @@ fn pushref(nm : *nmsp, f: *file, ctxt: *context, add: *[]idref) (kwd | CMP_ERR) 
     return nm.vtype;
 };
 
-fn solve_ref(refs: *[]idref) str = {
+
+fn solve_ref(refs: *[]idref, f: *file) str = {
     let hdr = "";
     const max = len(refs);
     for(let i = 0z; i < max; i += 1){
-        if(refs[i].origin is kernel){
-            hdr = fmt::asprintf("{0}    %{1}.{2}.g ={2} load{2} ${1}\n",
-                hdr, refs[i].idt, get_qbe_t(refs[i].vtp, 1));
+        const origin = solve_origin(&refs[i]);
+        if(refs[i].origin is kernel || origin != f.name){
+            const mod = ftomod(origin);
+            hdr = fmt::asprintf("{0}    %{1}.{2}.g ={2} load{2} ${3}.{1}\n",
+                hdr, refs[i].idt, get_qbe_t(refs[i].vtp, 1), mod);
         } else if(refs[i].global){
             if(refs[i].vtp != kwd::STRING_T && refs[i].vtp != kwd::ARRAY__T){
                 hdr = fmt::asprintf("{0}    %{1}.{2} ={2} load{2} ${1}\n",
@@ -203,10 +226,10 @@ fn solve_ref(refs: *[]idref) str = {
 
 fn get_idpos(id: (*nmsp | *func)) str = {
     match(id){
-    case let var: *nmsp =>
-        match(var.origin){
+    case let nm: *nmsp =>
+        match(nm.origin){
         case let fname: str =>
-            return fmt::asprintf("{}:{}:{}", fname, var.lin + 1, var.cln + 1);
+            return fmt::asprintf("{}:{}:{}", fname, nm.lin + 1, nm.cln + 1);
         case let kid: kernel =>
             return fmt::asprintf("the {} kernel", krnls[kid]);
         };
@@ -286,6 +309,8 @@ fn get_idt(nm: idt, f: *file, scp: *scope, ctxt: *context) (*nmsp | *func | CMP_
 };
 
 fn push_glob(id: idt, pub: bool, f: *file, ctxt: *context) (str | CMP_ERR) = {
+    if(stacktrace)
+        fmt::printfln("pushing global \"{}\" at {}", id: str, gen_pos(f))!;
     if(!(ctxt.scp.over is void)){
         return unimsg {
             msg = "define mutable variables at global scope",
@@ -752,7 +777,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                     };
                     free(dup);
                     out = fmt::asprintf("{0}{1}{2}    jnz {3}, @t.{4}, @f.{4}\n@t.{4}\n{5}    jmp @end.{6}\n@f.{4}\n",
-                        out, solve_ref(&refs), exp, eval, idx, body, endp);
+                        out, solve_ref(&refs, f), exp, eval, idx, body, endp);
                     next = nxttk(f, true)?;
                     if(cmp_tok(next, kwd::ELSE_BLK)){
                         if(stacktrace)
@@ -849,6 +874,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                             uses = &mods,
                             libpath = ctxt.libpath,
                             nomain = true,
+                            hasmain = false,
                             hostfn = "",
                             effect = [],
                         };
@@ -887,7 +913,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 free(dup);
                 // TODO: assert for size mismatches
                 const wrp = fmt::asprintf("{}{}    %.ret ={} copy {}\n",
-                    solve_ref(&add), exp, get_qbe_t(expr_t, 1), val_id);
+                    solve_ref(&add, f), exp, get_qbe_t(expr_t, 1), val_id);
                 out = fmt::asprintf("{}{}    ret %.ret\n", out, wrp);
             case =>
                 todo(f, fmt::asprintf("uncovered keyword: {}", kwdv[k]))?;
@@ -919,7 +945,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                         skip_field(f)?;
                         check_efx(f, fun, ctxt)?;
                         const (newexp, call) = parse_fcall(fun, f, ctxt, &refs)?;
-                        out = fmt::asprintf("{}{}{}    {}\n", out, solve_ref(&refs), newexp, call);
+                        out = fmt::asprintf("{}{}{}    {}\n", out, solve_ref(&refs, f), newexp, call);
                         continue;
                     };
                     next = nxttk(f, true)?;
@@ -931,7 +957,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                         setptr(f, true);
                         check_efx(f, fun, ctxt)?;
                         const (newexp, call) = parse_fcall(fun, f, ctxt, &refs)?;
-                        out = fmt::asprintf("{}{}{}    {}\n", out, solve_ref(&refs), newexp, call);
+                        out = fmt::asprintf("{}{}{}    {}\n", out, solve_ref(&refs, f), newexp, call);
                     };
                 };
             } else {
@@ -945,7 +971,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 };
                 check_efx(f, fun, ctxt)?;
                 const (newexp, call) = parse_fcall(fun, f, ctxt, &refs)?;
-                out = fmt::asprintf("{}{}{}    {}\n", out, solve_ref(&refs), newexp, call);
+                out = fmt::asprintf("{}{}{}    {}\n", out, solve_ref(&refs, f), newexp, call);
                 finsh(f, void: EXPECTD, "end of function call")?;
             };
         case let s: sym =>
@@ -963,7 +989,15 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
             todo(f, "uncovered statement")?;
         };
     };
+    // parsing file
     if(ctxt.scp.over is void){
+        if(!ctxt.hasmain && !ctxt.nomain){
+            return unimsg {
+                msg = "no main function defined",
+                tip = "the main function is the entry point of your program",
+                ptr = f,
+            }: GENERIC;
+        };
         return (strings::concat(datasec, out), kwd::NOT_KWRD);
     };
     if(ret_tp == kwd::NOT_KWRD) ret_tp = kwd::UNITTYPE;
@@ -1101,7 +1135,15 @@ fn parse_fcall(fun: *func, f: *file, ctxt: *context, refs: *[]idref) ((str, str)
     if(stacktrace)
         fmt::printfln("parsing function call at {}", gen_pos(f))!;
 
-    let out = fmt::asprintf("call ${}(", fun.fname);
+    const origin = solve_origin(fun);
+    let out =
+        if(origin == f.name && !ctxt.nomain){
+            yield fmt::asprintf("call ${}(", fun.fname);
+        } else if(origin == f.name){
+            yield fmt::asprintf("call ${}.{}(", ftomod(f.name), fun.fname);
+        } else {
+            yield fmt::asprintf("call ${}.{}(", ftomod(origin), fun.fname);
+        };
     let hdr ="";
     let next = nxttk(f)?;
     expct(cmp_tok(next, sym::OPEN_PAR), next, f, void: EXPECTD,
@@ -1264,7 +1306,7 @@ fn parse_asg(f: *file, dest: idt, pub: bool, oper: opr, ctxt: *context, defn: (*
                 exp, src_id, get_qbe_t(tp, 2), val_id);
         };
         out = fmt::asprintf("{}{}{}    store{} {}, %{}\n",
-            out, solve_ref(&refs), exp, get_qbe_t(store_t), src_id, dest);
+            out, solve_ref(&refs, f), exp, get_qbe_t(store_t), src_id, dest);
     case =>
         return bi_msg {
             lft = "declaration or assignment",
@@ -1577,7 +1619,7 @@ fn parse_opr(f: *file, oper: opr, expr_t: kwd, ctxt: *context, refs: *[]idref) (
                 const (newhdr, call) = parse_fcall(fun, f, ctxt, refs)?;
                 const exp = fmt::asprintf("{}    {} ={} {} {}, {}\n",
                     newhdr, val_id, asg_tp, inst[oper], val_id, wrp);
-                const out = fmt::asprintf("{}{}{}{}", solve_ref(refs), hdr, call, exp);
+                const out = fmt::asprintf("{}{}{}{}", solve_ref(refs, f), hdr, call, exp);
 
                 return (out, expr_t);
             } else {
@@ -1692,6 +1734,7 @@ fn parse_fun(f: *file, dest: idt, pub: bool, ctxt: *context, skip: bool = false)
     // TODO: effect tags
     // TODO: enforce 0 parameters for main
     if(dest: str == "main"){
+        ctxt.hasmain = true;
         expct(len(defs) == 0, dest, args, void: GENERIC,
             "the main function recieves no arguments")?;
 
@@ -1750,7 +1793,13 @@ fn parse_fun(f: *file, dest: idt, pub: bool, ctxt: *context, skip: bool = false)
             body = fmt::asprintf("{}    %.ret =l copy {}\n    ret %.ret\n", body, getdefval(kwd::UNITTYPE));
         };
         const (prml, prmd) = gen_params(params, parm_n);
-        out = fmt::asprintf("function {} ${}({}){{\n@start\n{}{}}}\n", get_qbe_t(ret, 1), dest, prml, prmd, body);
+        const fun_name =
+            if(!ctxt.nomain){
+                yield dest: str;
+            } else {
+                yield fmt::asprintf("{}.{}", ftomod(f.name), dest: str);
+            };
+        out = fmt::asprintf("function {} ${}({}){{\n@start\n{}{}}}\n", get_qbe_t(ret, 1), fun_name, prml, prmd, body);
     };
     return out;
 };
@@ -1794,15 +1843,13 @@ fn plural(pat: str, cnt: u64) str = {
     };
 };
 
+fn ftomod(file: str) str = {
+    const (name, _) = rem_path(file);
+    return strings::replace(name, ".ms", "");
+};
+
 fn check_efx(f: *file, fun: *func, ctxt: *context) (void | CMP_ERR) = {
-    const effect =
-        match(fun.origin){
-        case kernel =>
-            yield krnls[fun.origin: kernel];
-        case let mod: str =>
-            const (name, _) = rem_path(mod);
-            yield strings::replace(name, ".ms", "");
-        };
+    const effect = ftomod(solve_origin(fun));
     if(fun.origin is str && fun.origin: str == f.name){
         for(let f_efx .. fun.effect){
             for(let tag .. ctxt.effect){
