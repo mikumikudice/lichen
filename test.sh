@@ -1,3 +1,3 @@
 set -xe
 cd src/
-mold -run hare test
+mold -run hare test -D stacktrace=true
