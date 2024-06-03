@@ -54,7 +54,7 @@ export fn main() void = {
         };
     const (name, _) = rem_path(src);
     const outf =
-        if((argc == 1 && lib == libpath) || argc == 1){
+        if((libset && argc == 2) || argc == 1){
             yield strlib::replace(name, ".ms", "");
         } else {
             if(libset) yield os::args[3];
