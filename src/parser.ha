@@ -956,6 +956,16 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 const mod = expct(next is idt, next, f, void: EXPECTD,
                     "module name identifier")?: idt;
                 
+                if(ctxt.nomain){
+                    const self = ftomod(f.name);
+                    if(self == mod: str){
+                        return unimsg {
+                            msg = fmt::asprintf("the module {} is trying to import itself", col(self, cmd::YEL)),
+                            tip = void,
+                            ptr = f,
+                        }: GENERIC;
+                    };
+                };
                 match(strlib::findl(krnls, mod: str)){
                 case let krnl: size =>
                     const filename = fmt::asprintf("{}{}.asm", ctxt.libpath, mod: str);

@@ -84,3 +84,5 @@ if fails > 0 then
         print("- fail " .. (i) .. ": " .. err)
     end
 end
+
+local _ = exec("rm -r .test/") or os.exit(1)
