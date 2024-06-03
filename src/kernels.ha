@@ -6,6 +6,7 @@ const io_read =
         ret_n = "",
         origin = kernel::IO,
         public = true,
+        impure = true,
         effect = [ "IO" ],
         ...
     };
@@ -17,6 +18,7 @@ const io_write =
         ret_n = "",
         origin = kernel::IO,
         public = true,
+        impure = true,
         effect = [ "IO" ],
         ...
     };
@@ -67,6 +69,7 @@ const mem_alloc =
         ret_n = "",
         origin = kernel::MEM,
         public = true,
+        impure = true,
         effect = [ "MEM" ],
         ...
     };
@@ -78,6 +81,7 @@ const mem_free =
         ret_n = "",
         origin = kernel::MEM,
         public = true,
+        impure = true,
         effect = [ "MEM" ],
         ...
     };
@@ -89,6 +93,7 @@ const mem_copy =
         ret_n = "",
         origin = kernel::MEM,
         public = true,
+        impure = false,
         effect = [ "MEM" ],
         ...
     };
@@ -100,6 +105,7 @@ const mem_strlset =
         ret_n = "",
         origin = kernel::MEM,
         public = true,
+        impure = false,
         effect = [ "MEM" ],
         ...
     };
@@ -111,6 +117,7 @@ const mem_strcpy =
         ret_n = "",
         origin = kernel::MEM,
         public = true,
+        impure = false,
         effect = [ "MEM" ],
         ...
     };
@@ -122,6 +129,7 @@ const mem_strrev =
         ret_n = "",
         origin = kernel::MEM,
         public = true,
+        impure = false,
         effect = [ "MEM" ],
         ...
     };
@@ -133,6 +141,7 @@ const mem_memset =
         ret_n = "",
         origin = kernel::MEM,
         public = true,
+        impure = false,
         effect = [ "MEM" ],
         ...
     };

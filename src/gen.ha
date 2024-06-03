@@ -74,7 +74,7 @@ fn build(src: str, dest: str, ctxt: *context) (void | CMP_ERR) = {
     append(mold_args, also_link...);
     runc(silent, "mold", mold_args...);
 
-    //if(!(stacktrace || keep_tmp)) runc(silent, "rm", "-r", temp);
+    if(!(stacktrace || keep_tmp)) runc(silent, "rm", "-r", temp);
 
     const (name, _) = rem_path(src);
     fmt::printfln(col("successfully compiled {} in {}", cmd::GRN), name, dest)!;
@@ -200,7 +200,7 @@ fn errstr(e: CMP_ERR) (str, (*file | void), (str | void)) = {
         const err = uni as bi_msg;
         const lft = strings::replace(err.lft, ".p", "'");
         const rgt = strings::replace(err.rgt, ".p", "'");
-        const msg = fmt::asprintf("the function {} produces unhandled by the function caller {}",
+        const msg = fmt::asprintf("the function {} produces unhandled effects by the function caller {}",
             col(lft, cmd::YEL), col(rgt, cmd::YEL));
         return (msg, err.ptr, err.tip);
 

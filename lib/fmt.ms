@@ -44,15 +44,20 @@ pub itoa = fn(src : u64, size : u64) : str \ MEM {
         num -= rem;
         num = num / 10;
     };
-    return MEM::strrev(buff);
+    flen = ptr + 8;
+    buff' = MEM::alloc(flen) : str;
+    MEM::strcpy(buff', buff, flen);
+
+    return MEM::strrev(buff');
 };
 
-pub atoi = fn(src : str) : u64 \ IO {
+pub atoi = fn(src : str) : u64 {
     mut out = 0 : u64;
     mut pow = src.len - 1;
-
+    // TODO: assert for empty strings
+    // when unions are available
     for i = 0 .. src.len - 1 {
-        mut chr = src[i]: u64 - '0';
+        mut chr = src[i] : u64 - '0';
         for r = 1 .. pow {
             chr = chr * 10;
         };

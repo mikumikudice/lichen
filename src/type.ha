@@ -129,6 +129,7 @@ type func = struct {
     ret_n: str,
     origin: (str | kernel),
     public: bool,
+    impure: bool,
     effect: []str,
     lin: size,
     cln: size,

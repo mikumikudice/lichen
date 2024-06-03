@@ -689,6 +689,7 @@ fn push_fun(name: idt, pub: bool, f: *file, parm_l: []kwd, parm_n : []idt, retrn
             ret_n = "",
             origin = f.name,
             public = pub,
+            impure = len(efx) > 0,
             effect = efx,
             lin = f.lin,
             cln = f.cln,
@@ -2245,6 +2246,7 @@ fn check_uof(f: *file, val: num, expr_t: kwd) (void | CMP_ERR) = {
 };
 
 fn check_efx(f: *file, fun: *func, ctxt: *context) (void | CMP_ERR) = {
+    if(!fun.impure) return;
     const effect = ftomod(solve_origin(fun));
     if(fun.origin is str && fun.origin: str == f.name){
         for(let f_efx .. fun.effect){
