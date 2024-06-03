@@ -571,20 +571,20 @@ fn mtchs(s: sym, f: *file, restore: bool = true) (u64 | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("matching symbol \"{}\" at {}", symv[s], gen_pos(f))!;
 
-    noeol(f, "matching symbol")?;
-    if(restore) setptr(f);
 
+    if(restore) setptr(f);
     let depth = 1z;
     const max = len(f.src);
     let dup = alloc(*f);
-    for(let next = nxttk(f)?; f.ptr < max; next = nxttk(f)?){
-        if(next is eol) continue;
+    for(f.ptr < max){
+        const next = nxttk(f)?;
         if(cmp_tok(next: tok, s: tok)){
             depth += 1;
             free(dup);
             dup = alloc(*f);
         } else if(cmp_tok(next: tok, (s + 1): tok)){
             if(depth == 0){
+                free(dup);
                 return unimsg {
                     msg = "invalid trailing symbol found here",
                     tip = void,
@@ -833,7 +833,6 @@ fn incptr(f: *file, onstr: bool = false) void = {
     f.iseol = false;
     f.end += 1;
     f.ptr += 1;
-
     if(!onstr)
     for(f.ptr < max){
         const chr = f.src[f.ptr];

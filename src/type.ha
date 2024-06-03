@@ -22,25 +22,20 @@ type IDTCDUP = !(void | bi_msg);
 type MODCDUP = !(void | bi_msg);
 type NOTPUBL = !(void | bi_msg);
 type NOTCALL = !(void | unimsg);
+type NOFIELD = !(void | bi_msg);
+type NOTINDX = !(void | unimsg);
 type EFX_ERR = !(void | bi_msg);
 type GENERIC = !(void | unimsg);
 type GENTODO = !(void | unimsg);
 type CMP_ERR = !
-    ( LDDFAIL
-    | CRTFAIL
-    | INVALID
-    | UNREACH
-    | EXPECTD
-    | UNDEFNS
-    | MISMTCH
+    ( LDDFAIL | CRTFAIL
+    | INVALID | UNREACH | EXPECTD
+    | UNDEFNS | MISMTCH
     | CANT_DO
-    | IDTCDUP
-    | MODCDUP
-    | NOTPUBL
-    | NOTCALL
+    | IDTCDUP | MODCDUP | NOTPUBL
+    | NOTCALL | NOFIELD | NOTINDX
     | EFX_ERR
-    | GENERIC
-    | GENTODO
+    | GENERIC | GENTODO
     );
 // --- parser types ---
 type file = struct {
@@ -166,6 +161,8 @@ type context = struct {
     scp: *scope,
     uses : *[]*module,
     libpath: str,
+    datasec: str,
+    strlits: []str,
     onloop: bool,
     loopid: size,
     nomain: bool,

@@ -114,6 +114,17 @@ const mem_strcpy =
         effect = [ "MEM" ],
         ...
     };
+const mem_strrev =
+    func { // strrev = fn(src : str) : str
+        fname = "strrev",
+        param = [ kwd::STRING_T ],
+        retrn = kwd::STRING_T,
+        ret_n = "",
+        origin = kernel::MEM,
+        public = true,
+        effect = [ "MEM" ],
+        ...
+    };
 const mem_memset =
     func { // memset = fn(dest : raw, src : u8, size : u64) : unit
         fname = "memset",
@@ -126,7 +137,8 @@ const mem_memset =
         ...
     };
 const mem_funs =
-    [ &mem_alloc, &mem_free, &mem_copy
-    , &mem_strlset, &mem_strcpy, &mem_memset
+    [ &mem_alloc  , &mem_free  , &mem_copy
+    , &mem_memset
+    , &mem_strlset, &mem_strcpy, &mem_strrev
     ];
 const mem_defs = []: []*nmsp;

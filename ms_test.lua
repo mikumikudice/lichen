@@ -13,7 +13,7 @@ if not init then os.exit(1) end
 local tdir = exec("mkdir -p " .. tmp)
 if not tdir then os.exit(1) end
 
-local tests = { "test_exp", "test_fun", "test_mem", "test_glob", "demo", "test_loop" }
+local tests = { "test_exp", "test_fun", "test_mem", "test_glob", "demo", "test_loop", "test_fmt" }
 local results = {
     {},                             -- test_exp
     { "working!\n" },               -- test_fun
@@ -21,6 +21,7 @@ local results = {
     {},                             -- test_glob
     { "mornin' sailor!\n" },        -- demo
     { "hi!\nhoy!\nhi!\nhoy!\nhi!\nyay!\nyay!\nyay!\n" }, -- loop
+    { "128\n", "128\n" }
 }
 local fails = 0
 local failed = {}
@@ -32,13 +33,16 @@ for i, t in pairs(tests) do
         fails = fails + 1 
     else
         if #results[i] <= 1 then
-            ok = exec(tmp .. t .. " > " .. tmp .. t .. ".log")
-            if not ok then os.exit(1) end
-        
+            local ran, _, sig = exec(tmp .. t .. " > " .. tmp .. t .. ".log")
+            if not ran then
+                failed[#failed + 1] = "exit code: " .. (sig)
+                fails = fails + 1
+            end
+
             local log = io.open(tmp .. t .. ".log") or os.exit(1)
             local res = log:read("a")
             log:close()
-        
+
             if #results[i] == 0 and res ~= "" then
                 res = res:gsub("\n", "\\n")
                 failed[#failed + 1] = t .. "'s ouput is incorrect: \"" .. res .. "\""
@@ -50,11 +54,14 @@ for i, t in pairs(tests) do
                 fails = fails + 1
             end
         else
-            local input = io.open(tmp .. t ..".input", "w")
+            local input = io.open(tmp .. t ..".input", "w") or os.exit(1)
             input:write(results[i][1])
             input:close()
-            ok = exec("(" .. tmp .. t .. " < " .. tmp .. t .. ".input) > " .. tmp .. t .. ".log")
-            if not ok then os.exit(1) end
+            local ran, _, sig = exec("(" .. tmp .. t .. " < " .. tmp .. t .. ".input) > " .. tmp .. t .. ".log")
+            if not ran then
+                failed[#failed + 1] = "exit code: " .. (sig)
+                fails = fails + 1
+            end
 
             local log = io.open(tmp .. t .. ".log") or os.exit(1)
             local res = log:read("a")

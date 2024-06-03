@@ -75,7 +75,7 @@ these are the current goals of this project:
         - [ ] test statement
     - [ ] control flow
         - [ ] if/else
-            - [ ] basic functionality
+            - [x] basic functionality
             - [ ] local statement definitions 
         - [ ] for loop
             - [x] for while

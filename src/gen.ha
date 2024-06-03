@@ -74,7 +74,7 @@ fn build(src: str, dest: str, ctxt: *context) (void | CMP_ERR) = {
     append(mold_args, also_link...);
     runc(silent, "mold", mold_args...);
 
-    if(!(stacktrace || keep_tmp)) runc(silent, "rm", "-r", temp);
+    //if(!(stacktrace || keep_tmp)) runc(silent, "rm", "-r", temp);
 
     const (name, _) = rem_path(src);
     fmt::printfln(col("successfully compiled {} in {}", cmd::GRN), name, dest)!;
@@ -185,6 +185,17 @@ fn errstr(e: CMP_ERR) (str, (*file | void), (str | void)) = {
         const msg = fmt::asprintf("the namespace {} is not callable", col(idt, cmd::YEL));
         return (msg, err.ptr, err.tip);
     
+    case let uni: NOFIELD =>
+        const err = uni as bi_msg;
+        const msg = fmt::asprintf("the type {} has no field named {}",
+            col(err.lft, cmd::YEL), col(err.rgt, cmd::YEL));
+        return (msg, err.ptr, err.tip);
+
+    case let uni: NOTINDX =>
+        const err = uni as unimsg;
+        const msg = fmt::asprintf("the type {} is not indexable", col(err.msg, cmd::YEL));
+        return (msg, err.ptr, err.tip);
+
     case let uni: EFX_ERR =>
         const err = uni as bi_msg;
         const lft = strings::replace(err.lft, ".p", "'");

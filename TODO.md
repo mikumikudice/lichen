@@ -1,5 +1,6 @@
 - use stack allocated buffers/copies when possible more often
 - add under/overflow for arithmetic instructions
+- reduce repeated second-priority function calls such as get_qbe_t
 - implement arrays
 - implement unions
 - implement error unions and error operators
