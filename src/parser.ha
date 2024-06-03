@@ -209,7 +209,6 @@ fn pushref(nm : *nmsp, f: *file, ctxt: *context, add: *[]idref) (kwd | CMP_ERR) 
     return nm.vtype;
 };
 
-
 fn solve_ref(refs: *[]idref, f: *file) str = {
     let hdr = "";
     const max = len(refs);
@@ -298,7 +297,7 @@ fn get_idt(nm: idt, f: *file, scp: *scope, ctxt: *context) (*nmsp | *func | CMP_
 
     let next = nxttk(f, true)?;
     if(cmp_tok(next, opr::MODFIELD)){
-        return parse_field(nm, f, ctxt)?;
+        return parse_modfield(nm, f, ctxt)?;
     };
     setptr(f, true);
 
@@ -743,8 +742,11 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 next = nxttk(f, true)?;
                 if(is_asg_opr(next)){
                     setptr(f, true);
-                    const asg = parse_asg(f, i, true, next: opr, ctxt)?;
-                    out = fmt::asprintf("{}export {}", out, asg);
+                    match(parse_asg(f, i, true, next: opr, ctxt)?){
+                    case void => void;
+                    case let asg: str =>
+                        out = fmt::asprintf("{}export {}", out, asg);
+                    };
                 } else if(cmp_tok(next, opr::CASTTOTP)){
                     todo(f, "typedefs")?;
                 } else {
@@ -924,7 +926,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                     cmp_tok(next, sym::OPEN_PAR), next, f, void: EXPECTD, "declaration or assignment")?;
 
                 setptr(f, true);
-                const asg = parse_asg(f, i, false, oper: opr, ctxt, void, true)?;
+                const asg = parse_asg(f, i, false, oper: opr, ctxt, void, true)?: str;
                 out = fmt::asprintf("{}{}", out, asg);
             case kwd::USE__MOD =>
                 if(stacktrace)
@@ -1206,7 +1208,17 @@ fn get_mod(mod: idt, ctxt: *context) (*module | void) = {
     };
 };
 
-fn parse_field(mod: idt, f: *file, ctxt: *context) (*nmsp | *func | CMP_ERR) = {
+fn parse_objfield(f: *file, nm: *nmsp) ((str, str) | CMP_ERR) = {
+    let next = nxttk(f, true)?;
+    if(cmp_tok(next, opr::OBJFIELD)){
+        return ("", "");
+    } else {
+        setptr(f, true);
+        return ("", "");
+    };
+};
+
+fn parse_modfield(mod: idt, f: *file, ctxt: *context) (*nmsp | *func | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("parsing mod field access")!;
 
@@ -1337,7 +1349,7 @@ fn parse_fcall(fun: *func, f: *file, ctxt: *context, refs: *[]idref) ((str, str)
     return (hdr, strings::concat(out, ")"));
 };
 
-fn parse_asg(f: *file, dest: idt, pub: bool, asgn: opr, ctxt: *context, defn: (*nmsp | *func | void) = void, mutbl: bool = false) (str | CMP_ERR) = {
+fn parse_asg(f: *file, dest: idt, pub: bool, asgn: opr, ctxt: *context, defn: (*nmsp | *func | void) = void, mutbl: bool = false) (str | void | CMP_ERR) = {
     if(stacktrace){
         if(defn is void){
             fmt::printfln("parsing assignment to \"{}\" at {}", dest, gen_pos(f))!;
@@ -1359,7 +1371,6 @@ fn parse_asg(f: *file, dest: idt, pub: bool, asgn: opr, ctxt: *context, defn: (*
         "declaration or assignment")?: opr;
 
     const dup = alloc(*f);
-
     switch(oper){
     case opr::CASTTOTP =>
         if(!(defn is void)){
@@ -1369,6 +1380,13 @@ fn parse_asg(f: *file, dest: idt, pub: bool, asgn: opr, ctxt: *context, defn: (*
                 tip = void,
                 ptr = dup,
             }: IDTCDUP;
+        };
+        if(global){
+            return unimsg {
+                msg = "leave a global variable undefined",
+                tip = void,
+                ptr = dup,
+            }: CANT_DO;
         };
         next = nxttk(f)?;
         const tp = expct(is_type(next), next, f, void: EXPECTD,
@@ -1398,6 +1416,10 @@ fn parse_asg(f: *file, dest: idt, pub: bool, asgn: opr, ctxt: *context, defn: (*
             };
             return parse_fun(f, dest, pub, ctxt)?;
         } else {
+            if(global){
+                jmpto(eol, f, true)!;
+                return;
+            };
             setptr(f, true);
         };
         let refs = []: []idref;
@@ -1528,7 +1550,7 @@ fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], i
         match(get_idt(i, f, ctxt.scp, ctxt)?){
         case let nm: *nmsp =>
             pushref(nm, f, ctxt, refs)?;
-            if(nm.origin is kernel){
+            if(nm.origin is kernel || nm.origin: str != f.name){
                 skip_field(f)?;
                 const cast = parse_cast(f, nm.vtype)?;
                 if(expr_t != kwd::NOT_KWRD){
