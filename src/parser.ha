@@ -35,6 +35,17 @@ fn todo(f: *file, msg: str) (void | CMP_ERR) = {
 
     assert(sign_mismtch(kwd::U64_TYPE, kwd::I64_TYPE) == true);
     assert(sign_mismtch(kwd::I8__TYPE, kwd::U64_TYPE) == true);
+
+    let dummy = file { ... };
+    assert(check_uof(&dummy, 0: u64, kwd::U8__TYPE) is void);
+    assert(check_uof(&dummy, 255: u64, kwd::U8__TYPE) is void);
+    assert(check_uof(&dummy, 255: u64, kwd::U8__TYPE) is void);
+    assert(check_uof(&dummy, 127: u64, kwd::I8__TYPE) is void);
+    assert(check_uof(&dummy, (1 << 63): u64, kwd::U64_TYPE) is void);
+    assert(check_uof(&dummy, 256: u64, kwd::U8__TYPE) is CMP_ERR);
+    assert(check_uof(&dummy, 128: i64, kwd::I8__TYPE) is CMP_ERR);
+    assert(check_uof(&dummy, -129: i64, kwd::I8__TYPE) is CMP_ERR);
+    assert(check_uof(&dummy, (1 << 63): u64, kwd::I64_TYPE) is CMP_ERR);
 };
 
 // returns the default value for each primitive type
@@ -638,6 +649,7 @@ fn push_glob(id: idt, pub: bool, f: *file, ctxt: *context) (str | CMP_ERR) = {
     free(dup);
     append(ctxt.scp.defs, glob);
 
+    check_uof(f, res, expr_t)?;
     if(is_num(expr_t)){
         return fmt::asprintf("{}{{ {} {} }}\n", out, get_qbe_t(expr_t), res: u64);
     } else {
@@ -711,7 +723,6 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
     for(f.ptr < max){
         let next = nxttk(f)?;
         if(next is eol) continue;
-
         match(next: tok){
         case let k: kwd =>
             switch(k){
@@ -1488,6 +1499,7 @@ fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], i
             expr_t = cast_to(kwd::NUMBER_T, expr_t, vall, f)?;
         };
         expr_t = parse_cast(f, expr_t)?;
+        check_uof(f, n, expr_t)?;
         next = nxttk(f, true)?;
         if(is_limit(next, limit)){
             setptr(f, true);
@@ -1990,6 +2002,98 @@ fn plural(pat: str, cnt: u64) str = {
 fn ftomod(file: str) str = {
     const (name, _) = rem_path(file);
     return strings::replace(name, ".ms", "");
+};
+
+fn check_uof(f: *file, val: num, expr_t: kwd) (void | CMP_ERR) = {
+    if(is_num(expr_t)){
+        const n =
+            match(val){
+            case let u: u64 => yield u;
+            case let s: i64 =>
+                const f = s >> 63;
+                yield ((s ^ f) - f): u64;
+            };
+        switch(expr_t){
+        case kwd::U8__TYPE =>
+            if(n > (~0: u8): u64){
+                return unimsg {
+                    msg = "numberic literal overflows dest type (u8)",
+                    tip = void,
+                    ptr = f,
+                }: GENERIC;
+            };
+        case kwd::U16_TYPE =>
+            if(n > (~0: u16): u64){
+                return unimsg {
+                    msg = "numberic literal overflows dest type (u16)",
+                    tip = void,
+                    ptr = f,
+                }: GENERIC;
+            };
+        case kwd::U32_TYPE =>
+            if(n > (~0: u32): u64){
+                return unimsg {
+                    msg = "numberic literal overflows dest type (u32)",
+                    tip = void,
+                    ptr = f,
+                }: GENERIC;
+            };
+        case kwd::U64_TYPE, kwd::NUMBER_T =>
+            return;
+        case =>
+            assert(false);
+        };
+    } else {
+        const n =
+            match(val){
+            case let u: u64 =>
+                if(u >= (1 << 64 / 2 - 1): u64){
+                    return unimsg {
+                        msg = "numberic literal overflows dest type (i32)",
+                        tip = void,
+                        ptr = f,
+                    }: GENERIC;
+                };
+                yield u: i64;
+            case let s: i64 => yield s;
+            };
+        switch(expr_t){
+        case kwd::I8__TYPE =>
+            if(n < -(1 << 7): i64 || n > ((1 << 7) - 1): i64){
+                return unimsg {
+                    msg = "numberic literal overflows dest type (i8)",
+                    tip = void,
+                    ptr = f,
+                }: GENERIC;
+            };
+        case kwd::I16_TYPE =>
+            if(n < -(1 << 15): i64 || n > ((1 << 15) - 1): i64){
+                return unimsg {
+                    msg = "numberic literal overflows dest type (i16)",
+                    tip = void,
+                    ptr = f,
+                }: GENERIC;
+            };
+        case kwd::I32_TYPE =>
+            if(n < -(1 << 31): i64 || n > ((1 << 31) - 1): i64){
+                return unimsg {
+                    msg = "numberic literal overflows dest type (i32)",
+                    tip = void,
+                    ptr = f,
+                }: GENERIC;
+            };
+        case kwd::I64_TYPE, kwd::NUMBER_T =>
+            if(n < -(1 << 63): i64 || n > ((1 << 63) - 1): i64){
+                return unimsg {
+                    msg = "numberic literal overflows dest type (i32)",
+                    tip = void,
+                    ptr = f,
+                }: GENERIC;
+            };
+        case =>
+            assert(false);
+        };
+    };
 };
 
 fn check_efx(f: *file, fun: *func, ctxt: *context) (void | CMP_ERR) = {

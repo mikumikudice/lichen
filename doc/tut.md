@@ -145,7 +145,7 @@ dog : rec {
 ```
 
 # unions
-(tagged) unions are a special composite type that caries a data of any type and a tag indicating its type. you can't operate on them directly, but you can match against the possible values or directly cast them to one of the possible values. unions can also carry a single error type which is used on [error handling](#unions-error-handling-and-pattern-matching). unions can't be recursive, so the spread operator (`...`) must be used to unpack unions.
+(tagged) unions are a special composite type that caries a instance of any type and a tag indicating its type. you can't operate on them directly, but you can match against the possible values or directly cast them to one of the possible values. unions can also carry a single error type which is used on [error handling](#unions-error-handling-and-pattern-matching). unions can't be recursive, so the spread operator (`...`) must be used to unpack unions.
 ```rust
 signed : uni i8 | i16 | i32 | i64; 
 unsigned : uni u8 | u16 | u32 | u64;
@@ -186,7 +186,7 @@ names : enum str {
     mia = "mia",
 };
 ```
-any instance of an enum can only be assigned by a variation of the enum, but it can be compared with primitives normally
+any instance of an enum can only be assigned by a variation of the enum, but it can be compared with primitives normally:
 ```rust
 person = names.bob;
 if person == "mia" or person == names.kau {
@@ -207,7 +207,7 @@ match tok {
     unit => fmt::putfl("not a token")!;
 };
 ```
-* note you can't cast a type to a union variant, but you can cast a union to any compatible type variation.
+* note you can't cast a type to an union variant, but you can cast a union to any compatible type variation.
 
 # control flow
 these are the control flow blocks that can be used in moss.
@@ -234,7 +234,7 @@ match x {
     str => fmt::putl("x is a string!")!;
 };
 ```
-a match block can also be use ranges when matching values.
+a match block can also use ranges when matching values.
 ```rust
 x = 4 : u32;
 match x {
@@ -301,9 +301,9 @@ for c = 0 .. 127 : u32 {
 };
 ```
 # truthy values and comparisons
-if moss, there are no first-class boolean types (although there's a bool type in the `types` module from the standard library), but the truthiness of values on if/for blocks are not like C languages. for instance, empty strings and arrays, unit type and 0 are considered falsy, anything else is considered true. you can put any type on a if/for block for truth-checking, except for structures, once these are not semantically meaningful to be considered checkable.
+in moss, there are no first-class boolean types (although there's a bool type in the `types` module from the standard library), but the truthiness of values on if/for blocks are not like C languages. for instance, empty strings and arrays, unit type and 0 are considered falsy, anything else is considered true. you can put any type on a if/for block for truth-checking, except for structures, once these are not semantically meaningful to be considered checkable.
 
-when doing comparisons, you can check equality and inequality with any two types, but greater/lesser comparisons are only allowed between subtypes i.e. numerical types between numerical types, strings with strings, arrays with arrays. these last two are compared only using their length. in this case, lists, unions and structures are prohibited to be compared for the same reason of equality. in the specific case of lists, these have no size to be compared. see more on [their own topic](#lists).
+when doing comparisons, you can check equality and inequality with any two types, but greater/lesser comparisons are only allowed between subtypes i.e. numerical types between numerical types, strings with strings and arrays with arrays. these last two are compared only using their length. in this case, lists, unions and structures are prohibited to be compared for the same reason of equality. in the specific case of lists, these have no size to be compared. see more on [their own topic](#lists).
 
 comparison between functions is prohibited.
 
