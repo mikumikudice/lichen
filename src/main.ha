@@ -1,9 +1,6 @@
 use os;
 use fmt;
-use strlib;
 use strings;
-
-const track_nxttk = false;
 
 const version = "0.0.1";
 
@@ -14,12 +11,12 @@ export fn main() void = {
     const home = os::getenv("HOME"): str;
 
     const usg = fmt::asprintf("mossy usage:\n\t{}{}{}",
-        col("$ ", cmd::YEL), col(os::args[0], cmd::GRN),
-        col(" [flags] <main file> [output file name]", cmd::BLU));
+        fmtc("$ ", cmd::YEL), fmtc(os::args[0], cmd::GRN),
+        fmtc(" [flags] <main file> [output file name]", cmd::BLU));
 
-    const flg = fmt::asprintf(col("-l{}", cmd::GRN), col("<lib path>", cmd::BLU));
+    const flg = fmt::asprintf(fmtc("-l{}", cmd::GRN), fmtc("<lib path>", cmd::BLU));
     const hlp = fmt::asprintf("get help on learning how to use moss in {}",
-        col(tut, cmd::GRN));
+        fmtc(tut, cmd::GRN));
 
     let argc = len(os::args) - 1;
     // check if there are arguments
@@ -35,7 +32,7 @@ export fn main() void = {
         os::getenv("HOME"): str, ".local/lib/lime/");
     let lib = libpath;
     const src =
-        if(strlib::startswith(os::args[1], "-l")){
+        if(strings::hasprefix(os::args[1], "-l")){
             yield
             if(argc > 1){
                 if(os::args[1] == "-l"){
@@ -55,7 +52,7 @@ export fn main() void = {
     const (name, _) = rem_path(src);
     const outf =
         if((libset && argc == 2) || argc == 1){
-            yield strlib::replace(name, ".ms", "");
+            yield strings::replace(name, ".ms", "");
         } else {
             if(libset) yield os::args[3];
             yield os::args[2];

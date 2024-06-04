@@ -1,5 +1,4 @@
 use fmt;
-use strlib;
 use strings;
 
 fn todo(f: *file, msg: str) (void | CMP_ERR) = {
@@ -147,16 +146,16 @@ fn get_t_tag(vtp: kwd) str = {
 
 fn pushstr(l: str, ctxt: *context) str = {
     if(len(l) == 0) return "$empty.str";
-    const max = len(ctxt.strlits);
-    for(let i = 0z; i < max; i += 1){
-        if(l == ctxt.strlits[i]){
-            return fmt::asprintf("$.{}", i);
-        };
+    match(findl(ctxt.strlits, l)){
+    case let i: size =>
+        return fmt::asprintf("$.{}", i);
+    case =>
+        const end = len(ctxt.strlits);
+        append(ctxt.strlits, l);
+        ctxt.datasec = fmt::asprintf("{}data $.{} = {{ l {}, b \"{}\" }}\n",
+            ctxt.datasec, end, truelen(l) + 8, l);
+        return fmt::asprintf("$.{}", end);
     };
-    append(ctxt.strlits, l);
-    ctxt.datasec = fmt::asprintf("{}data $.{} = {{ l {}, b \"{}\" }}\n",
-        ctxt.datasec, max, truelen(l) + 8, l);
-    return fmt::asprintf("$.{}", max);
 };
 
 fn cmp_origin(ths: (str | kernel), tht: (str | kernel)) bool = {
@@ -185,20 +184,17 @@ fn solve_origin(id: (*nmsp | *func | *idref)) str = {
     };
 };
 
-fn pushref(nm : *nmsp, f: *file, ctxt: *context, add: *[]idref) (kwd | CMP_ERR) = {
+fn pushref(nm : *nmsp, f: *file, ctxt: *context, refs: *[]idref) (kwd | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("pushing new reference to \"{}\" at {}", nm.ident, gen_pos(f))!;
 
-    const max = len(add);
     // value is already loaded
     if(nm.param) return nm.vtype;
-
-    for(let i = 0z; i < max; i += 1){
-        if(add[i].idt == nm.ident && cmp_origin(add[i].origin, nm.origin)){
-            return add[i].vtp;
-        };
+    match(findref(refs, nm)){
+    case let r: *idref => return r.vtp;
+    case => void;
     };
-    append(add, idref {
+    append(refs, idref {
         idt = nm.ident,
         vtp = nm.vtype,
         global = nm.global,
@@ -722,6 +718,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
         };
     const max = len(f.src);
 
+    //let src_buff = alloc([]: [max * 6]u8);
     for(f.ptr < max){
         let next = nxttk(f)?;
         if(next is eol) continue;
@@ -980,13 +977,13 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                     const self = ftomod(f.name);
                     if(self == mod: str){
                         return unimsg {
-                            msg = fmt::asprintf("the module {} is trying to import itself", col(self, cmd::YEL)),
+                            msg = fmt::asprintf("the module {} is trying to import itself", fmtc(self, cmd::YEL)),
                             tip = void,
                             ptr = f,
                         }: GENERIC;
                     };
                 };
-                match(strlib::findl(krnls, mod: str)){
+                match(findl(krnls, mod: str)){
                 case let krnl: size =>
                     const filename = fmt::asprintf("{}{}.asm", ctxt.libpath, mod: str);
                     // TODO: un-hardcode these definitions
@@ -1048,7 +1045,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                         case let e: CMP_ERR =>
                             if(e is LDDFAIL){
                                 return unimsg {
-                                    msg = fmt::asprintf("source file for module \"{}\" not found", col(mod: str, cmd::BLU)),
+                                    msg = fmt::asprintf("source file for module \"{}\" not found", fmtc(mod: str, cmd::BLU)),
                                     tip = "try to specify the libpath with the flag -l",
                                     ptr = f,
                                 }: GENERIC;

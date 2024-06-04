@@ -12,8 +12,7 @@ pub main = fn() : unit \ fmt & MEM {
 
     if x % 5 == 0 and y % 3 == 0 {
         fmt::putl("if!");
-    } else if x % 5 == 0 
-        or y % 3 == 0  {
+    } else if x % 5 == 0 or y % 3 == 0 {
         fmt::putl("else if!");
     } else {
         fmt::putl("else!");

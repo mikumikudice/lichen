@@ -3,7 +3,6 @@ use io;
 use fs;
 use fmt;
 use bufio;
-use strlib;
 use strings;
 use strconv;
 use encoding::utf8;
@@ -62,7 +61,8 @@ fn tktostr(tk: tok, verb: bool = false) str = {
 
 fn tostr(src: []u8) str = {
     // TODO: handle this more elegantly
-    return strings::fromutf8(src)!;
+    const r = strings::fromutf8(src)!;
+    return r;
 };
 
 // compares two tokens
@@ -181,17 +181,7 @@ fn load(fname: str) (*file | CMP_ERR) = {
 // returns the next token or end of file
 // returns a compilation error on invalid tokens
 fn nxttk(f: *file, rev: bool = false) (tok | CMP_ERR) = {
-    // debug info
-    if(stacktrace && track_nxttk){
-        const txt = tostr(f.src);
-        const end =
-            match(strlib::finda(txt, "\n", f.ptr)){
-            case let e: size => yield e;
-            case => yield len(txt);
-            };
-        const src = strings::sub(txt, f.ptr, end);
-        fmt::printfln("reading token at {}", gen_pos(f))!;
-    };
+    const strsrc = tostr(f.src);
     if(rev) setptr(f);
 
     let tkv: []u8 = [];
@@ -220,18 +210,13 @@ fn nxttk(f: *file, rev: bool = false) (tok | CMP_ERR) = {
                 // single line
                 if(f.src[f.ptr + 1] == '/'){
                     f.end = 0;
-                    match(strlib::finda(tostr(f.src), "\n", f.ptr)){
-                    case let i: size =>
-                        f.ptr = i + 1;        
-                        f.lin += 1;
-                        f.lst = f.ptr;
-                        f.end = 0;
-                        f.cln = f.end;
-                        return eol;
-                    case =>
-                        assert(false);
-                        return eol;
-                    };
+                    const end = strings::index(strings::sub(strsrc, f.ptr + 1), "\n"): size;
+                    f.ptr = f.ptr + end + 1;
+                    f.lin += 1;
+                    f.lst = f.ptr;
+                    f.end = 0;
+                    f.cln = f.end;
+                    return eol;
                 // multiple lines
                 } else if(f.src[f.ptr + 1] == '*'){
                     let depth = 1z;
@@ -287,7 +272,7 @@ fn nxttk(f: *file, rev: bool = false) (tok | CMP_ERR) = {
                             return k: kwd;
                         };
                     };
-                    const numexp = strlib::replace(val, "_", "");
+                    const numexp = strings::replace(val, "_", "");
                     const numlen = len(numexp);
                     match(strconv::stou64(numexp)){
                     case let n: u64 =>
@@ -301,7 +286,7 @@ fn nxttk(f: *file, rev: bool = false) (tok | CMP_ERR) = {
                         }: GENERIC;
                     case =>
                         // check number base prefix
-                        if(strlib::startswith(numexp, "0x")){
+                        if(strings::hasprefix(numexp, "0x")){
                             const chk =
                                 if(len(numexp) > 2){
                                     let i = 2z;
@@ -339,7 +324,7 @@ fn nxttk(f: *file, rev: bool = false) (tok | CMP_ERR) = {
                                 }: GENERIC;
                             };
                         };
-                        if(strlib::startswith(numexp, "0o")){
+                        if(strings::hasprefix(numexp, "0o")){
                             const chk =
                                 if(len(numexp) > 2){
                                     let i = 2z;
@@ -377,7 +362,7 @@ fn nxttk(f: *file, rev: bool = false) (tok | CMP_ERR) = {
                                 }: GENERIC;
                            };
                         };
-                        if(strlib::startswith(numexp, "0b")){
+                        if(strings::hasprefix(numexp, "0b")){
                             const chk =
                                 if(len(numexp) > 2){
                                     let i = 2z;
@@ -622,7 +607,7 @@ fn mtchs(s: sym, f: *file, restore: bool = true) (u64 | CMP_ERR) = {
 // moves the parser to the first instance of `t`
 fn jmpto(t: tok, f: *file, before: bool = false) (void | CMP_ERR) = {
     if(stacktrace)
-        fmt::printfln("jumping to {}", tktostr(t, true))!;
+        fmt::printfln("jumping to {} at {}", tktostr(t, true), gen_pos(f))!;
     for(let next = nxttk(f, before)?; !(next is eol) && !cmp_tok(next: tok, t)){
         next = nxttk(f, before)?;
     };
@@ -726,7 +711,7 @@ fn truelen(txt: str) size = {
         ];
     let fix = txt;
     for(let p .. pairs){
-        fix = strlib::replace(fix, p.0, p.1);
+        fix = strings::replace(fix, p.0, p.1);
     };
     return len(fix);
 };
