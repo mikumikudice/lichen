@@ -850,7 +850,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 ctxt.loopid = idx;
 
                 let refs = []: []idref;
-                const limit = [ sym::OPN_CRLY ]: []tok;
+                const limit = [ sym::OPN_CRLY, kwd::AND_OPER, kwd::OR__OPER ]: []tok;
                 // for range
                 if(ahead(f, 2, opr::ASSIGNMT) is tok){
                     next = nxttk(f)?;
@@ -903,7 +903,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 // for while
                 } else {
                     const (exp, tp, chk) = parse_exp(f, ctxt, &refs, limit)?;
-                    nxttk(f)!;
+                    const oper = nxttk(f)!;
                     const eval =
                         if(tp == kwd::STRING_T || tp == kwd::ARRAY__T){
                             exp = fmt::asprintf("{}    %val.l =l loadl {}\n    %val.l =l sub %val.l, 8\n", exp, chk);
@@ -916,8 +916,12 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                         expct(is_subt(loop_tp, ret_tp), loop_tp, dup, void: MISMTCH,
                         "return types", "union types are not implemented yet")?;
                     };
-                    out = fmt::asprintf("{0}{1}{2}@rpt.{4}\n    jnz {3}, @loop.{4}, @break.{4}\n@loop.{4}\n{5}    jmp @rpt.{4}\n@break.{4}\n",
-                        out, solve_ref(&refs, f), exp, eval, idx, body);
+                    if(cmp_tok(oper, sym::OPN_CRLY)){
+                        out = fmt::asprintf("{0}{1}{2}@rpt.{4}\n    jnz {3}, @loop.{4}, @break.{4}\n@loop.{4}\n{5}    jmp @rpt.{4}\n@break.{4}\n",
+                            out, solve_ref(&refs, f), exp, eval, idx, body);
+                    } else {
+                        todo(f, "`and` and `or` operators for `for` loop")?;
+                    };
                 };
                 free(dup);
                 ctxt.scp = loop_scp.over: *scope;

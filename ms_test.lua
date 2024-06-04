@@ -29,6 +29,7 @@ local results = {
 local fails = 0
 local failed = {}
 for i, t in pairs(tests) do
+    os.execute("sleep 0.3")
     local cmd = "./bin/mossy " .. flags .. " ex/" .. t .. ".ms " .. tmp .. t
     local ok = exec(cmd)
     if not ok then
@@ -62,7 +63,7 @@ for i, t in pairs(tests) do
             input:close()
             local ran, _, sig = exec("(" .. tmp .. t .. " < " .. tmp .. t .. ".input) > " .. tmp .. t .. ".log")
             if not ran then
-                failed[#failed + 1] = "exit code: " .. (sig)
+                failed[#failed + 1] = t .. "'s exit code: " .. (sig)
                 fails = fails + 1
             end
 
@@ -83,7 +84,7 @@ for i, t in pairs(tests) do
                 input:write(results[i][c])
                 input:close()
             end
-            local ran, _, sig = exec("(cat" .. argl .. ") | " .. tmp .. t .. " > " .. tmp .. t .. ".log")
+            local ran, _, sig = exec("(cat" .. argl .. " | " .. tmp .. t .. ") > " .. tmp .. t .. ".log")
             if not ran then
                 failed[#failed + 1] = "exit code: " .. (sig)
                 fails = fails + 1
