@@ -770,30 +770,46 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 };
                 ctxt.scp = &if_scp;
                 const endp = f.lin + 1;
-                const limit = [ sym::OPN_CRLY ]: []tok;
+                const limit = [ sym::OPN_CRLY, kwd::AND_OPER, kwd::OR__OPER ]: []tok;
                 for(cmp_tok(next, kwd::IF___BLK)){
+                    let conds = "";
+                    let eval = "";
+                    let catc = 0z;
                     let refs = []: []idref;
+
                     let dup = alloc(*f);
                     const idx = dup.lin + 1;
-                    
-                    const (exp, tp, chk) = parse_exp(f, ctxt, &refs, limit)?;
-                    nxttk(f)!;
-                    // fix checking for strings and arrays
-                    const eval =
-                        if(tp == kwd::STRING_T || tp == kwd::ARRAY__T){
-                            exp = fmt::asprintf("{}    %val.l =l loadl {}\n    %val.l =l sub %val.l, 8\n", exp, chk);
-                            yield "%val.l";
-                        } else {
-                            yield chk;
+                    for(true){
+                        const (exp, tp, chk) = parse_exp(f, ctxt, &refs, limit)?;
+                        const oper = nxttk(f)!;
+                        // fix checking for strings and arrays
+                        eval =
+                            if(tp == kwd::STRING_T || tp == kwd::ARRAY__T){
+                                exp = fmt::asprintf("{}    %val.l =l loadl {}\n    %val.l =l sub %val.l, 8\n", exp, chk);
+                                yield "%val.l";
+                            } else {
+                                yield chk;
+                            };
+                        conds = strings::concat(conds, exp);
+                        if(cmp_tok(oper, sym::OPN_CRLY)){
+                            conds = fmt::asprintf("{0}    jnz {1}, @t.{2}, @f.{2}\n", conds, eval, idx);
+                            break;
                         };
+                        if(cmp_tok(oper, kwd::AND_OPER)){
+                            conds = fmt::asprintf("{0}    jnz {1}, @and.{2}.{3}.{4}, @f.{2}\n@and.{2}.{3}.{4}\n", conds, eval, idx, catc, f.cln);
+                        }else if(cmp_tok(oper, kwd::OR__OPER)){
+                            conds = fmt::asprintf("{0}    jnz {1}, @t.{2}, @or.{2}.{3}.{4}\n@or.{2}.{3}.{4}\n", conds, eval, idx, catc, f.cln);
+                        };
+                        catc += 1;
+                    };
                     const (body, if_tp) = parse(f, ctxt, mtchs(sym::OPN_CRLY, f)?)?;
                     if(if_tp != kwd::UNITTYPE){
                         expct(is_subt(if_tp, ret_tp), if_tp, dup, void: MISMTCH,
                         "return types", "union types are not implemented yet")?;
                     };
+                    out = fmt::asprintf("{0}{1}{2}@t.{4}\n{5}@end.t.{4}\n    jmp @end.{6}\n@f.{4}\n",
+                        out, solve_ref(&refs, f), conds, eval, idx, body, endp);
                     free(dup);
-                    out = fmt::asprintf("{0}{1}{2}    jnz {3}, @t.{4}, @f.{4}\n@t.{4}\n{5}@end.t.{4}\n    jmp @end.{6}\n@f.{4}\n",
-                        out, solve_ref(&refs, f), exp, eval, idx, body, endp);
                     next = nxttk(f, true)?;
                     if(cmp_tok(next, kwd::ELSE_BLK)){
                         if(stacktrace)

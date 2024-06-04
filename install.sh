@@ -1,4 +1,6 @@
 set -xe
+mkdir -p ~/.local/bin/
+mkdir -p ~/.local/lib/
 cd ./src/
 mold -run hare build -D stacktrace=false -D silent=true -o ~/.local/bin/mossy
 cd ..

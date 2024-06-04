@@ -30,7 +30,16 @@ fn tktostr(tk: tok, verb: bool = false) str = {
             };
         case kwd =>
             if(verb){
-                return fmt::asprintf("a keyword ({})", kwdv[tk: kwd]);
+                switch(tk: kwd){
+                case kwd::NUMBER_T =>
+                    return "number type";
+                case kwd::ARRAY__T =>
+                    return "array type";
+                case kwd::NOT_KWRD =>
+                    return "not a keyword";
+                case =>
+                    return fmt::asprintf("a keyword ({})", kwdv[tk: kwd]);
+                };
             } else {
                 return "a keyword";
             };

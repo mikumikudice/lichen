@@ -8,8 +8,6 @@ use fmt;
 use strings;
 use strlib;
 
-const keep_tmp = false;
-
 const fix_entry = "export function $_start(){\n@start\n    call $main()\n    hlt\n}\n";
 
 let also_link = []: []str;
@@ -74,7 +72,7 @@ fn build(src: str, dest: str, ctxt: *context) (void | CMP_ERR) = {
     append(mold_args, also_link...);
     runc(silent, "mold", mold_args...);
 
-    if(!(stacktrace || keep_tmp)) runc(silent, "rm", "-r", temp);
+    if(!(stacktrace || !silent)) runc(silent, "rm", "-r", temp);
 
     const (name, _) = rem_path(src);
     fmt::printfln(col("successfully compiled {} in {}", cmd::GRN), name, dest)!;

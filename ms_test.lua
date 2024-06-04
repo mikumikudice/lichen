@@ -13,15 +13,18 @@ if not init then os.exit(1) end
 local tdir = exec("mkdir -p " .. tmp)
 if not tdir then os.exit(1) end
 
-local tests = { "test_exp", "test_fun", "test_mem", "test_glob", "demo", "test_loop", "test_fmt" }
+local tests = { "test_exp", "test_fun", "test_mem", "test_glob", "demo", "test_loop", "test_fmt", "test_if" }
 local results = {
-    {},                             -- test_exp
-    { "working!\n" },               -- test_fun
-    { "working!\n", "working!\n" }, -- test_mem
-    {},                             -- test_glob
-    { "mornin' sailor!\n" },        -- demo
-    { "hi!\nhoy!\nhi!\nhoy!\nhi!\nyay!\nyay!\nyay!\n" }, -- loop
-    { "128\n", "128\n" }
+    {},                                                     -- test_exp
+    { "working!\n" },                                       -- test_fun
+    { "working!\n", "working!\n" },                         -- test_mem
+    {},                                                     -- test_glob
+    { "mornin' sailor!\n" },                                -- demo
+    { "hi!\nhoy!\nhi!\nhoy!\nhi!\nyay!\nyay!\nyay!\n" },    -- loop
+    { "128\n", "128\n" },                                   -- test_fmt
+    { "5\n", "3\n", "if!\n" },                              -- test_if
+    { "3\n", "4\n", "else if!\n" },
+    { "1\n", "0\n", "else!\n" },
 }
 local fails = 0
 local failed = {}
@@ -53,7 +56,7 @@ for i, t in pairs(tests) do
                 failed[#failed + 1] = t .. "'s ouput is incorrect:\n\tgot: \"" .. res .. "\"\n\texpected: \"" .. expct .. "\""
                 fails = fails + 1
             end
-        else
+        elseif #results[i] == 2 then
             local input = io.open(tmp .. t ..".input", "w") or os.exit(1)
             input:write(results[i][1])
             input:close()
@@ -71,6 +74,29 @@ for i, t in pairs(tests) do
                 failed[#failed + 1] = t .. "'s ouput is incorrect:\n\tgot: \"" .. res .. "\"\n\texpected: \"" .. expct .. "\""
                 fails = fails + 1
             end
+        else
+            local argl = ""
+            for c = 1, (#results[i] - 1) do
+                local fname = tmp .. t ..".input." .. (c)
+                argl = argl .. " " .. fname
+                local input = io.open(fname, "w") or os.exit(1)
+                input:write(results[i][c])
+                input:close()
+            end
+            local ran, _, sig = exec("(cat" .. argl .. ") | " .. tmp .. t .. " > " .. tmp .. t .. ".log")
+            if not ran then
+                failed[#failed + 1] = "exit code: " .. (sig)
+                fails = fails + 1
+            end
+
+            local log = io.open(tmp .. t .. ".log") or os.exit(1)
+            local res = log:read("a")
+            if res ~= results[i][#results[i]] then
+                res = res:gsub("\n", "\\n")
+                local expct = results[i][#results[i]]:gsub("\n", "\\n")
+                failed[#failed + 1] = t .. "'s ouput is incorrect:\n\tgot: \"" .. res .. "\"\n\texpected: \"" .. expct .. "\""
+                fails = fails + 1
+            end
         end
     end
     io.write("\n")
@@ -85,4 +111,4 @@ if fails > 0 then
     end
 end
 
-local _ = exec("rm -r .test/") or os.exit(1)
+os.remove(".test/")
