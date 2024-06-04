@@ -93,7 +93,7 @@ const mem_copy =
         ret_n = "",
         origin = kernel::MEM,
         public = true,
-        impure = false,
+        impure = true,
         effect = [ "MEM" ],
         ...
     };
@@ -105,7 +105,7 @@ const mem_strlset =
         ret_n = "",
         origin = kernel::MEM,
         public = true,
-        impure = false,
+        impure = true,
         effect = [ "MEM" ],
         ...
     };
@@ -117,7 +117,7 @@ const mem_strcpy =
         ret_n = "",
         origin = kernel::MEM,
         public = true,
-        impure = false,
+        impure = true,
         effect = [ "MEM" ],
         ...
     };
@@ -129,7 +129,7 @@ const mem_strrev =
         ret_n = "",
         origin = kernel::MEM,
         public = true,
-        impure = false,
+        impure = true,
         effect = [ "MEM" ],
         ...
     };
@@ -141,7 +141,7 @@ const mem_memset =
         ret_n = "",
         origin = kernel::MEM,
         public = true,
-        impure = false,
+        impure = true,
         effect = [ "MEM" ],
         ...
     };
