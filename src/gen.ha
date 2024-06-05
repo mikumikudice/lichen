@@ -1,11 +1,12 @@
 use os;
-use os::exec;
-use unix::signal;
-
 use io;
 use fs;
 use fmt;
+use memio;
 use strings;
+use os::exec;
+use unix::signal;
+
 
 const fix_entry = "export function $_start(){\n@start\n    call $main()\n    hlt\n}\n";
 
@@ -29,13 +30,14 @@ fn build(src: str, dest: str, ctxt: *context) (void | CMP_ERR) = {
         case let e: CMP_ERR =>
             if(!ctxt.nomain) cmperr(e);
             return e;
-        case let s: (str, kwd) => yield s.0;
+        case let s: (*memio::stream, kwd) => yield s.0;
         };
+    defer io::close(qbe_ir)!;
     const code =
         if(!ctxt.nomain){
-            yield fmt::asprintf("# moss {}\n{}{}", version, fix_entry, qbe_ir);
+            yield fmt::asprintf("# moss {}\n{}{}", version, fix_entry, memio::string(qbe_ir)!);
         } else {
-            yield fmt::asprintf("# moss {}\n{}", version, qbe_ir);
+            yield fmt::asprintf("# moss {}\n{}", version, memio::string(qbe_ir)!);
         };
     const temp = ".tmp";
     runc(silent, "mkdir", "-p", temp);

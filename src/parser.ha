@@ -1,4 +1,6 @@
+use io;
 use fmt;
+use memio;
 use strings;
 
 fn todo(f: *file, msg: str) (void | CMP_ERR) = {
@@ -699,9 +701,9 @@ fn push_fun(name: idt, pub: bool, f: *file, parm_l: []kwd, parm_n : []idt, retrn
 // itself, parses a new scope withih `within`. returns a header containing global definitions,
 // the parsed source itself in the QBE IR and the final type of return, in the case of parsing
 // a function body. in case of any parsing error, returns a compilation error
-fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd::UNITTYPE) ((str, kwd) | CMP_ERR) = {
-    let out = "";
+fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd::UNITTYPE) ((*memio::stream, kwd) | CMP_ERR) = {
     let ret_tp = kwd::NOT_KWRD;
+    let buffer = &memio::dynamic();
     let f =
         match(from){
         case let fname: str =>
@@ -709,7 +711,9 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 fmt::printfln("parsing file \"{}\"", fname)!;
 
             const _f =  load(fname)?;
-            out = parse_global(_f, ctxt)?;
+            const globdef = parse_global(_f, ctxt)?;
+            defer io::close(globdef)!;
+            fmt::fprint(buffer, memio::string(globdef)!)!;
             yield _f;
         case let _f: *file =>
             if(stacktrace)
@@ -718,7 +722,6 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
         };
     const max = len(f.src);
 
-    //let src_buff = alloc([]: [max * 6]u8);
     for(f.ptr < max){
         let next = nxttk(f)?;
         if(next is eol) continue;
@@ -744,8 +747,9 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                     setptr(f, true);
                     match(parse_asg(f, i, true, next: opr, ctxt)?){
                     case void => void;
-                    case let asg: str =>
-                        out = fmt::asprintf("{}export {}", out, asg);
+                    case let asg: *memio::stream =>
+                        fmt::fprintf(buffer, "export {}", memio::string(asg)!)!;
+                        io::close(asg)!;
                     };
                 } else if(cmp_tok(next, opr::CASTTOTP)){
                     todo(f, "typedefs")?;
@@ -800,12 +804,14 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                         catc += 1;
                     };
                     const (body, if_tp) = parse(f, ctxt, mtchs(sym::OPN_CRLY, f)?)?;
+                    defer io::close(body)!;
+
                     if(if_tp != kwd::UNITTYPE){
                         expct(is_subt(if_tp, ret_tp), if_tp, dup, void: MISMTCH,
                         "return types", "union types are not implemented yet")?;
                     };
-                    out = fmt::asprintf("{0}{1}{2}@t.{4}\n{5}@end.t.{4}\n    jmp @end.{6}\n@f.{4}\n",
-                        out, solve_ref(&refs, f), conds, eval, idx, body, endp);
+                    fmt::fprintf(buffer, "{0}{1}@t.{3}\n{4}@end.t.{3}\n    jmp @end.{5}\n@f.{3}\n",
+                        solve_ref(&refs, f), conds, eval, idx, memio::string(body)!, endp)!;
                     free(dup);
                     next = nxttk(f, true)?;
                     if(cmp_tok(next, kwd::ELSE_BLK)){
@@ -820,15 +826,18 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                         dup = alloc(*f);
                         expct(cmp_tok(next, sym::OPN_CRLY), next, f, void: EXPECTD,
                             "else body declaration")?;
+
                         const (body, el_tp) = parse(f, ctxt, mtchs(sym::OPN_CRLY, f)?)?;
+                        defer io::close(body)!;
+
                         if(el_tp != kwd::UNITTYPE){
                             expct(is_subt(el_tp, ret_tp), el_tp, dup, void: MISMTCH,
                             "return types", "union types are not implemented yet")?;
                         };
-                        out = strings::concat(out, body);
+                        fmt::fprint(buffer, memio::string(body)!)!;
                         free(dup);
                     };
-                    out = fmt::asprintf("{}@end.{}\n", out, endp);
+                    fmt::fprintf(buffer, "@end.{}\n", endp)!;
                 };
                 ctxt.scp = if_scp.over: *scope;
             case kwd::FOR_LOOP =>
@@ -888,12 +897,14 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                         };
                     const incr = fmt::asprintf("    {0} ={1} add {0}, 1\n    store{2} {0}, %{3}\n", incv, exp_l, cnt_l, cnt);
                     const (body, loop_tp) = parse(f, ctxt, mtchs(sym::OPN_CRLY, f)?)?;
+                    defer io::close(body)!;
+
                     if(loop_tp != kwd::UNITTYPE){
                         expct(is_subt(loop_tp, ret_tp), loop_tp, dup, void: MISMTCH,
                         "return types", "union types are not implemented yet")?;
                     };
-                    out = fmt::asprintf("{0}{3}    jnz %cond.{1}.{2}, @loop.{1}, @break.{1}\n@loop.{1}\n{4}{5}    jmp @rpt.{1}\n@break.{1}\n",
-                        out, idx, exp_l, cond, body, incr);
+                    fmt::fprintf(buffer, "{2}    jnz %cond.{0}.{1}, @loop.{0}, @break.{0}\n@loop.{0}\n{3}{4}    jmp @rpt.{0}\n@break.{0}\n",
+                        idx, exp_l, cond, memio::string(body)!, incr)!;
                 // for each
                 } else if(ahead(f, 2, opr::RANGE_OP) is tok){
                     todo(f, "for each loop")?;
@@ -909,13 +920,15 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                             yield chk;
                         };
                     const (body, loop_tp) = parse(f, ctxt, mtchs(sym::OPN_CRLY, f)?)?;
+                    defer io::close(body)!;
+
                     if(loop_tp != kwd::UNITTYPE){
                         expct(is_subt(loop_tp, ret_tp), loop_tp, dup, void: MISMTCH,
                         "return types", "union types are not implemented yet")?;
                     };
                     if(cmp_tok(oper, sym::OPN_CRLY)){
-                        out = fmt::asprintf("{0}{1}{2}@rpt.{4}\n    jnz {3}, @loop.{4}, @break.{4}\n@loop.{4}\n{5}    jmp @rpt.{4}\n@break.{4}\n",
-                            out, solve_ref(&refs, f), exp, eval, idx, body);
+                        fmt::fprintf(buffer, "{0}{1}@rpt.{3}\n    jnz {2}, @loop.{3}, @break.{3}\n@loop.{3}\n{4}    jmp @rpt.{3}\n@break.{3}\n",
+                            solve_ref(&refs, f), exp, eval, idx, memio::string(body)!)!;
                     } else {
                         todo(f, "`and` and `or` operators for `for` loop")?;
                     };
@@ -926,7 +939,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 finsh(f, void: EXPECTD, "end of loop")?;
             case kwd::NEXT_STT =>
                 if(ctxt.onloop){
-                    out = fmt::asprintf("{}    jmp @loop.{}\n", out, ctxt.loopid);
+                    fmt::fprintf(buffer, "    jmp @loop.{}\n", ctxt.loopid)!;
                 } else {
                     return unimsg {
                         msg = "can't jump to next interaction outsite of a loop",
@@ -936,7 +949,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 };
             case kwd::BREAKSTT =>
                 if(ctxt.onloop){
-                    out = fmt::asprintf("{}    jmp @break.{}\n", out, ctxt.loopid);
+                    fmt::fprintf(buffer, "    jmp @break.{}\n", ctxt.loopid)!;
                 } else {
                     return unimsg {
                         msg = "can't break from outsite of a loop",
@@ -957,8 +970,9 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                     cmp_tok(next, sym::OPEN_PAR), next, f, void: EXPECTD, "declaration or assignment")?;
 
                 setptr(f, true);
-                const asg = parse_asg(f, i, false, oper: opr, ctxt, void, true)?: str;
-                out = fmt::asprintf("{}{}", out, asg);
+                const asg = parse_asg(f, i, false, oper: opr, ctxt, void, true)?: *memio::stream;
+                fmt::fprint(buffer, memio::string(asg)!)!;
+                io::close(asg)!;
             case kwd::USE__MOD =>
                 if(stacktrace)
                     fmt::printfln("parsing mod req at {}", gen_pos(f))!;
@@ -1083,7 +1097,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                         yield fmt::asprintf("{}{}    %.ret ={} copy {}\n", solve_ref(&add, f),
                             exp, get_qbe_t(ret_tp, 1), src_id);
                     };
-                out = fmt::asprintf("{}{}    ret %.ret\n", out, wrp);
+                fmt::fprintf(buffer, "{}    ret %.ret\n", wrp)!;
             case =>
                 todo(f, fmt::asprintf("uncovered keyword: {}", kwdv[k]))?;
             };
@@ -1103,8 +1117,8 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                         const (valexp, _, val) = parse_exp(f, ctxt, &refs, [ eol ], (0, kwd::U8__TYPE))?;
 
                         const exp = fmt::asprintf("{}{}{}{}", solve_ref(&refs, f), idxexp, fixexp, valexp);
-                        out = fmt::asprintf("{0}{1}    %{2}.v =l loadl %{2}\n    call $rt.mvtob(l %{2}.v, l {3}, w {4})\n",
-                            out, exp, nm.ident, idx, val);
+                        fmt::fprintf(buffer, "{0}    %{1}.v =l loadl %{1}\n    call $rt.mvtob(l %{1}.v, l {2}, w {3})\n",
+                            exp, nm.ident, idx, val)!;
                         continue;
                     } else if(nm.vtype == kwd::ARRAY__T){
                         todo(f, "array's item attribution")?;
@@ -1129,8 +1143,9 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 let refs = []: []idref;
                 match(get_idt(i, f, ctxt.scp, ctxt)){
                 case =>
-                    const asg = parse_asg(f, i, false, next: opr, ctxt)?;
-                    out = fmt::asprintf("{}{}", out, asg);
+                    const asg = parse_asg(f, i, false, next: opr, ctxt)?: *memio::stream;
+                    fmt::fprint(buffer, memio::string(asg)!)!;
+                    io::close(asg)!;
                 case let nm: *nmsp =>
                     // these fields have already been parsed
                     if(nm.global && !nm.asgnd){
@@ -1138,26 +1153,28 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                         jmpto(eol, f)?;
                         continue;
                     };
-                    const asg = parse_asg(f, i, false, next: opr, ctxt, nm)?;
-                    out = fmt::asprintf("{}{}", out, asg);
+                    const asg = parse_asg(f, i, false, next: opr, ctxt, nm)?: *memio::stream;
+                    fmt::fprint(buffer, memio::string(asg)!)!;
+                    io::close(asg)!;
                 case let fun: *func =>
                     if(fun.origin is kernel){
                         skip_field(f)?;
                         check_efx(f, fun, ctxt)?;
                         const (newexp, call) = parse_fcall(fun, f, ctxt, &refs)?;
-                        out = fmt::asprintf("{}{}{}    {}\n", out, solve_ref(&refs, f), newexp, call);
+                        fmt::fprintf(buffer, "{}{}    {}\n", solve_ref(&refs, f), newexp, call)!;
                         continue;
                     };
                     next = nxttk(f, true)?;
                     if(is_asg_opr(next)){
                         setptr(f, true);
-                        const asg = parse_asg(f, i, false, next: opr, ctxt, fun)?;
-                        out = fmt::asprintf("{}{}", out, asg);
+                        const asg = parse_asg(f, i, false, next: opr, ctxt, fun)?: *memio::stream;
+                        fmt::fprint(buffer, memio::string(asg)!)!;
+                        io::close(asg)!;
                     } else {
                         setptr(f, true);
                         check_efx(f, fun, ctxt)?;
                         const (newexp, call) = parse_fcall(fun, f, ctxt, &refs)?;
-                        out = fmt::asprintf("{}{}{}    {}\n", out, solve_ref(&refs, f), newexp, call);
+                        fmt::fprintf(buffer, "{}{}    {}\n", solve_ref(&refs, f), newexp, call)!;
                     };
                 };
             } else {
@@ -1171,7 +1188,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 };
                 check_efx(f, fun, ctxt)?;
                 const (newexp, call) = parse_fcall(fun, f, ctxt, &refs)?;
-                out = fmt::asprintf("{}{}{}    {}\n", out, solve_ref(&refs, f), newexp, call);
+                fmt::fprintf(buffer, "{}{}    {}\n", solve_ref(&refs, f), newexp, call)!;
                 finsh(f, void: EXPECTD, "end of function call")?;
             };
         case let o: opr =>
@@ -1211,20 +1228,19 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 ptr = f,
             }: GENERIC;
         };
-        const qbe_src = strings::concat(ctxt.datasec, out); 
-        return (qbe_src, kwd::NOT_KWRD);
+        fmt::fprint(buffer, ctxt.datasec)!;
     };
     if(ret_tp == kwd::NOT_KWRD) ret_tp = kwd::UNITTYPE;
-    return (out, ret_tp);
+    return (buffer, ret_tp);
 };
 
-fn parse_global(_f: *file, ctxt: *context) (str | CMP_ERR) = {
+fn parse_global(_f: *file, ctxt: *context) (*memio::stream | CMP_ERR) = {
     if(stacktrace)
         fmt::println("parsing global definitions")!;
     const f = alloc(*_f);
     const max = len(f.src);
     
-    let defs = "";
+    let defs = &memio::dynamic();
     let new_pub = false;
     for(f.ptr < max){
         let next = nxttk(f)?;
@@ -1244,7 +1260,7 @@ fn parse_global(_f: *file, ctxt: *context) (str | CMP_ERR) = {
                 setptr(f, true);
                 const gdef = push_glob(i, new_pub, f, ctxt)?;
                 new_pub = false;
-                defs = strings::concat(defs, gdef);
+                fmt::fprint(defs, gdef)!;
             } else {
                 jmpto(eol, f)?;
                 continue;
@@ -1485,7 +1501,7 @@ fn parse_fcall(fun: *func, f: *file, ctxt: *context, refs: *[]idref) ((str, str)
     return (hdr, strings::concat(out, ")"));
 };
 
-fn parse_asg(f: *file, dest: idt, pub: bool, asgn: opr, ctxt: *context, defn: (*nmsp | *func | void) = void, mutbl: bool = false) (str | void | CMP_ERR) = {
+fn parse_asg(f: *file, dest: idt, pub: bool, asgn: opr, ctxt: *context, defn: (*nmsp | *func | void) = void, mutbl: bool = false) (*memio::stream | void | CMP_ERR) = {
     if(stacktrace){
         if(defn is void){
             fmt::printfln("parsing assignment to \"{}\" at {}", dest, gen_pos(f))!;
@@ -1501,7 +1517,7 @@ fn parse_asg(f: *file, dest: idt, pub: bool, asgn: opr, ctxt: *context, defn: (*
             ptr = f,
         }: CANT_DO;
     };
-    let out = "";
+    let asgdef = &memio::dynamic();
     let next = nxttk(f)?;
     const oper = expct(cmp_tok(next, opr::CASTTOTP) || is_asg_opr(next), next, f, void: EXPECTD,
         "declaration or assignment")?: opr;
@@ -1529,8 +1545,8 @@ fn parse_asg(f: *file, dest: idt, pub: bool, asgn: opr, ctxt: *context, defn: (*
             "valid type notation")?: kwd;
 
         push_idt(dest, mutbl, pub, tp, f, ctxt)?;
-        out = fmt::asprintf("    %{0} =l alloc4 {1}\n    store{2} {3}, %{0}\n",
-            dest: str, get_t_len(tp), get_qbe_t(tp), getdefval(tp));
+        fmt::fprintf(asgdef, "    %{0} =l alloc4 {1}\n    store{2} {3}, %{0}\n",
+            dest: str, get_t_len(tp), get_qbe_t(tp), getdefval(tp))!;
 
         // TODO: typedefs
     case =>
@@ -1569,7 +1585,7 @@ fn parse_asg(f: *file, dest: idt, pub: bool, asgn: opr, ctxt: *context, defn: (*
             store_t = tp;
             const nm = push_idt(dest, mutbl, pub, tp, f, ctxt)?;
             nm.asgnd = true;
-            out = fmt::asprintf("    %{} =l alloc4 {}\n", dest: str, get_t_len(tp));
+            fmt::fprintf(asgdef, "    %{} =l alloc4 {}\n", dest: str, get_t_len(tp))!;
         } else {
             match(defn){
             case let nm: *nmsp =>
@@ -1595,8 +1611,8 @@ fn parse_asg(f: *file, dest: idt, pub: bool, asgn: opr, ctxt: *context, defn: (*
                 exp, src_id, get_qbe_t(tp, 2), val_id);
         };
         if(asgn == opr::ASSIGNMT || oper == opr::CASTTOTP){
-            out = fmt::asprintf("{}{}{}    store{} {}, %{}\n",
-                out, solve_ref(&refs, f), exp, get_qbe_t(store_t), src_id, dest);
+            fmt::fprintf(asgdef, "{}{}    store{} {}, %{}\n",
+                solve_ref(&refs, f), exp, get_qbe_t(store_t), src_id, dest)!;
         } else if(is_subt(store_t, kwd::NUMBER_T)){
             const oper_sz = get_qbe_t(store_t, 1);
             const dest_id = fmt::asprintf("%{}.{}", dest, oper_sz);
@@ -1614,8 +1630,8 @@ fn parse_asg(f: *file, dest: idt, pub: bool, asgn: opr, ctxt: *context, defn: (*
             case =>
                 assert(false);
             };
-            out = fmt::asprintf("{}{}{}    store{} {}, %{}\n",
-                out, solve_ref(&refs, f), exp, get_qbe_t(store_t), dest_v, dest);
+            fmt::fprintf(asgdef, "{}{}    store{} {}, %{}\n",
+                solve_ref(&refs, f), exp, get_qbe_t(store_t), dest_v, dest)!;
         } else {
             return unimsg {
                 msg = "use increment or decrement on non-numerical values",
@@ -1625,7 +1641,7 @@ fn parse_asg(f: *file, dest: idt, pub: bool, asgn: opr, ctxt: *context, defn: (*
         };
     };
     free(dup);
-    return out;
+    return asgdef;
 };
 
 fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], ini_t: ((size, kwd) | void) = void) ((str, kwd, str) | CMP_ERR) = {
@@ -1967,11 +1983,11 @@ fn parse_opr(f: *file, oper: opr, expr_t: kwd, ctxt: *context, refs: *[]idref) (
     };
 };
 
-fn parse_fun(f: *file, dest: idt, pub: bool, ctxt: *context, skip: bool = false) (str | CMP_ERR) = {
+fn parse_fun(f: *file, dest: idt, pub: bool, ctxt: *context, skip: bool = false) (*memio::stream | void | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("parsing function \"{}\" at {}", dest: str, gen_pos(f))!;
 
-    let out = "";
+    let fundef = &memio::dynamic();
     let next = nxttk(f)?;
     expct(cmp_tok(next, sym::OPEN_PAR), next, f, void: EXPECTD,
         "function parameter list declaration")?;
@@ -2059,7 +2075,7 @@ fn parse_fun(f: *file, dest: idt, pub: bool, ctxt: *context, skip: bool = false)
         push_fun(dest, pub, dup, params, parm_n, ret, tags, ctxt)?;
         jmpto(sym::OPN_CRLY, f)?;
         mtchs(sym::OPN_CRLY, f, false)?;
-        return "";
+        return;
     };
 
     // TODO: effect tags
@@ -2083,6 +2099,8 @@ fn parse_fun(f: *file, dest: idt, pub: bool, ctxt: *context, skip: bool = false)
                 "function body declaration")?: sym;
 
             const (body, ret_tp) = parse(f, ctxt, mtchs(bgn, f)?)?;
+            defer io::close(body)!;
+
             ctxt.scp = fn_scp.over: *scope;
             ctxt.hostfn = "";
             ctxt.effect = [];
@@ -2090,7 +2108,8 @@ fn parse_fun(f: *file, dest: idt, pub: bool, ctxt: *context, skip: bool = false)
                 "the expected return type for main is `unit`")?;
             free(dup);
 
-            out = fmt::asprintf("function $main(){{\n@start\n{}    call $rt.exit(l 0)\n    hlt\n}}\n", body);
+            fmt::fprintf(fundef, "function $main(){{\n@start\n{}    call $rt.exit(l 0)\n    hlt\n}}\n",
+                memio::string(body)!)!;
         } else {
             return unimsg {
                 msg = "main function must be of `unit` type",
@@ -2112,16 +2131,20 @@ fn parse_fun(f: *file, dest: idt, pub: bool, ctxt: *context, skip: bool = false)
         ctxt.scp = &fn_scp;
         ctxt.hostfn = dest;
         ctxt.effect = tags;
+
         let (body, ret_tp) = parse(f, ctxt, mtchs(bgn, f)?, ret)?;
+        defer io::close(body)!;
+
         ctxt.scp = fn_scp.over: *scope;
         ctxt.hostfn = "";
         ctxt.effect = [];
+
         expct(is_subt(ret_tp, ret), ret_tp, dup, void: MISMTCH,
             "function return type and body type", cast_err(ret_tp, ret))?;
         free(dup);
 
         if(ret_tp == kwd::UNITTYPE){
-            body = fmt::asprintf("{}    %.ret =l copy {}\n    ret %.ret\n", body, getdefval(kwd::UNITTYPE));
+            fmt::fprintf(body, "    %.ret =l copy {}\n    ret %.ret\n", getdefval(kwd::UNITTYPE))!;
         };
         const (prml, prmd) = gen_params(params, parm_n);
         const fun_name =
@@ -2130,9 +2153,10 @@ fn parse_fun(f: *file, dest: idt, pub: bool, ctxt: *context, skip: bool = false)
             } else {
                 yield fmt::asprintf("{}.{}", ftomod(f.name), dest: str);
             };
-        out = fmt::asprintf("function {} ${}({}){{\n@start\n{}{}}}\n", get_qbe_t(ret, 1), fun_name, prml, prmd, body);
+        fmt::fprintf(fundef, "function {} ${}({}){{\n@start\n{}{}}}\n", get_qbe_t(ret, 1),
+            fun_name, prml, prmd, memio::string(body)!)!;
     };
-    return out;
+    return fundef;
 };
 
 fn gen_params(param_t: []kwd, param_n: []idt) (str, str) = {
