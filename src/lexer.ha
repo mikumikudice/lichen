@@ -194,7 +194,7 @@ fn nxttk(f: *file, rev: bool = false) (tok | CMP_ERR) = {
     if(f.ptr >= max) return eol;
 
     for(f.ptr < max; incptr(f)){
-        const chr = f.src[f.ptr];
+        let chr = f.src[f.ptr];
 
         if(iswsp(chr)){
             continue;
@@ -252,6 +252,8 @@ fn nxttk(f: *file, rev: bool = false) (tok | CMP_ERR) = {
                             ptr = f,
                         }: GENERIC;
                     };
+                    incptr(f);
+                    return eol;
                 };
             };
             // trailing closing commend block

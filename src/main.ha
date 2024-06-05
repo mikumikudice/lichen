@@ -17,11 +17,20 @@ export fn main() void = {
         fmtc(" [flags] <main file> [output file name]", cmd::BLU));
 
     const allflags = strings::concat(
-        fmtc("\n\t-h\t\t", cmd::GRN), fmtc("-- prints this help message", cmd::YEL),
-        fmtc("\n\t-v\t\t", cmd::GRN), fmtc("-- prints the current version of the compiler", cmd::YEL),
-        fmtc("\n\t-l ", cmd::GRN), fmtc("<lib path>\t", cmd::BLU), fmtc("-- sets path for stdlib and runtime", cmd::YEL),
-        fmtc("\n\t-vb\t\t", cmd::GRN), fmtc("-- makes the compiler print each executed command", cmd::YEL),
-        fmtc("\n\t-st\t\t", cmd::GRN), fmtc("-- makes the compiler print every parsing step", cmd::YEL)
+        fmtc("\n\t-h\t\t", cmd::GRN),
+        fmtc("-- prints this help message", cmd::YEL),
+
+        fmtc("\n\t-v\t\t", cmd::GRN),
+        fmtc("-- prints the current version of the compiler", cmd::YEL),
+
+        fmtc("\n\t-l ", cmd::GRN), fmtc("<lib path>\t", cmd::BLU),
+        fmtc("-- sets path for stdlib and runtime", cmd::YEL),
+
+        fmtc("\n\t-vb\t\t", cmd::GRN),
+        fmtc("-- makes the compiler print each executed command", cmd::YEL),
+
+        fmtc("\n\t-st\t\t", cmd::GRN),
+        fmtc("-- makes the compiler print every parsing step", cmd::YEL)
     );
     const flg = fmt::asprintf("\nflags usage:{}", allflags);
     const hlp = fmt::asprintf("\nget help on learning how to use moss in {}",
@@ -60,7 +69,8 @@ export fn main() void = {
                     libpath = os::args[a];
                     continue;
                 } else {
-                    fmt::fatalf("{}\n{}\n", fmtc("missing lib path for -l flag", cmd::RED), flg);
+                    fmt::fatalf("{}\n{}\n",
+                        fmtc("missing lib path for -l flag", cmd::RED), flg);
                 };
             case "-vb" =>
                 silent = false;
@@ -69,7 +79,8 @@ export fn main() void = {
                 stacktrace = true;
                 continue;
             case =>
-                fmt::fatalf("{} {}\n{}\n", fmtc("unknown flag", cmd::RED), fmtc(arg, cmd::GRN), flg);
+                fmt::fatalf("{} {}\n{}\n",
+                    fmtc("unknown flag", cmd::RED), fmtc(arg, cmd::GRN), flg);
             };
         };
         if(!infset){
@@ -93,12 +104,10 @@ export fn main() void = {
     if(!outset){
         outfile = strings::replace(filename, ".ms", "");
     };
-
     if(!os::exists(path)){
         fmt::fatalf("{} the given path {} does not exists",
             fmtc("lib path error:", cmd::BOX_RED), fmtc(path, cmd::YEL));
     };
-
     let mods = []: []*module;
     let glob = scope {
         over = void,
