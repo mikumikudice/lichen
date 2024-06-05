@@ -977,8 +977,6 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 fmt::fprint(buffer, memio::string(asg)!)!;
                 io::close(asg)!;
             case kwd::USE__MOD =>
-                if(stacktrace)
-                    fmt::printfln("parsing mod req at {}", gen_pos(f))!;
                 if(!(ctxt.scp.over is void)){
                     return unimsg {
                         msg = "require external modules within functions",
@@ -986,99 +984,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                         ptr = f,
                     }: CANT_DO;
                 };
-                next = nxttk(f)?;
-                const mod = expct(next is idt, next, f, void: EXPECTD,
-                    "module name identifier")?: idt;
-                
-                if(ctxt.nomain){
-                    const self = ftomod(f.name);
-                    if(self == mod: str){
-                        return unimsg {
-                            msg = fmt::asprintf("the module {} is trying to import itself", fmtc(self, cmd::YEL)),
-                            tip = void,
-                            ptr = f,
-                        }: GENERIC;
-                    };
-                };
-                match(findl(krnls, mod: str)){
-                case let krnl: size =>
-                    const filename = fmt::asprintf("{}{}.asm", ctxt.libpath, mod: str);
-                    // TODO: un-hardcode these definitions
-                    switch(krnl){
-                    case kernel::IO =>
-                        const mod_io = alloc(module {
-                            name = mod: str,
-                            origin = filename,
-                            funs = io_funs,
-                            defs = io_vars,
-                            addp = (f.lin + 1, f.cln + 1),
-                        });
-                        append(ctxt.uses, mod_io);
-                    case kernel::MEM =>
-                        const mod_mem = alloc(module {
-                            name = mod: str,
-                            origin = filename,
-                            funs = mem_funs,
-                            defs = mem_defs,
-                            addp = (f.lin + 1, f.cln + 1),
-                        });
-                        append(ctxt.uses, mod_mem);
-                    case =>
-                        const err = fmt::asprintf("module {} not matched", mod: str);
-                        return (err, f): UNREACH;
-                    };
-                case =>
-                    match(get_mod(mod, ctxt)){
-                    case let dup_mod: *module =>
-                        return bi_msg {
-                            lft = mod: str,
-                            rgt = fmt::asprintf("{}:{}:{}",
-                                f.name, dup_mod.addp.0, dup_mod.addp.1),
-                            tip = void,
-                            ptr = f,
-                        }: MODCDUP;
-                    case =>
-                        let lmod = scope {
-                            over = void,
-                            defs = [],
-                            funs = [],
-                        };
-                        let mods = []: []*module;
-                        let modctxt = context {
-                            scp = &lmod,
-                            uses = &mods,
-                            libpath = ctxt.libpath,
-                            datasec = "",
-                            strlits = [],
-                            onloop = false,
-                            loopid = 0,
-                            nomain = true,
-                            hasmain = false,
-                            hostfn = "",
-                            effect = [],
-                        };
-                        const filename = fmt::asprintf("{}{}.ms", modctxt.libpath, mod: str);
-                        match(build(filename, mod: str, &modctxt)){
-                        case let e: CMP_ERR =>
-                            if(e is LDDFAIL){
-                                return unimsg {
-                                    msg = fmt::asprintf("source file for module \"{}\" not found", fmtc(mod: str, cmd::BLU)),
-                                    tip = "try to specify the libpath with the flag -l",
-                                    ptr = f,
-                                }: GENERIC;
-                            } else return e;
-                        case =>
-                            const newmod = alloc(module {
-                                name = mod: str,
-                                origin = filename,
-                                funs = lmod.funs,
-                                defs = lmod.defs,
-                                addp = (f.lin + 1, f.cln + 1),
-                            });
-                            append(ctxt.uses, newmod);
-                        };
-                    };
-                };
+                jmpto(eol, f)?;
             case kwd::RETURNTO =>
                 if(stacktrace)
                     fmt::printfln("parsing return at {}", gen_pos(f))!;
@@ -1294,6 +1200,113 @@ fn parse_global(_f: *file, ctxt: *context) (*memio::stream | CMP_ERR) = {
                         tip = "try removing the \"mut\" at the beginning of the assignment",
                         ptr = f,
                     }: CANT_DO;
+                };
+            case kwd::USE__MOD =>
+                if(stacktrace)
+                    fmt::printfln("parsing mod req at {}", gen_pos(f))!;
+                
+                if(new_pub){
+                    return bi_msg {
+                        lft = "type or variable definition",
+                        rgt = tktostr(kwd::USE__MOD),
+                        tip = void,
+                        ptr = f,
+                    }: EXPECTD;
+                };
+                next = nxttk(f)?;
+                const mod = expct(next is idt, next, f, void: EXPECTD,
+                    "module name identifier")?: idt;
+
+                if(ctxt.nomain){
+                    const self = ftomod(f.name);
+                    if(self == mod: str){
+                        return unimsg {
+                            msg = fmt::asprintf("the module {} is trying to import itself", fmtc(self, cmd::YEL)),
+                            tip = void,
+                            ptr = f,
+                        }: GENERIC;
+                    };
+                };
+                match(findl(krnls, mod: str)){
+                case let krnl: size =>
+                    const filename = fmt::asprintf("{}{}.asm", ctxt.libpath, mod: str);
+                    // TODO: un-hardcode these definitions
+                    switch(krnl){
+                    case kernel::IO =>
+                        const mod_io = alloc(module {
+                            name = mod: str,
+                            origin = filename,
+                            funs = io_funs,
+                            defs = io_vars,
+                            addp = (f.lin + 1, f.cln + 1),
+                        });
+                        append(ctxt.uses, mod_io);
+                    case kernel::MEM =>
+                        const mod_mem = alloc(module {
+                            name = mod: str,
+                            origin = filename,
+                            funs = mem_funs,
+                            defs = mem_defs,
+                            addp = (f.lin + 1, f.cln + 1),
+                        });
+                        append(ctxt.uses, mod_mem);
+                    case =>
+                        const err = fmt::asprintf("module {} not matched", mod: str);
+                        return (err, f): UNREACH;
+                    };
+                    finsh(f, void: EXPECTD, "end of module requirement")?;
+                case =>
+                    match(get_mod(mod, ctxt)){
+                    case let dup_mod: *module =>
+                        return bi_msg {
+                            lft = mod: str,
+                            rgt = fmt::asprintf("{}:{}:{}",
+                                f.name, dup_mod.addp.0, dup_mod.addp.1),
+                            tip = void,
+                            ptr = f,
+                        }: MODCDUP;
+                    case =>
+                        let lmod = scope {
+                            over = void,
+                            defs = [],
+                            funs = [],
+                        };
+                        let mods = []: []*module;
+                        let modctxt = context {
+                            scp = &lmod,
+                            uses = &mods,
+                            libpath = ctxt.libpath,
+                            datasec = "",
+                            strlits = [],
+                            onloop = false,
+                            loopid = 0,
+                            nomain = true,
+                            hasmain = false,
+                            hostfn = "",
+                            effect = [],
+                        };
+                        const filename = fmt::asprintf("{}{}.ms", modctxt.libpath, mod: str);
+                        match(build(filename, mod: str, &modctxt)){
+                        case let e: CMP_ERR =>
+                            if(e is LDDFAIL){
+                                return unimsg {
+                                    msg = fmt::asprintf("source file for module \"{}\" not found", fmtc(mod: str, cmd::BLU)),
+                                    tip = "try to specify the libpath with the flag -l",
+                                    ptr = f,
+                                }: GENERIC;
+                            } else return e;
+                        case =>
+                            const newmod = alloc(module {
+                                name = mod: str,
+                                origin = filename,
+                                funs = lmod.funs,
+                                defs = lmod.defs,
+                                addp = (f.lin + 1, f.cln + 1),
+                            });
+                            append(ctxt.uses, newmod);
+                        };
+                        finsh(f, void: EXPECTD, "end of module requirement")?;
+                    };
                 };
             case => jmpto(eol, f)?;
             };
