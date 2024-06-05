@@ -3,6 +3,7 @@ use io;
 use fs;
 use fmt;
 use bufio;
+use errors;
 use strings;
 use strconv;
 use encoding::utf8;
@@ -151,12 +152,19 @@ fn load(fname: str) (*file | CMP_ERR) = {
     // debug info
     if(stacktrace)
         fmt::printfln("loading file \"{}\"", fname)!;
+    
+    
     // open file or rise an error
     let fsrc = match(os::open(fname)){
         case let f: io::file => yield f;
-        case => //let e: fs::error =>
-            // TODO: specific messages for different filesystem errors
-            return fname: LDDFAIL;
+        case let e: fs::error => match(e){
+        case errors::noentry =>
+            return fmt::asprintf("{}:{}", fname, fmtc(" file not found", cmd::DEF)): LDDFAIL;
+        case errors::noaccess =>
+            return fmt::asprintf("{}:{}", fname, fmtc(" access denied", cmd::DEF)): LDDFAIL;
+        case =>
+            return fmt::asprintf("{}:{}", fname, fmtc(" could not such open file", cmd::DEF)): LDDFAIL;
+        };
     };
     defer io::close(fsrc)!;
 

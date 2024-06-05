@@ -1,5 +1,7 @@
+use fs;
 use os;
 use fmt;
+use errors;
 use strings;
 
 let silent = true;
@@ -72,10 +74,28 @@ export fn main() void = {
     if(!infset){
         fmt::fatalf("{}\n{}", fmtc("no input file given", cmd::RED), usg);
     };
+    const path =
+        if(strings::hassuffix(libpath, "/")){
+            yield libpath;
+        } else {
+            yield strings::concat(libpath, "/");
+        };
     const filename = rem_path(srcname).0;
     if(!outset){
         outfile = strings::replace(filename, ".ms", "");
     };
+
+    if(!os::exists(path)){
+        fmt::fatalf("{} the given path {} does not exists",
+            fmtc("lib path error:", cmd::BOX_RED), fmtc(path, cmd::YEL));
+    };
+    match(os::mkfile(outfile, fs::mode::USER_RWX)){
+    case fs::error =>
+        fmt::fatalf(fmtc("invalid output file {}:{}", cmd::BOX_RED),
+            outfile, fmtc(" cannot create file", cmd::DEF));
+    case => void;
+    };
+
     let mods = []: []*module;
     let glob = scope {
         over = void,
@@ -85,7 +105,7 @@ export fn main() void = {
     let ctxt = context {
         scp = &glob,
         uses = &mods,
-        libpath = libpath,
+        libpath = path,
         datasec = "",
         strlits = [],
         onloop = false,

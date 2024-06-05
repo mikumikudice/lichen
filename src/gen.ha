@@ -14,12 +14,6 @@ let also_link = []: []str;
 let cmpd_mods = []: []str;
 
 fn build(src: str, dest: str, ctxt: *context) (void | CMP_ERR) = {
-    const path =
-        if(strings::hassuffix(ctxt.libpath, "/")){
-            yield ctxt.libpath;
-        } else {
-            yield strings::concat(ctxt.libpath, "/");
-        };
     if(findl(cmpd_mods, src) is size && ctxt.nomain){
         return;
     } else {
@@ -43,7 +37,7 @@ fn build(src: str, dest: str, ctxt: *context) (void | CMP_ERR) = {
     runc(silent, "mkdir", "-p", temp);
     
     const (objf, _) = rem_path(dest);
-    const rt_src = fmt::asprintf("{}rt.asm", path);
+    const rt_src = fmt::asprintf("{}rt.asm", ctxt.libpath);
     const rt_out = fmt::asprintf("{}/rt.o", temp);
 
     const qbe_out = fmt::asprintf("{}/{}.ssa", temp, objf);
@@ -119,12 +113,12 @@ fn rem_path(f: str) (str, str) = {
 
 fn errstr(e: CMP_ERR) (str, (*file | void), (str | void)) = {
     match(e){
-    case let name: LDDFAIL =>
-        const msg = fmt::asprintf("error while loading file \"{}\"", name: str);
+    case let err: LDDFAIL =>
+        const msg = fmt::asprintf(fmtc("error while loading file {}", cmd::BOX_RED), err: str);
         return (msg, void, void);
 
-    case let name: CRTFAIL =>
-    const msg = fmt::asprintf("error while creating file \"{}\"", name: str);
+    case let err: CRTFAIL =>
+    const msg = fmt::asprintf(fmtc("error while creating file {}", cmd::BOX_RED), err: str);
         return (msg, void, void);
 
     case let ptr: UNREACH =>
