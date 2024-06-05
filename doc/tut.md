@@ -63,12 +63,11 @@ numbers can be represented in decimal or hexadecimal, octal and binary using the
 numerical literals have no concrete type and always must be casted to some type. casting uneven divisions to integer types results in rounding down the number (i.e. resulting only in the integer part of the division) and signed values to unsigned results in the absolute type. casting a bigger literal e.g. 2048 to an u8 results in a compilation error.
 
 ## strings
-strings in moss are an immutable array of bytes, not null terminated, in contrast with C-like `char*` strings, and are UTF-8 encoded. as immutable data, you can't change their bytes, but you can access them individually.
+strings in moss are a mutable array of UTF-8 encoded characters that caries their length alongside with its data, hence it's not null terminated, in contrast with C-like `char*` strings. you can assign with a direct literal or by indexing its bytes. be careful, literals are allocated on local the stack frame!
 ```rust
 foo = "mornin'";            // immutable value and namespace
-mut bar = " sailor!\n";     // immutable value, but mutable namespace
-
-chr = bar[bar.len - 1];     // chr == 10
+mut bar = " sailor!!" ;     // mutable namespace and data
+bar[bar.len - 1] = '\n';    // last bang now is a newline (0x0a)
 ```
 
 and these are the only supported escape-characters in moss.

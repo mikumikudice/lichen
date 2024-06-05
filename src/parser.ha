@@ -147,17 +147,19 @@ fn get_t_tag(vtp: kwd) str = {
     };
 };
 
-fn pushstr(l: str, ctxt: *context) str = {
-    if(len(l) == 0) return "$empty.str";
-    match(findl(ctxt.strlits, l)){
-    case let i: size =>
-        return fmt::asprintf("$.{}", i);
+fn pushstr(l: str, ctxt: *context) (size, str) = {
+    if(len(l) == 0) return (9, "$empty.str");
+    match(findstrlit(&ctxt.strlits, l)){
+    case let some: (size, size) =>
+        return (some.0, fmt::asprintf("$.{}", some.1));
     case =>
-        const end = len(ctxt.strlits);
-        append(ctxt.strlits, l);
+        const strl = truelen(l) + 8;
+        const indx = len(ctxt.strlits);
+        append(ctxt.strlits, (strl, l));
+
         ctxt.datasec = fmt::asprintf("{}data $.{} = {{ l {}, b \"{}\" }}\n",
-            ctxt.datasec, end, truelen(l) + 8, l);
-        return fmt::asprintf("$.{}", end);
+            ctxt.datasec, indx, strl, l);
+        return (strl, fmt::asprintf("$.{}", indx));
     };
 };
 
@@ -366,7 +368,7 @@ fn push_glob(id: idt, pub: bool, f: *file, ctxt: *context) (str | CMP_ERR) = {
         };
     case let t: txt =>
         const val = tostr(t);
-        const idx = pushstr(val, ctxt);
+        const (_, idx) = pushstr(val, ctxt);
         expr_t = parse_cast(f, kwd::STRING_T)?;
         next = nxttk(f, true)?;
         setptr(f, true);
@@ -388,7 +390,7 @@ fn push_glob(id: idt, pub: bool, f: *file, ctxt: *context) (str | CMP_ERR) = {
                     return fmt::asprintf("{}{{ {} {} }}\n", out, get_qbe_t(expr_t), res: i64);
                 case let t: txt =>
                     const val = tostr(t);
-                    const idx = pushstr(val, ctxt);
+                    const (_, idx) = pushstr(val, ctxt);
                     next = nxttk(f, true)?;
                     setptr(f, true);
                     // TODO: acept casting to union types
@@ -1229,7 +1231,6 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 ptr = f,
             }: GENERIC;
         };
-        fmt::fprint(buffer, ctxt.datasec)!;
     };
     if(ret_tp == kwd::NOT_KWRD) ret_tp = kwd::UNITTYPE;
     return (buffer, ret_tp);
@@ -1695,7 +1696,8 @@ fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], i
         };
     case let t: txt =>
         const val = tostr(t);
-        const idx = pushstr(val, ctxt);
+        const (strl, idx) = pushstr(val, ctxt);
+        // TODO: acept casting to union types
         if(expr_t == kwd::NOT_KWRD){
             expr_t = kwd::STRING_T;
         } else {
@@ -1707,11 +1709,19 @@ fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], i
 
         next = nxttk(f, true)?;
         setptr(f, true);
-        // TODO: acept casting to union types
+        
         expct(is_limit(next, limit), next, f, void: EXPECTD,
             "end of expression")?;
-        return ("", kwd::STRING_T, idx, single);
 
+        if(argc == 0){
+            dest = "%val.l";
+            const hdr = fmt::asprintf("    {0} =l alloc4 {1}\n    storel {1}, {0}\n    {0} =l add {0}, 8\n", dest, strl);
+            exp = fmt::asprintf("{0}    call $MEM.strcpy(l {1}, l {2}, l {3})\n    {1} =l sub {1}, 8\n",
+                hdr, dest, idx, strl - 8);
+            return (exp, kwd::STRING_T, dest, single);
+        } else {
+            return ("", kwd::STRING_T, idx, single);
+        };
     case let i: idt =>
         match(get_idt(i, f, ctxt.scp, ctxt)?){
         case let nm: *nmsp =>

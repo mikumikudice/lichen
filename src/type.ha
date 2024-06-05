@@ -163,7 +163,7 @@ type context = struct {
     uses : *[]*module,
     libpath: str,
     datasec: str,
-    strlits: []str,
+    strlits: [](size, str),
     onloop: bool,
     loopid: size,
     nomain: bool,

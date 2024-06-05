@@ -31,8 +31,16 @@ fn findl(strl: []str, itm: str) (size | void) = {
     };
 };
 
+fn findstrlit(lits: *[](size, str), lit: str) ((size, size) | void) = {
+    const max = len(lits);
+    for(let s = 0z; s < max; s += 1){
+        const l = lits[s].1;
+        if(lit == l)
+            return (lits[s].0, s);
+    };
+};
+
 fn findref(refs: *[]idref, nm: *nmsp) (*idref | void) = {
-    const max = len(refs);
     for(let r ..& refs){
         if(r.idt == nm.ident && cmp_origin(r.origin, nm.origin))
             return &r;

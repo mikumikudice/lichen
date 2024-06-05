@@ -30,9 +30,9 @@ fn build(src: str, dest: str, ctxt: *context) (void | CMP_ERR) = {
     defer io::close(qbe_ir)!;
     const code =
         if(!ctxt.nomain){
-            yield fmt::asprintf("# moss {}\n{}{}", version, fix_entry, memio::string(qbe_ir)!);
+            yield fmt::asprintf("# moss {}\n{}{}{}", version, ctxt.datasec, fix_entry, memio::string(qbe_ir)!);
         } else {
-            yield fmt::asprintf("# moss {}\n{}", version, memio::string(qbe_ir)!);
+            yield fmt::asprintf("# moss {}\n{}{}", version, ctxt.datasec, memio::string(qbe_ir)!);
         };
     const temp = ".tmp";
     runc(silent, "mkdir", "-p", temp);
@@ -66,7 +66,7 @@ fn build(src: str, dest: str, ctxt: *context) (void | CMP_ERR) = {
     if(!os::exists(dest)){
         match(os::mkfile(dest, fs::mode::USER_RWX)){
         case let e: fs::error =>
-            fmt::fatalf(fmtc("invalid output file {}:{} {}", cmd::BOX_RED),
+            fmt::fatalf(fmtc("invalid output file {}:{} {}\n", cmd::BOX_RED),
                 dest, CMD[cmd::DEF], lower(fs::strerror(e)));
         case => void;
         };
@@ -98,7 +98,7 @@ fn runc(noprint: bool, cmd: str, args: str...) void = {
         let stat = exec::wait(&proc)!;
         match(exec::check(&stat)){
             case void => void;
-            case => os::exit(1);
+            case => fmt::fatalf("{} failed\n", cmd);
         };
     };
 };
