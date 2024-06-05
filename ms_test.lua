@@ -21,7 +21,7 @@ local results = {
     {},                                                     -- test_glob
     { "mornin' sailor!\n" },                                -- demo
     { "hi!\nhoy!\nhi!\nhoy!\nhi!\nyay!\nyay!\nyay!\n" },    -- loop
-    { "128\n", "128\n" },                                   -- test_fmt
+    { "128\n", "128\n128 + 2 = 130\n" },                    -- test_fmt
     { "5\n", "3\n", "if!\n" },                              -- test_if
     { "3\n", "4\n", "else if!\n" },
     { "1\n", "0\n", "else!\n" },
@@ -29,7 +29,6 @@ local results = {
 local fails = 0
 local failed = {}
 for i, t in pairs(tests) do
-    os.execute("sleep 0.3")
     local cmd = "./bin/mossy " .. flags .. " ex/" .. t .. ".ms " .. tmp .. t
     local ok = exec(cmd)
     if not ok then
