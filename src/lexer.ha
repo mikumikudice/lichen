@@ -116,7 +116,8 @@ fn is_type(tp: tok) bool = {
     if(!(tp is kwd)) return false;
     switch(tp: kwd){
     case kwd::U8__TYPE, kwd::U16_TYPE, kwd::U32_TYPE, kwd::U64_TYPE, kwd::I8__TYPE,
-        kwd::I16_TYPE, kwd::I32_TYPE, kwd::I64_TYPE, kwd::RATIO__T, kwd::STRING_T, kwd::UNITTYPE =>
+        kwd::I16_TYPE, kwd::I32_TYPE, kwd::I64_TYPE, kwd::RATIO__T, kwd::STRING_T,
+        kwd::RAW_TYPE, kwd::UNITTYPE =>
         return true;
     case => return false;
     };

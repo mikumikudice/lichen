@@ -12,6 +12,10 @@ segment .rod
         dq 16
         dq 0
         db 0
+
+segment .data
+    buffb db 0
+
 segment .text
 global IO.stdin
 global IO.stdout
@@ -24,6 +28,7 @@ global empty.arr
 
 global IO.read
 global IO.write
+global IO.putb
 
 global MEM.alloc
 global MEM.free
@@ -42,8 +47,29 @@ global rt.absw
 global rt.absl
 global rt.exit
 
+; read = fn(handler : u32, buff : str) : u32
+IO.read:
+    push rdi
+    push rsi
+    push rcx
+    push rdx
+    mov ecx, edi
+    xor rdi, rdi        ; clear residual bytes
+    mov edi, ecx
+    mov rdx, [rsi]      ; gets input max length
+    sub rdx, 8
+    add rsi, 8
+    mov rax, 0          ; system call (read)
+    syscall             ; calls it
+    pop rdx
+    pop rcx
+    pop rsi
+    pop rdi
+    ret
+
 ; write = fn(handler : u32, data : str) : u32
 IO.write:
+    push rdi
     push rsi
     push rcx
     push rdx
@@ -58,10 +84,11 @@ IO.write:
     pop rdx
     pop rcx
     pop rsi
+    pop rdi
     ret
 
-; read = fn(handler : u32, buff : str) : u32
-IO.read:
+; putb = fn(handler : u32, data : u8) : u32
+IO.putb:
     push rdi
     push rsi
     push rcx
@@ -69,10 +96,11 @@ IO.read:
     mov ecx, edi
     xor rdi, rdi        ; clear residual bytes
     mov edi, ecx
-    mov rdx, [rsi]      ; gets input max length
-    sub rdx, 8
-    add rsi, 8
-    mov rax, 0          ; system call (read)
+    mov rdx, rsi
+    mov [buffb], dl 
+    mov rsi, buffb      ; get data source
+    mov rdx, 1          ; gets length
+    mov rax, 1          ; system call (write)
     syscall             ; calls it
     pop rdx
     pop rcx

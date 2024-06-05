@@ -22,6 +22,18 @@ const io_write =
         effect = [ "IO" ],
         ...
     };
+const io_putb =
+    func { // putb = fn(handler : u32, data : u8) : u32
+        fname = "putb",
+        param = [ kwd::U32_TYPE, kwd::U8__TYPE ],
+        retrn = kwd::U32_TYPE,
+        ret_n = "",
+        origin = kernel::IO,
+        public = true,
+        impure = true,
+        effect = [ "IO" ],
+        ...
+    };
 const io_stdin =
     nmsp {
         ident = "stdin",
@@ -58,7 +70,7 @@ const io_stderr =
         public = true,
         ...
     };
-const io_funs = [ &io_read, &io_write ];
+const io_funs = [ &io_read, &io_write, &io_putb ];
 const io_vars = [ &io_stdin, &io_stdout, &io_stderr ];
 
 const mem_alloc =

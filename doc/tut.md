@@ -516,29 +516,28 @@ when you pass it to a function that accepts a linear object, it cannot be return
 ```rust
 use mem;
 
-append = fn(obj : []u32, val : u32) : []u32 {
-    mut copy = obj; // obj is immutable, so in order to change it, we copy its borrowed value
-    copy[copy.len - 1] = val;
-    return copy; // this is allowed only because `copy` is a borrowed value
-};
-
-consume = fn(obj : @[]u32) : @[]u32 {
-    copy = obj; // `obj` is consumed and `copy` is a new linear object
+append = fn(obj : []u32, val : u32) : @[]u32 \ mem {
+    mut copy = mem::dup(obj); // arguments are always immutable, so create a copy
 
     // from now on, you can't use `obj` anymore
 
-    return copy; // returning is allowed once `copy` is a new, not-yet-consumed linear object
+    copy[copy.len - 1] = val;
+    return copy;
+};
+
+consume = fn(obj : @[]u32) : unit \ mem {
+    mem::free(obj); // even being an argument, linear types must be used
 };
 
 pub main = fn() : unit \ mem {
-    mut arr = mem::alloc([ 1, 2, 3, 5, 7 ], [6]u32)!; // alloc returns a new linear object
-    arr[5] = append(arr, 11); // not consuming it once append doesn't accept a linear object
-    new_arr = consume(arr); // despite being the same allocated memory chunk, new_arr is a new instance of a linear object
+    mut arr = mem::alloc([ 1, 2, 3, 5, 7 ], [6]u32)!;   // alloc returns a new linear object
+    new_arr = append(arr, 11);                          // not consuming it once append doesn't accept a linear object
+    consume(arr);                                       // consume takes the linear object and the responsibility to dispose it
 
     // from now on, you can't use `arr` anymore
 
     mem::free(new_arr); // consumes the array and frees the memory chunk
-    
+
     // from now on, you can't use `new_arr` anymore
 };
 ```

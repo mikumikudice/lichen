@@ -781,7 +781,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                     let dup = alloc(*f);
                     const idx = dup.lin + 1;
                     for(true){
-                        const (exp, tp, chk) = parse_exp(f, ctxt, &refs, limit)?;
+                        const (exp, tp, chk, _) = parse_exp(f, ctxt, &refs, limit)?;
                         const oper = nxttk(f)!;
                         // fix checking for strings and arrays
                         eval =
@@ -868,9 +868,9 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                     setptr(f, true);
                     expct(next is idt || next is num,
                         next, f, void: EXPECTD, "range starting point")?;
-                    const (sttexp, tp, stt) = parse_exp(f, ctxt, &refs, [ opr::RANGE_OP ], (0, kwd::NUMBER_T))?;
+                    const (sttexp, tp, stt, _) = parse_exp(f, ctxt, &refs, [ opr::RANGE_OP ], (0, kwd::NUMBER_T))?;
                     nxttk(f)!;
-                    const (endexp, newtp, end) = parse_exp(f, ctxt, &refs, limit, (0, tp))?;
+                    const (endexp, newtp, end, _) = parse_exp(f, ctxt, &refs, limit, (0, tp))?;
                     nxttk(f)!;
                     push_idt(cnt, false, false, tp, dup, ctxt)?;
                     free(dup);
@@ -910,7 +910,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                     todo(f, "for each loop")?;
                 // for while
                 } else {
-                    const (exp, tp, chk) = parse_exp(f, ctxt, &refs, limit)?;
+                    const (exp, tp, chk, _) = parse_exp(f, ctxt, &refs, limit)?;
                     const oper = nxttk(f)!;
                     const eval =
                         if(tp == kwd::STRING_T || tp == kwd::ARRAY__T){
@@ -1081,7 +1081,7 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                     fmt::printfln("parsing return at {}", gen_pos(f))!;
                 let add = []: []idref;
                 const dup = alloc(*f);
-                const (exp, expr_t, val_id) = parse_exp(f, ctxt, &add, [eol], (0, fun_tp))?;
+                const (exp, expr_t, val_id, _) = parse_exp(f, ctxt, &add, [eol], (0, fun_tp))?;
                 expct(is_subt(expr_t, ret_tp), expr_t, dup, void: MISMTCH,
                     "return types", "union types are not implemented yet")?;
                 ret_tp = expr_t;
@@ -1109,12 +1109,12 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 case let nm: *nmsp =>
                     if(nm.vtype == kwd::STRING_T){
                         let refs = []: []idref;
-                        const (idxexp, itp, _idx) = parse_exp(f, ctxt, &refs, [ sym::CLS_SQRB ], (0, kwd::U64_TYPE))?;
+                        const (idxexp, itp, _idx, _) = parse_exp(f, ctxt, &refs, [ sym::CLS_SQRB ], (0, kwd::U64_TYPE))?;
                         nxttk(f)!;
                         const (fixexp, idx) = fix_sizes(f, itp, kwd::U64_TYPE, _idx, &refs, ctxt)?;
                         next = nxttk(f)?;
                         const oper = expct(is_asg_opr(next), next, f, void: EXPECTD, "assignment operator")?: opr;
-                        const (valexp, _, val) = parse_exp(f, ctxt, &refs, [ eol ], (0, kwd::U8__TYPE))?;
+                        const (valexp, _, val, _) = parse_exp(f, ctxt, &refs, [ eol ], (0, kwd::U8__TYPE))?;
 
                         const exp = fmt::asprintf("{}{}{}{}", solve_ref(&refs, f), idxexp, fixexp, valexp);
                         fmt::fprintf(buffer, "{0}    %{1}.v =l loadl %{1}\n    call $rt.mvtob(l %{1}.v, l {2}, w {3})\n",
@@ -1339,7 +1339,7 @@ fn parse_objfield(f: *file, nm: *nmsp, refs: *[]idref, ctxt: *context) ((str, kw
         };
     } else if(cmp_tok(next, sym::OPN_SQRB)){
         if(nm.vtype == kwd::STRING_T){
-            const (hdr, tp, idx) = parse_exp(f, ctxt, refs, [ sym::CLS_SQRB ], (0, kwd::NUMBER_T))?;
+            const (hdr, tp, idx, _) = parse_exp(f, ctxt, refs, [ sym::CLS_SQRB ], (0, kwd::NUMBER_T))?;
             nxttk(f)!;
             const itm = fmt::asprintf("%{}.i", nm.ident);
             let exp = fmt::asprintf("{0}    %{1}.l =l loadl %{1}\n    {2}.w =w call $rt.indxb(l %{1}.l, l {3})\n",
@@ -1449,25 +1449,7 @@ fn parse_fcall(fun: *func, f: *file, ctxt: *context, refs: *[]idref) ((str, str)
     };
     const max = len(f.src);
     for(f.ptr < max){
-        next = nxttk(f, true)?;
-        if(cmp_tok(next, opr::COMPLETE)){
-            for(argc < argmax; argc += 1){
-                // TODO: default values for function parameters
-                if(argc == 0){
-                    out = fmt::asprintf("{}{} {}", out,
-                        get_qbe_t(fun.param[argc], 1), getdefval(fun.param[argc]));
-                } else {
-                    out = fmt::asprintf("{}, {} {}", out,
-                        get_qbe_t(fun.param[argc], 1), getdefval(fun.param[argc]));
-                };
-            };
-            next = nxttk(f)?;
-            expct(cmp_tok(next, sym::CLOSEPAR), next, f, void: GENERIC, "too many arguments on function call",
-                fmt::asprintf("the function \"{}\" takes {}", fun.fname, plural("{} argument", argmax)))?;
-            break;
-        };
-        setptr(f, true);
-        if(cmp_tok(next, sym::CLOSEPAR) || next is eol){
+        if(ahead(f, 1, sym::CLOSEPAR) is tok || next is eol){
             if(argc != argmax){
                 return unimsg {
                     msg = "too few arguments on function call",
@@ -1478,8 +1460,26 @@ fn parse_fcall(fun: *func, f: *file, ctxt: *context, refs: *[]idref) ((str, str)
             };
             break;
         };
-        if(cmp_tok(next, sym::SYMCOMMA)) nxttk(f)!;
-        const (exp, tp, arg) = parse_exp(f, ctxt, refs, limit, (argc + 1, fun.param[argc]))?;
+        if(ahead(f, 1, sym::SYMCOMMA) is tok) nxttk(f)!;
+        if(ahead(f, 1, opr::COMPLETE) is tok){
+            nxttk(f)!;
+            for(argc < argmax; argc += 1){
+                // TODO: default values for function parameters
+                if(argc == 0){
+                    out = fmt::asprintf("{}{} {}", out,
+                        get_qbe_t(fun.param[argc], 1), getdefval(fun.param[argc]));
+                } else {
+                    out = fmt::asprintf("{}, {} {}", out,
+                        get_qbe_t(fun.param[argc], 1), getdefval(fun.param[argc]));
+                };
+            };
+
+            next = nxttk(f)?;
+            expct(cmp_tok(next, sym::CLOSEPAR), next, f, void: GENERIC, "too many arguments on function call",
+                fmt::asprintf("the function \"{}\" takes {}", fun.fname, plural("{} argument", argmax)))?;
+            break;
+        };
+        const (exp, tp, arg, _) = parse_exp(f, ctxt, refs, limit, (argc + 1, fun.param[argc]))?;
         expct(is_subt(tp, fun.param[argc]), next, f, void: MISMTCH,
             fmt::asprintf("function parameter {} and argument types", argc + 1),
             cast_err(tp, fun.param[argc]))?;
@@ -1575,8 +1575,7 @@ fn parse_asg(f: *file, dest: idt, pub: bool, asgn: opr, ctxt: *context, defn: (*
             setptr(f, true);
         };
         let refs = []: []idref;
-        const (exp, tp, val_id) = parse_exp(f, ctxt, &refs)?;
-        
+        const (exp, tp, val_id, single) = parse_exp(f, ctxt, &refs)?;
         let store_t = kwd::NOT_KWRD;
         if(defn is void){
             expct(tp != kwd::NUMBER_T, oper, dup, void: GENERIC,
@@ -1587,6 +1586,19 @@ fn parse_asg(f: *file, dest: idt, pub: bool, asgn: opr, ctxt: *context, defn: (*
             nm.asgnd = true;
             fmt::fprintf(asgdef, "    %{} =l alloc4 {}\n", dest: str, get_t_len(tp))!;
         } else {
+            if(single && next is idt){
+                match(get_idt(next: idt, f, ctxt.scp, ctxt)!){
+                case let nm: *nmsp =>
+                    if(mutbl && nm.param && match_linear()){
+                        return unimsg {
+                            msg = "assign a non-linear parameter to a mutable namespace",
+                            tip = "parameters are aways passed by immutable references",
+                            ptr = dup,
+                        }: CANT_DO;
+                    };
+                case => void;
+                };
+            };
             match(defn){
             case let nm: *nmsp =>
                 if(nm.asgnd && !nm.mutbl){
@@ -1644,7 +1656,7 @@ fn parse_asg(f: *file, dest: idt, pub: bool, asgn: opr, ctxt: *context, defn: (*
     return asgdef;
 };
 
-fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], ini_t: ((size, kwd) | void) = void) ((str, kwd, str) | CMP_ERR) = {
+fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], ini_t: ((size, kwd) | void) = void) ((str, kwd, str, bool) | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("parsing expression at {}", gen_pos(f))!;
     let exp = "";
@@ -1662,6 +1674,7 @@ fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], i
     // TODO: handle literals of records and lists
     // TODO: handle statements as valid hands
     let next = nxttk(f)?;
+    assert(!is_limit(next, limit));
     const vall = expct(next is num || next is txt || next is idt,
         next, f, void: EXPECTD, "valid operand")?: (num | txt | idt);
     match(vall){
@@ -1677,7 +1690,7 @@ fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], i
         next = nxttk(f, true)?;
         if(is_limit(next, limit)){
             setptr(f, true);
-            return ("", expr_t, dest);
+            return ("", expr_t, dest, single);
         };
     case let t: txt =>
         const val = tostr(t);
@@ -1696,7 +1709,7 @@ fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], i
         // TODO: acept casting to union types
         expct(is_limit(next, limit), next, f, void: EXPECTD,
             "end of expression")?;
-        return ("", kwd::STRING_T, idx);
+        return ("", kwd::STRING_T, idx, single);
 
     case let i: idt =>
         match(get_idt(i, f, ctxt.scp, ctxt)?){
@@ -1743,7 +1756,7 @@ fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], i
                 next = nxttk(f, true)?;
                 if(is_limit(next, limit)){
                     setptr(f, true);
-                    return (exp, expr_t, dest);
+                    return (exp, expr_t, dest, single);
                 };
             } else {
                 const (pre, tp, lfth) = parse_objfield(f, nm, refs, ctxt)?;
@@ -1782,7 +1795,7 @@ fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], i
                 next = nxttk(f, true)?;
                 if(is_limit(next, limit)){
                     setptr(f, true);
-                    return (exp, expr_t, dest);
+                    return (exp, expr_t, dest, single);
                 };
             };
             // TODO: assert for composite types
@@ -1800,7 +1813,7 @@ fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], i
             next = nxttk(f, true)?;
             if(is_limit(next, limit)){
                 setptr(f, true);
-                return (exp, expr_t, dest);
+                return (exp, expr_t, dest, false);
             };
         };
     };
@@ -1855,7 +1868,7 @@ fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], i
                 } else {
                     yield fmt::asprintf("cs{}{}", inst[oper], get_qbe_t(expr_t, 1));
                 };
-            const (newexp, tp, val_id) = parse_exp(f, ctxt, refs, limit)?;
+            const (newexp, tp, val_id, _) = parse_exp(f, ctxt, refs, limit)?;
 
             expct(operable(expr_t, tp, oper), oper, tmp, void: MISMTCH,
                 "member types", cast_err(expr_t, tp, true))?;
@@ -1889,7 +1902,7 @@ fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], i
             expr_t = cast_to(expr_t, tp, next, tmp)?;
             if(single){
                 dest = fmt::asprintf("%val.{}", get_qbe_t(expr_t, 1));
-                exp = fmt::asprintf("{}    {} ={} copy {}  # here 2\n{}",
+                exp = fmt::asprintf("{}    {} ={} copy {}\n{}",
                     exp, dest, get_qbe_t(expr_t, 1), first, newexp);
                 single = false;
             } else {
@@ -1899,7 +1912,7 @@ fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], i
         free(tmp);
     };
     setptr(f, true);
-    return (exp, expr_t, dest);
+    return (exp, expr_t, dest, single);
 };
 
 // parses an arithmetic operation and returns the final type of the expression and the generated instructions

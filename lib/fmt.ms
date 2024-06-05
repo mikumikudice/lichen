@@ -14,6 +14,58 @@ pub putl = fn(data : str) : unit \ IO {
     put("\n");
 };
 
+pub putf = fn(fmt : str, a1 : raw, a2 : raw, a3 : raw, a4 : raw): unit \ IO & MEM {
+    mut arg = 0 : u64;
+    mut set = 0 : u8;
+    for i = 0 .. fmt.len - 1 {
+        if fmt[i] == '%' {
+            if set {
+                IO::putb(IO::stdout, fmt[i]);
+            };
+            set = 1 - set;
+        } else if set {
+            mut a : raw;
+            if arg == 0 {
+                a = a1;
+            } else if arg == 1 {
+                a = a2;
+            } else if arg == 2 {
+                a = a3;
+            } else if arg == 3 {
+                a = a4;
+            };
+            if fmt[i] == 's' {
+                put(a : str);
+            } else if fmt[i] == 'u' {
+                num = itoa(a : u64, 512);
+                put(num);
+                MEM::free(num);
+            } else if fmt[i] == 'i' {
+                src = a : i64;
+                if src >= 0 {
+                    num = itoa(a : u64, 512);
+                    put(num);
+                    MEM::free(num);
+                } else {
+                    IO::putb(IO::stdout, '-');
+                    num = itoa(src : u64, 512);
+                    put(num);
+                    MEM::free(num);
+                };
+            };
+            set = 0;
+            arg += 1;
+        } else {
+            IO::putb(IO::stdout, fmt[i]);
+        };
+    };
+};
+
+pub putfl = fn(fmt : str, a1 : raw, a2 : raw, a3 : raw, a4 : raw): unit \ IO & MEM {
+    putf(fmt : str, a1, a2, a3, a4);
+    putl(...);
+};
+
 // reads `size` bytes from the stdin and consumes the
 // trailing line feed. the returned data is allocated
 // on the heap and hence must be freed.

@@ -4,3 +4,4 @@
 - implement arrays
 - implement unions
 - implement error unions and error operators
+- check for `mut local = fun_arg`

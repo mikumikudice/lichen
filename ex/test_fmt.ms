@@ -10,4 +10,6 @@ pub main = fn() : unit \ fmt & MEM {
 
     fmt::putl(dst);
     MEM::free(dst);
+
+    fmt::putfl("%u + 2 = %u", num, num + 2, ...);
 };
