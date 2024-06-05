@@ -98,12 +98,6 @@ export fn main() void = {
         fmt::fatalf("{} the given path {} does not exists",
             fmtc("lib path error:", cmd::BOX_RED), fmtc(path, cmd::YEL));
     };
-    match(os::mkfile(outfile, fs::mode::USER_RWX)){
-    case fs::error =>
-        fmt::fatalf(fmtc("invalid output file {}:{}", cmd::BOX_RED),
-            outfile, fmtc(" cannot create file", cmd::DEF));
-    case => void;
-    };
 
     let mods = []: []*module;
     let glob = scope {

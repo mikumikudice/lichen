@@ -1,4 +1,5 @@
 use fmt;
+use strings;
 
 // message coloring
 const CMD: []str =
@@ -36,4 +37,24 @@ fn findref(refs: *[]idref, nm: *nmsp) (*idref | void) = {
         if(r.idt == nm.ident && cmp_origin(r.origin, nm.origin))
             return &r;
     };
+};
+
+fn lower(src: str) str = {
+    let out = strings::toutf8(strings::dup(src));
+    const max = len(out);
+    for(let c = 0z; c < max; c += 1){
+        if(out[c] >= 'A' && out[c] <= 'z')
+            out[c] = out[c] | 0b0100000;
+    };
+    return strings::fromutf8(out)!;
+};
+
+fn upper(src: str) str = {
+    let out = strings::toutf8(strings::dup(src));
+    const max = len(out);
+    for(let c = 0z; c < max; c += 1){
+        if(out[c] >= 'A' && out[c] <= 'z')
+            out[c] = out[c] ^ 0b0100000;
+    };
+    return strings::fromutf8(out)!;
 };

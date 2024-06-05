@@ -3,6 +3,7 @@ use io;
 use fs;
 use fmt;
 use memio;
+use errors;
 use strings;
 use os::exec;
 use unix::signal;
@@ -62,6 +63,14 @@ fn build(src: str, dest: str, ctxt: *context) (void | CMP_ERR) = {
     };
     runc(silent, "nasm", "-felf64", "-o", rt_out, rt_src);
 
+    if(!os::exists(dest)){
+        match(os::mkfile(dest, fs::mode::USER_RWX)){
+        case let e: fs::error =>
+            fmt::fatalf(fmtc("invalid output file {}:{} {}", cmd::BOX_RED),
+                dest, CMD[cmd::DEF], lower(fs::strerror(e)));
+        case => void;
+        };
+    };
     let mold_args = []: []str;
     append(mold_args, ["-o", dest, bin_out, rt_out]...);
     append(mold_args, also_link...);
