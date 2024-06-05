@@ -27,9 +27,9 @@ fn tktostr(tk: tok, verb: bool = false) str = {
             } else {
                 return "a string literal";
             };
-        case kwd =>
+        case let t: kwd =>
             if(verb){
-                switch(tk: kwd){
+                switch(t){
                 case kwd::NUMBER_T =>
                     return "number type";
                 case kwd::ARRAY__T =>
@@ -170,7 +170,7 @@ fn load(fname: str) (*file | CMP_ERR) = {
     });
     // load every line until EOF
     let lastc = 0: size;
-    for(true) match(bufio::read_line(fsrc)){
+    for(true) match(bufio::read_line(fsrc)!){
         case io::EOF => break;
         case let l: []u8 =>
             append(src.src, l...);
