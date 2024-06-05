@@ -16,7 +16,11 @@ type cmd = enum int {
 };
 
 fn fmtc(t: fmt::formattable, c: cmd) str = {
-    return fmt::asprintf("{}{}{}", CMD[c], t, CMD[cmd::DEF]);
+    if(c != cmd::DEF){
+        return fmt::asprintf("{}{}{}", CMD[c], t, CMD[cmd::DEF]);
+    } else {
+        return fmt::asprintf("{}{}", CMD[cmd::DEF], t);
+    };
 };
 
 fn findl(strl: []str, itm: str) (size | void) = {

@@ -5,7 +5,7 @@ function exec(cmd)
 end
 
 local tmp = ".test/"
-local flags = "-l./lib/"
+local flags = "-l lib/ -v"
 
 local init = exec("./build.sh")
 if not init then os.exit(1) end

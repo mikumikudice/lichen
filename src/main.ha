@@ -2,61 +2,80 @@ use os;
 use fmt;
 use strings;
 
+let silent = true;
+let stacktrace = false;
 const version = "0.0.1";
 
 export fn main() void = {
     const abt = "mossy is the compiler for the moss programming language.";
-    const tut = "not-implemented-yet";
+    const tut = "https://git.sr.ht/~mikaela-md/mossy/tree/main/doc/tut.md";
 
-    const home = os::getenv("HOME"): str;
-
-    const usg = fmt::asprintf("mossy usage:\n\t{}{}{}",
+    const usg = fmt::asprintf("\nmossy usage:\n\t{}{}{}",
         fmtc("$ ", cmd::YEL), fmtc(os::args[0], cmd::GRN),
         fmtc(" [flags] <main file> [output file name]", cmd::BLU));
 
-    const flg = fmt::asprintf(fmtc("-l{}", cmd::GRN), fmtc("<lib path>", cmd::BLU));
-    const hlp = fmt::asprintf("get help on learning how to use moss in {}",
+    const allflags = strings::concat(
+        fmtc("\n\t-l ", cmd::GRN), fmtc("<lib path>\t", cmd::BLU), fmtc("-- sets path for stdlib and runtime", cmd::YEL),
+        fmtc("\n\t-v\t\t", cmd::GRN), fmtc("-- makes the compiler print each executed command", cmd::YEL),
+        fmtc("\n\t-st\t\t", cmd::GRN), fmtc("-- makes the compiler print every parsing step", cmd::YEL)
+    );
+    const flg = fmt::asprintf("\nflags usage:{}", allflags);
+    const hlp = fmt::asprintf("\nget help on learning how to use moss in {}",
         fmtc(tut, cmd::GRN));
 
-    let argc = len(os::args) - 1;
+    const home = os::getenv("HOME"): str;
+    let argc = len(os::args);
     // check if there are arguments
-    if(argc == 0){
-        fmt::printfln("{}\n{}\nflags usage:\n\t{}\n\n{}", abt, usg, flg, hlp)!;
+    if(argc == 1){
+        fmt::printfln("{}\n{}{}\n{}", abt, usg, flg, hlp)!;
         return;
-    } else if(argc == 1 && (os::args[1] == "-v" || os::args[1] == "--version")){
+    } else if(argc == 2 && (os::args[1] == "-v" || os::args[1] == "--version")){
         fmt::printfln("moss compiler v{}", version)!;
         return;
     };
     let libset = false;
-    const libpath = fmt::asprintf("{}/{}",
+    let outset = false;
+    let infset = false;
+    let libpath = fmt::asprintf("{}/{}",
         os::getenv("HOME"): str, ".local/lib/lime/");
-    let lib = libpath;
-    const src =
-        if(strings::hasprefix(os::args[1], "-l")){
-            yield
-            if(argc > 1){
-                if(os::args[1] == "-l"){
-                    fmt::errorln("empty libpath flag")!;
-                    os::exit(1);
-                };
-                lib = strings::sub(os::args[1], 2);
+    let outfile = "";
+    let srcname = "";
+    // parse command line arguments
+    for(let a = 1z; a < argc; a += 1){
+        const arg = os::args[a];
+        switch(arg){
+        case "-l" =>
+            a += 1;
+            if(a < argc){
                 libset = true;
-                yield os::args[2];
+                libpath = os::args[a];
+                continue;
             } else {
-                fmt::errorln("missing source file name")!;
-                fmt::fatalf("flags usage\n\t:{}", flg);
+                fmt::fatalf("{}\n{}", fmtc("missing lib path for -l flag", cmd::RED), flg);
             };
-        } else {
-            yield os::args[1];
+        case "-v" =>
+            silent = false;
+            continue;
+        case "-st" =>
+            stacktrace = true;
+            continue;
+        case => void;
         };
-    const (name, _) = rem_path(src);
-    const outf =
-        if((libset && argc == 2) || argc == 1){
-            yield strings::replace(name, ".ms", "");
-        } else {
-            if(libset) yield os::args[3];
-            yield os::args[2];
+        if(!infset){
+            infset = true;
+            srcname = arg;
+        } else if(!outset){
+            outset = true;
+            outfile = arg;
         };
+    };
+    if(!infset){
+        fmt::fatalf("{}\n{}", fmtc("no input file given", cmd::RED), usg);
+    };
+    const filename = rem_path(srcname).0;
+    if(!outset){
+        outfile = strings::replace(filename, ".ms", "");
+    };
     let mods = []: []*module;
     let glob = scope {
         over = void,
@@ -66,7 +85,7 @@ export fn main() void = {
     let ctxt = context {
         scp = &glob,
         uses = &mods,
-        libpath = lib,
+        libpath = libpath,
         datasec = "",
         strlits = [],
         onloop = false,
@@ -76,5 +95,5 @@ export fn main() void = {
         hostfn = "",
         effect = [],
     };
-    build(src, outf, &ctxt)!;
+    build(srcname, outfile, &ctxt)!;
 };
