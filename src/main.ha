@@ -17,8 +17,10 @@ export fn main() void = {
         fmtc(" [flags] <main file> [output file name]", cmd::BLU));
 
     const allflags = strings::concat(
+        fmtc("\n\t-h\t\t", cmd::GRN), fmtc("-- prints this help message", cmd::YEL),
+        fmtc("\n\t-v\t\t", cmd::GRN), fmtc("-- prints the current version of the compiler", cmd::YEL),
         fmtc("\n\t-l ", cmd::GRN), fmtc("<lib path>\t", cmd::BLU), fmtc("-- sets path for stdlib and runtime", cmd::YEL),
-        fmtc("\n\t-v\t\t", cmd::GRN), fmtc("-- makes the compiler print each executed command", cmd::YEL),
+        fmtc("\n\t-vb\t\t", cmd::GRN), fmtc("-- makes the compiler print each executed command", cmd::YEL),
         fmtc("\n\t-st\t\t", cmd::GRN), fmtc("-- makes the compiler print every parsing step", cmd::YEL)
     );
     const flg = fmt::asprintf("\nflags usage:{}", allflags);
@@ -31,8 +33,12 @@ export fn main() void = {
     if(argc == 1){
         fmt::printfln("{}\n{}{}\n{}", abt, usg, flg, hlp)!;
         return;
-    } else if(argc == 2 && (os::args[1] == "-v" || os::args[1] == "--version")){
-        fmt::printfln("moss compiler v{}", version)!;
+    } else if(argc == 2){
+        if(os::args[1] == "-v" || os::args[1] == "--version"){
+            fmt::printfln("moss compiler v{}", version)!;
+        } else if(os::args[1] == "-h" || os::args[1] == "--help"){
+            fmt::printfln("{}{}\n", usg, flg)!;
+        };
         return;
     };
     let libset = false;
@@ -45,23 +51,26 @@ export fn main() void = {
     // parse command line arguments
     for(let a = 1z; a < argc; a += 1){
         const arg = os::args[a];
-        switch(arg){
-        case "-l" =>
-            a += 1;
-            if(a < argc){
-                libset = true;
-                libpath = os::args[a];
+        if(strings::hasprefix(arg, "-")){
+            switch(arg){
+            case "-l" =>
+                a += 1;
+                if(a < argc){
+                    libset = true;
+                    libpath = os::args[a];
+                    continue;
+                } else {
+                    fmt::fatalf("{}\n{}\n", fmtc("missing lib path for -l flag", cmd::RED), flg);
+                };
+            case "-vb" =>
+                silent = false;
                 continue;
-            } else {
-                fmt::fatalf("{}\n{}", fmtc("missing lib path for -l flag", cmd::RED), flg);
+            case "-st" =>
+                stacktrace = true;
+                continue;
+            case =>
+                fmt::fatalf("{} {}\n{}\n", fmtc("unknown flag", cmd::RED), fmtc(arg, cmd::GRN), flg);
             };
-        case "-v" =>
-            silent = false;
-            continue;
-        case "-st" =>
-            stacktrace = true;
-            continue;
-        case => void;
         };
         if(!infset){
             infset = true;
@@ -72,7 +81,7 @@ export fn main() void = {
         };
     };
     if(!infset){
-        fmt::fatalf("{}\n{}", fmtc("no input file given", cmd::RED), usg);
+        fmt::fatalf("{}\n{}\n", fmtc("no input file given", cmd::RED), usg);
     };
     const path =
         if(strings::hassuffix(libpath, "/")){
