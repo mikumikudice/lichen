@@ -102,7 +102,7 @@ const inst =
     [ "neg", "and", "or"
     , "shr", "shl"
     , "ceq", "cne"
-    , "ls", "gt"
+    , "lt", "gt"
     , "le", "ge"
     , "add", "sub", "mul", "div", "rem"
     ];
@@ -110,11 +110,11 @@ const inst =
 type sym = enum int
     { OPN_CRLY, CLS_CRLY, OPN_SQRB, CLS_SQRB
     , OPEN_PAR, CLOSEPAR, SEMICLNS, SYMCOMMA
-    , SYMB_ANY, SYMB_END, NOT_SYMB
+    , SYMB_END, NOT_SYMB
 };
 const symv =
-    [ "{", "}", "[", "]", "("
-    , ")", ";", ",", "_"
+    [ "{", "}", "[", "]"
+    , "(", ")", ";", ","
     ];
 static assert(sym::SYMB_END: size == len(symv), "symbol values not updated");
 
@@ -171,7 +171,12 @@ type context = struct {
     hostfn: str,
     effect: []str,
 };
-
+type expr_c = struct {
+    dest_v: str,
+    exprss: str,
+    extype: kwd,
+    single: bool,
+};
 type tkind = enum {
     PRIMITIVE,
     COMPOSITE,
@@ -195,4 +200,15 @@ type module = struct {
     funs : []*func,
     defs : []*nmsp,
     addp : (size, size),
+};
+
+const unit = nmsp {
+    ident = "_",
+    vtype = kwd::UNITTYPE,
+    mutbl = true,
+    asgnd = true,
+    param = false,
+    value = eol,
+    origin = "rt.asm",
+    ...
 };

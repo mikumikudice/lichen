@@ -66,7 +66,7 @@ fn build(src: str, dest: str, ctxt: *context) (void | CMP_ERR) = {
     if(!os::exists(dest)){
         match(os::mkfile(dest, fs::mode::USER_RWX)){
         case let e: fs::error =>
-            fmt::fatalf(fmtc("invalid output file {}:{} {}\n", cmd::BOX_RED),
+            fmt::fatalf(fmtc("invalid output file {}:{} {}", cmd::BOX_RED),
                 dest, CMD[cmd::DEF], lower(fs::strerror(e)));
         case => void;
         };
@@ -90,7 +90,21 @@ fn runc(noprint: bool, cmd: str, args: str...) void = {
     if(!noprint)
         fmt::printfln("{}{}{}", fmtc("exec: ", cmd::BLU), cmd, argf)!;
 
-    const exe = exec::cmd(cmd, args...)!;
+    const exe =
+        match(exec::cmd(cmd, args...)){
+        case let c: exec::command =>
+            yield c;
+        case let e: exec::error =>
+            if(e is exec::nocmd){
+                if(cmd == "mold"){
+                    fmt::println("mold not found. using ld")!;
+                    runc(noprint, "ld", args...);
+                } else {
+                    fmt::fatalf("missing dependency: {}", cmd);
+                };
+            };
+            fmt::fatalf("{} failed", cmd);
+        };
     match(exec::fork()!){
     case void =>
         exec::exec(&exe);
@@ -98,7 +112,7 @@ fn runc(noprint: bool, cmd: str, args: str...) void = {
         let stat = exec::wait(&proc)!;
         match(exec::check(&stat)){
             case void => void;
-            case => fmt::fatalf("{} failed\n", cmd);
+            case => fmt::fatalf("{} failed", cmd);
         };
     };
 };
@@ -232,13 +246,7 @@ fn cmperr(e: CMP_ERR) never = {
         if(pos.iseol){
             pos = pos.eolat: *file;
         };
-        const txt = tostr(pos.src);
-        const end =
-            match(strings::index(strings::sub(txt, pos.lst + 1), "\n")){
-            case let e: size => yield pos.lst + e + 1;
-            case => yield len(txt);
-            };
-        const src = strings::sub(txt, pos.lst, end);
+        const src = gen_lin(pos);
         const num = fmt::asprintf("{} ", pos.lin + 1);
         defer free(num);
 

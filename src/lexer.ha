@@ -61,9 +61,11 @@ fn tktostr(tk: tok, verb: bool = false) str = {
 };
 
 fn tostr(src: []u8) str = {
-    // TODO: handle this more elegantly
-    const r = strings::fromutf8(src)!;
-    return r;
+    match(strings::fromutf8(src)){
+    case let s: str => return s;
+    case =>
+        fmt::fatal("given source file is not UTF-8 encoded");
+    };
 };
 
 // compares two tokens
@@ -113,6 +115,14 @@ fn gen_pos(f: *file) str = {
     return fmt::asprintf( "{}:{}:{}", f.name, f.lin + 1, f.cln + 1);
 };
 
+fn gen_lin(f: *file) str = {
+    const txt = tostr(f.src);
+    const idx = strings::index(strings::sub(txt, f.lst + 1), "\n"): size;
+    const end = f.lst + idx + 1;
+    const out = strings::sub(txt, f.lst, end);
+    return strings::replace(out, "\t", " ");
+};
+
 fn is_type(tp: tok) bool = {
     if(!(tp is kwd)) return false;
     switch(tp: kwd){
@@ -122,6 +132,10 @@ fn is_type(tp: tok) bool = {
         return true;
     case => return false;
     };
+};
+
+fn is_untyped(tp: kwd) bool = {
+    return tp == kwd::NOT_KWRD || tp == kwd::NUMBER_T;
 };
 
 fn is_num(tp: kwd, sign: bool = false) bool = {
@@ -199,10 +213,10 @@ fn nxttk(f: *file, rev: bool = false) (tok | CMP_ERR) = {
         if(iswsp(chr)){
             continue;
         } else if(chr == '"'){
-            incptr(f);
+            incptr(f, true);
             return parse_str(f)?;
         } else if(chr == '\''){
-            incptr(f);
+            incptr(f, true);
             return parsechar(f)?;
         } else if(chr == ';'){
             incptr(f);
@@ -566,6 +580,10 @@ fn expct(eql: bool, tk: tok, f: *file, e: CMP_ERR, msg: str, tip: (str | void) =
     };
 };
 
+fn check(f: *file, stt: kwd) (void | CMP_ERR) = {
+    let next = nxttk(f)?;
+};
+
 fn mtchs(s: sym, f: *file, restore: bool = true) (u64 | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("matching symbol \"{}\" at {}", symv[s], gen_pos(f))!;
@@ -617,6 +635,13 @@ fn jmpto(t: tok, f: *file, before: bool = false) (void | CMP_ERR) = {
         next = nxttk(f, before)?;
     };
     setptr(f, before);
+};
+
+fn gotop(f: *file, p: size) (void | CMP_ERR) = {
+    let next = nxttk(f)?;
+    for(f.ptr < p){
+        next = nxttk(f)?;
+    };
 };
 
 fn skip_field(f: *file) (void | CMP_ERR) = {
@@ -672,11 +697,14 @@ fn parse_str(f: *file) (num | txt | CMP_ERR) = {
     for(onstr && f.ptr < max; incptr(f, onstr)){
         const chr = f.src[f.ptr];
         switch(chr){
+            case '\'' =>
+                append(tkv, chr);
             case '"' =>
                 if(!escpd){
                     onstr = !onstr;
                     escpd = false;
                 } else {
+                    append(tkv, '\\');
                     append(tkv, chr);
                     escpd = false;
                 };
@@ -707,20 +735,6 @@ fn parse_str(f: *file) (num | txt | CMP_ERR) = {
     return tkv: txt;
 };
 
-fn truelen(txt: str) size = {
-    static const pairs =
-        [ ("\\t", "\t"), ("\\b", "\b")
-        , ("\\a", "\a"), ("\\r", "\r")
-        , ("\\n", "\n"), ("\\f", "\f")
-        , ("\\0", "\0")
-        ];
-    let fix = txt;
-    for(let p .. pairs){
-        fix = strings::replace(fix, p.0, p.1);
-    };
-    return len(fix);
-};
-
 // parses a character literal
 fn parsechar(f: *file) (num | CMP_ERR) = {
     let onstr = true;
@@ -739,6 +753,8 @@ fn parsechar(f: *file) (num | CMP_ERR) = {
                     append(tkv, chr);
                     escpd = false;
                 };
+            case '"' =>
+                append(tkv, chr);
             case '\\' =>
                 if(escpd){
                     append(tkv, '\\');
@@ -798,7 +814,7 @@ fn parsechar(f: *file) (num | CMP_ERR) = {
             case =>
                 if(escpd){
                     return unimsg {
-                        msg = fmt::asprintf("invalid escape char {}", chr: rune),
+                        msg = fmt::asprintf("invalid escape char \"{}\"", chr: rune),
                         tip = void,
                         ptr = f,
                     }: GENERIC;
@@ -815,6 +831,20 @@ fn parsechar(f: *file) (num | CMP_ERR) = {
             ptr = f,
         }: GENERIC;
     };
+};
+
+fn truelen(txt: str) size = {
+    static const pairs =
+        [ ("\\t", "\t"), ("\\b", "\b")
+        , ("\\a", "\a"), ("\\r", "\r")
+        , ("\\n", "\n"), ("\\f", "\f")
+        , ("\\0", "\0")
+        ];
+    let fix = txt;
+    for(let p .. pairs){
+        fix = strings::replace(fix, p.0, p.1);
+    };
+    return len(fix);
 };
 
 fn setptr(f: *file, reset: bool = false) void = {

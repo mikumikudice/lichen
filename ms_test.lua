@@ -83,7 +83,7 @@ for i, t in pairs(tests) do
                 input:write(results[i][c])
                 input:close()
             end
-            local ran, _, sig = exec("(cat" .. argl .. " | " .. tmp .. t .. ") > " .. tmp .. t .. ".log")
+            local ran, _, sig = exec("cat" .. argl .. " | " .. tmp .. t .. " > " .. tmp .. t .. ".log")
             if not ran then
                 failed[#failed + 1] = "exit code: " .. (sig)
                 fails = fails + 1

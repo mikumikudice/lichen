@@ -15,46 +15,54 @@ pub putl = fn(data : str) : unit \ IO {
 };
 
 pub putf = fn(fmt : str, a1 : raw, a2 : raw, a3 : raw, a4 : raw): unit \ IO & MEM {
-    mut arg = 0 : u64;
+    mut arg = 1 : u64;
     mut set = 0 : u8;
     for i = 0 .. fmt.len - 1 {
         if fmt[i] == '%' {
             if set {
                 IO::putb(IO::stdout, fmt[i]);
+                set = 0;
+            } else {
+                set = 1;
             };
-            set = 1 - set;
-        } else if set {
-            mut a : raw;
-            if arg == 0 {
-                a = a1;
-            } else if arg == 1 {
-                a = a2;
+            next;
+        };
+        if set {
+            mut this : raw;
+            if arg == 1 {
+                this = a1;
             } else if arg == 2 {
-                a = a3;
+                this = a2;
             } else if arg == 3 {
-                a = a4;
+                this = a3;
+            } else if arg == 4 {
+                this = a4;
+            } else {
+                put("args overflow");
+                return;
             };
             if fmt[i] == 's' {
-                put(a : str);
+                put(this: str);
             } else if fmt[i] == 'u' {
-                num = itoa(a : u64, 512);
+                num = itoa(this: u64, 512);
                 put(num);
                 MEM::free(num);
             } else if fmt[i] == 'i' {
-                src = a : i64;
-                if src >= 0 {
-                    num = itoa(a : u64, 512);
-                    put(num);
-                    MEM::free(num);
-                } else {
+                val = this: i64;
+                if val < 0 {
                     IO::putb(IO::stdout, '-');
-                    num = itoa(src : u64, 512);
-                    put(num);
-                    MEM::free(num);
                 };
+                num = itoa(val: u64, 512);
+                put(num);
+                MEM::free(num);
+            } else {
+                put("invalid escape char: \"");
+                IO::putb(IO::stdout, fmt[i]);
+                IO::putb(IO::stdout, '"');
+                return;
             };
-            set = 0;
             arg += 1;
+            set = 0;
         } else {
             IO::putb(IO::stdout, fmt[i]);
         };
@@ -83,10 +91,17 @@ pub get = fn(size : u64) : str \ IO & MEM {
 };
 
 pub itoa = fn(src : u64, size : u64) : str \ MEM {
+    if src == 0 {
+        buff = MEM::alloc(9) : str;
+        MEM::strlset(buff, 9);
+        MEM::strcpy(buff, "0", 9);
+        return buff;
+    };
     buff = MEM::alloc(size + 8) : str;
     MEM::strlset(buff, size + 8);
     mut ptr = 0 : u64;
     mut num = src;
+
     for num > 0 {
         rem = num % 10;
 

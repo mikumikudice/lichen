@@ -59,6 +59,10 @@ these are the current goals of this project:
             - [x] on function calls
             - [ ] on record assignments
             - [x] casting for function arguments
+        - [ ] field access for records, arrays and string literals
+            - [ ] for records
+            - [ ] for arrays
+            - [ ] for strings
         - [ ] arrays
             - [ ] sugar syntax
             - [ ] multidimensional arrays

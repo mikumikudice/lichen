@@ -69,7 +69,7 @@ export fn main() void = {
                     libpath = os::args[a];
                     continue;
                 } else {
-                    fmt::fatalf("{}\n{}\n\n",
+                    fmt::fatalf("{}\n{}\n",
                         fmtc("missing lib path for -l flag", cmd::RED), flg);
                 };
             case "-vb" =>
@@ -79,7 +79,7 @@ export fn main() void = {
                 stacktrace = true;
                 continue;
             case =>
-                fmt::fatalf("{} {}\n{}\n\n",
+                fmt::fatalf("{} {}\n{}\n",
                     fmtc("unknown flag", cmd::RED), fmtc(arg, cmd::GRN), flg);
             };
         };
@@ -92,7 +92,7 @@ export fn main() void = {
         };
     };
     if(!infset){
-        fmt::fatalf("{}\n{}\n\n", fmtc("no input file given", cmd::RED), usg);
+        fmt::fatalf("{}\n{}\n", fmtc("no input file given", cmd::RED), usg);
     };
     const path =
         if(strings::hassuffix(libpath, "/")){
@@ -105,7 +105,7 @@ export fn main() void = {
         outfile = strings::replace(filename, ".ms", "");
     };
     if(!os::exists(path)){
-        fmt::fatalf("{} the given path {} does not exists\n",
+        fmt::fatalf("{} the given path {} does not exists",
             fmtc("lib path error:", cmd::BOX_RED), fmtc(path, cmd::YEL));
     };
     let mods = []: []*module;
@@ -114,6 +114,7 @@ export fn main() void = {
         defs = [],
         funs = [],
     };
+    append(glob.defs, &unit);
     let ctxt = context {
         scp = &glob,
         uses = &mods,
