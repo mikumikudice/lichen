@@ -4,6 +4,4 @@
 - implement arrays
 - implement unions
 - implement error unions and error operators
-- check for `mut local = fun_arg`
 - fix false positive for immutable assignment on if-else blocks
-- fix multi-lined comments

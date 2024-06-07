@@ -223,7 +223,7 @@ fn nxttk(f: *file, rev: bool = false) (tok | CMP_ERR) = {
             return eol;
         } else {
             // comments
-            if(chr == '/' && f.ptr + 1 < max){
+            if(chr == '/'){
                 // single line
                 if(f.src[f.ptr + 1] == '/'){
                     f.end = 0;
@@ -239,6 +239,8 @@ fn nxttk(f: *file, rev: bool = false) (tok | CMP_ERR) = {
                     let depth = 1z;
                     setptr(f);
                     incptr(f);
+                    assert(len(tkv) == 0);
+                    const dup = alloc(*f);
                     for(f.ptr < max; incptr(f)){
                         if(f.ptr + 1 < max){
                             if(f.src[f.ptr] == '/' && f.src[f.ptr + 1] == '*'){
@@ -261,9 +263,9 @@ fn nxttk(f: *file, rev: bool = false) (tok | CMP_ERR) = {
                     if(depth > 0){
                         setptr(f, true);
                         return unimsg {
-                            msg = "unclosed symbol found here",
+                            msg = "unclosed commend block found here",
                             tip = void,
-                            ptr = f,
+                            ptr = dup,
                         }: GENERIC;
                     };
                     incptr(f);
@@ -495,6 +497,12 @@ fn nxttk(f: *file, rev: bool = false) (tok | CMP_ERR) = {
     return eol;
 };
 
+fn _nxttk(f: *file, rev: bool = false) (tok | CMP_ERR) = {
+    let t = _nxttk(f, rev)?;
+    fmt::println(tktostr(t, true), gen_pos(f))!;
+    return t;
+};
+
 // jumps `num` tokens and checks if it's is/in `tkns`.
 // returns it if yes, otherwise returns void.
 fn ahead(f: *file, num: size, tkns: (tok | []tok)) (tok | void | CMP_ERR) = {
@@ -589,7 +597,7 @@ fn mtchs(s: sym, f: *file, restore: bool = true) (u64 | CMP_ERR) = {
         fmt::printfln("matching symbol \"{}\" at {}", symv[s], gen_pos(f))!;
 
 
-    if(restore) setptr(f);
+    const safe = *f;
     let depth = 1z;
     const max = len(f.src);
     let dup = alloc(*f);
@@ -610,7 +618,9 @@ fn mtchs(s: sym, f: *file, restore: bool = true) (u64 | CMP_ERR) = {
             };
             depth -= 1;
             if(depth == 0) {
-                if(restore) setptr(f, true);
+                if(restore){
+                    *f = safe;
+                };
                 free(dup);
                 return f.ptr;
             };
@@ -618,7 +628,7 @@ fn mtchs(s: sym, f: *file, restore: bool = true) (u64 | CMP_ERR) = {
     };
     if(depth > 0){
         return unimsg {
-            msg = "unclosed symbol found here",
+            msg = fmt::asprintf("the simbol {} is unclosed", fmtc(symv[s], cmd::YEL)),
             tip = void,
             ptr = dup,
         }: GENERIC;

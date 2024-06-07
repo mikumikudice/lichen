@@ -892,18 +892,33 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
 
                     expct(endexp.extype != kwd::NUMBER_T, next, f, void: GENERIC, "untyped range value")?;
 
-                    const exp_l = get_qbe_t(sttexp.extype, 1);
-                    const upval = fmt::asprintf("%max.{}.{}", idx, exp_l);
-                    let exp = fmt::asprintf("{}{}{}    {} ={} copy {}\n", solve_ref(&refs, f), sttexp.exprss, endexp.exprss, upval, exp_l, endexp.dest_v);
+                    let exp = fmt::asprintf("{}{}", sttexp.exprss, endexp.exprss);
+                    const stt =
+                        if(need_ext(sttexp.extype, endexp.extype)){
+                            const id = fmt::asprintf("%stt.{}.l", idx);
+                            exp = fmt::asprintf("{}    {} =l ext{} {}\n",
+                                exp, id, get_qbe_t(sttexp.extype, 2), sttexp.dest_v);
+                            yield id;
+                        } else {
+                            const id = fmt::asprintf("%stt.{}.{}",
+                                idx, get_qbe_t(sttexp.extype, 1));
+                            exp = fmt::asprintf("{}    {} ={} copy {}\n",
+                                exp, id, get_qbe_t(sttexp.extype, 1), sttexp.dest_v);
+                            yield id;
+                        };
+                    const end = endexp.dest_v;
+                    const exp_l = get_qbe_t(endexp.extype, 1);
+                    const upval = fmt::asprintf("%end.{}.{}", idx, exp_l);
+                    exp = fmt::asprintf("{}{}    {} ={} copy {}\n", solve_ref(&refs, f), exp, upval, exp_l, end);
 
-                    const cnt_l = get_qbe_t(sttexp.extype, 1);
+                    const cnt_l = get_qbe_t(endexp.extype, 1);
                     const incv = fmt::asprintf("%{}.{}", cnt, exp_l);
 
                     // TODO: assert for downcasting mismatch
                     exp = fmt::asprintf("{0}    {1} ={2} copy {3}\n    %{6} =l alloc4 {5}\n    store{4} {1}, %{6}\n",
-                        exp, incv, exp_l, sttexp.dest_v, cnt_l, get_t_len(sttexp.extype), cnt);
+                        exp, incv, exp_l, stt, cnt_l, get_t_len(endexp.extype), cnt);
                     const cond =
-                        if(is_num(sttexp.extype)){
+                        if(is_num(endexp.extype)){
                             yield fmt::asprintf("{0}@rpt.{3}\n    %cond.{3}.{1} ={1} cule{1} {4}, {2}\n",
                                 exp, exp_l, upval, idx, incv);
                         } else {
@@ -1502,7 +1517,7 @@ fn parse_fcall(fun: *func, f: *file, ctxt: *context, refs: *[]idref) ((str, str)
             fmt::asprintf("the function \"{}\" takes {}", fun.fname, plural("{} argument", argmax)))?;
     };
     const max = len(f.src);
-    for(f.ptr < max){
+    for(f.ptr < max && argc < argmax){
         if(ahead(f, 1, sym::CLOSEPAR) is tok || next is eol){
             if(argc != argmax){
                 return unimsg {
@@ -1527,7 +1542,6 @@ fn parse_fcall(fun: *func, f: *file, ctxt: *context, refs: *[]idref) ((str, str)
                         get_qbe_t(fun.param[argc], 1), getdefval(fun.param[argc]));
                 };
             };
-
             next = nxttk(f)?;
             expct(cmp_tok(next, sym::CLOSEPAR), next, f, void: GENERIC, "too many arguments on function call",
                 fmt::asprintf("the function \"{}\" takes {}", fun.fname, plural("{} argument", argmax)))?;
