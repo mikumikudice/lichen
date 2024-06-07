@@ -9,30 +9,30 @@ let stacktrace = false;
 const version = "0.0.1-n100a";
 
 export fn main() void = {
-    const abt = "mossy is the compiler for the moss programming language.";
+    const abt = "mossy is the compiler for the moss programming language.\n";
     const tut = "https://git.sr.ht/~mikaela-md/mossy/tree/main/doc/tut.md";
 
-    const usg = fmt::asprintf("\nmossy usage:\n\t{}{}{}",
+    const usg = fmt::asprintf("mossy usage:\n\n {}{}{}",
         fmtc("$ ", cmd::YEL), fmtc(os::args[0], cmd::GRN),
         fmtc(" [flags] <main file> [output file name]", cmd::BLU));
 
     const allflags = strings::concat(
-        fmtc("\n\t-h\t\t", cmd::GRN),
+        fmtc("\n -h\t\t", cmd::GRN),
         fmtc("-- prints this help message", cmd::YEL),
 
-        fmtc("\n\t-v\t\t", cmd::GRN),
+        fmtc("\n -v\t\t", cmd::GRN),
         fmtc("-- prints the current version of the compiler", cmd::YEL),
 
-        fmtc("\n\t-l ", cmd::GRN), fmtc("<lib path>\t", cmd::BLU),
+        fmtc("\n -l ", cmd::GRN), fmtc("<lib path>\t", cmd::BLU),
         fmtc("-- sets path for stdlib and runtime", cmd::YEL),
 
-        fmtc("\n\t-vb\t\t", cmd::GRN),
+        fmtc("\n -vb\t\t", cmd::GRN),
         fmtc("-- makes the compiler print each executed command", cmd::YEL),
 
-        fmtc("\n\t-st\t\t", cmd::GRN),
+        fmtc("\n -st\t\t", cmd::GRN),
         fmtc("-- makes the compiler print every parsing step", cmd::YEL)
     );
-    const flg = fmt::asprintf("\nflags usage:{}", allflags);
+    const flg = fmt::asprintf("\nflags usage:\n{}", allflags);
     const hlp = fmt::asprintf("\nget help on learning how to use moss in {}",
         fmtc(tut, cmd::GRN));
 
@@ -40,14 +40,14 @@ export fn main() void = {
     let argc = len(os::args);
     // check if there are arguments
     if(argc == 1){
-        fmt::printfln("{}\n{}{}\n{}", abt, usg, flg, hlp)!;
+        fmt::printfln("{}\n{}\n{}\n{}", abt, usg, flg, hlp)!;
         return;
     } else if(argc == 2){
         if(os::args[1] == "-v" || os::args[1] == "--version"){
             fmt::printfln("moss compiler v{}", version)!;
             return;
         } else if(os::args[1] == "-h" || os::args[1] == "--help"){
-            fmt::printfln("{}{}\n", usg, flg)!;
+            fmt::printfln("{}\n{}\n", usg, flg)!;
             return;
         };
     };
