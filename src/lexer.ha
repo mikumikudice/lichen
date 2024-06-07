@@ -147,6 +147,22 @@ fn is_num(tp: kwd, sign: bool = false) bool = {
     };
 };
 
+fn utos_tp(tp: kwd) kwd = {
+    assert(is_num(tp));
+    switch(tp){
+    case kwd::U8__TYPE =>
+        return kwd::I8__TYPE;
+    case kwd::U16_TYPE =>
+        return kwd::I16_TYPE;
+    case kwd::U32_TYPE =>
+        return kwd::I32_TYPE;
+    case kwd::U64_TYPE =>
+        return kwd::I64_TYPE;
+    case =>
+        fmt::fatal("unreachable");
+    };
+};
+
 fn is_asg_opr(oper: tok) bool = {
     if(oper is opr){
         const op = oper: opr;
@@ -158,6 +174,11 @@ fn is_asg_opr(oper: tok) bool = {
 fn is_cmp(oper: opr) bool = {
     return oper == opr::BOOL_EQL || oper == opr::BOOL_DIF || oper == opr::BOOL_LSS ||
         oper == opr::BOOL_GRT || oper == opr::BOOL_LEQ || oper == opr::BOOL_GEQ;
+};
+
+fn is_unry(oper: opr) bool = {
+    return oper == opr::ARTH_PLS || oper == opr::ARTH_MIN ||
+        oper == opr::ARTH_PLS || oper == opr::LOGICNOT;
 };
 
 // loads the file `fname` and instantiates

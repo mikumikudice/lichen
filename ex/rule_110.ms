@@ -7,10 +7,10 @@ pub main = fn() : unit \ fmt {
         ] : [4]u8;
     mut map = 0;
     mut old = 1 << 31;
-    for g = 0 .. 31 {
-        for i = 0 .. 31 {
+    for g = 0 .. 31 : u32 {
+        for i = 0 .. 31 : u32 {
             pat = (old >> i) & 7;
-            map = map | (rule[pat] << i);
+            map = map | (rule[pat] << i): u64;
             if rule[pat] == 1 {
                 fmt::put(" #");
             } else {

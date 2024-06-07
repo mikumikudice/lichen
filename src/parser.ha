@@ -887,10 +887,9 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                     nxttk(f)!;
                     const endexp = parse_exp(f, ctxt, &refs, limit, (0, sttexp.extype))?;
                     nxttk(f)!;
+                    expct(endexp.extype != kwd::NUMBER_T, next, f, void: GENERIC, "untyped range value")?;
                     push_idt(cnt, false, false, endexp.extype, dup, ctxt)?;
                     free(dup);
-
-                    expct(endexp.extype != kwd::NUMBER_T, next, f, void: GENERIC, "untyped range value")?;
 
                     let exp = fmt::asprintf("{}{}", sttexp.exprss, endexp.exprss);
                     const stt =
@@ -940,28 +939,41 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                     todo(f, "for each loop")?;
                 // for while
                 } else {
-                    const evalexp = parse_exp(f, ctxt, &refs, limit)?;
-                    let exp = evalexp.exprss;
-                    const oper = nxttk(f)!;
-                    const eval =
-                        if(evalexp.extype == kwd::STRING_T || evalexp.extype == kwd::ARRAY__T){
-                            exp = fmt::asprintf("{}    %val.l =l loadl {}\n    %eval.{} =l sub %val.l, 8\n", exp, evalexp.dest_v, idx);
-                            yield fmt::asprintf("%eval.{}", idx);
-                        } else {
-                            yield evalexp.dest_v;
-                        };
-                    const (body, loop_tp) = parse(f, ctxt, mtchs(sym::OPN_CRLY, f)?, fun_tp)?;
-                    defer io::close(body)!;
+                    if(!(ahead(f, 1, sym::OPN_CRLY) is tok)){
+                        const evalexp = parse_exp(f, ctxt, &refs, limit)?;
+                        let exp = evalexp.exprss;
+                        const oper = nxttk(f)!;
+                        const eval =
+                            if(evalexp.extype == kwd::STRING_T || evalexp.extype == kwd::ARRAY__T){
+                                exp = fmt::asprintf("{}    %val.l =l loadl {}\n    %eval.{} =l sub %val.l, 8\n", exp, evalexp.dest_v, idx);
+                                yield fmt::asprintf("%eval.{}", idx);
+                            } else {
+                                yield evalexp.dest_v;
+                            };
+                        const (body, loop_tp) = parse(f, ctxt, mtchs(sym::OPN_CRLY, f)?, fun_tp)?;
+                        defer io::close(body)!;
 
-                    if(loop_tp != kwd::UNITTYPE){
-                        expct(is_subt(loop_tp, ret_tp), loop_tp, dup, void: MISMTCH,
-                        "return types", "union types are not implemented yet")?;
-                    };
-                    if(cmp_tok(oper, sym::OPN_CRLY)){
-                        fmt::fprintf(buffer, "{0}{1}@rpt.{3}\n    jnz {2}, @loop.{3}, @break.{3}\n@loop.{3}\n{4}@next.{3}\n    jmp @rpt.{3}\n@break.{3}\n",
-                            solve_ref(&refs, f), exp, eval, idx, memio::string(body)!)!;
+                        if(loop_tp != kwd::UNITTYPE){
+                            expct(is_subt(loop_tp, ret_tp), loop_tp, dup, void: MISMTCH,
+                            "return types", "union types are not implemented yet")?;
+                        };
+                        if(cmp_tok(oper, sym::OPN_CRLY)){
+                            fmt::fprintf(buffer, "{0}{1}@rpt.{3}\n    jnz {2}, @loop.{3}, @break.{3}\n@loop.{3}\n{4}@next.{3}\n    jmp @rpt.{3}\n@break.{3}\n",
+                                solve_ref(&refs, f), exp, eval, idx, memio::string(body)!)!;
+                        } else {
+                            todo(f, "`and` and `or` operators for `for` loop")?;
+                        };
                     } else {
-                        todo(f, "`and` and `or` operators for `for` loop")?;
+                        nxttk(f)!;
+                        const (body, loop_tp) = parse(f, ctxt, mtchs(sym::OPN_CRLY, f)?, fun_tp)?;
+                        defer io::close(body)!;
+
+                        if(loop_tp != kwd::UNITTYPE){
+                            expct(is_subt(loop_tp, ret_tp), loop_tp, dup, void: MISMTCH,
+                            "return types", "union types are not implemented yet")?;
+                        };
+                        fmt::fprintf(buffer, "@rpt.{0}\n    jmp @loop.{0}\n@loop.{0}\n{1}@next.{0}\n    jmp @rpt.{0}\n@break.{0}\n",
+                            idx, memio::string(body)!)!;
                     };
                 };
                 free(dup);
@@ -1410,9 +1422,15 @@ fn parse_objfield(f: *file, nm: *nmsp, refs: *[]idref, ctxt: *context) ((str, kw
         if(nm.vtype == kwd::STRING_T){
             const idxexp = parse_exp(f, ctxt, refs, [ sym::CLS_SQRB ], (0, kwd::NUMBER_T))?;
             nxttk(f)!;
+            let exp = idxexp.exprss;
+            let idx = idxexp.dest_v;
+            if(need_ext(idxexp.extype, kwd::U64_TYPE)){
+                idx = "%idx.l";
+                exp = fmt::asprintf("{}    {} =l extsw {}\n", exp, idx, idxexp.dest_v);
+            };
             const itm = fmt::asprintf("%{}.i", nm.ident);
-            let exp = fmt::asprintf("{0}    %{1}.l =l loadl %{1}\n    {2}.w =w call $rt.indxb(l %{1}.l, l {3})\n",
-                idxexp.exprss, nm.ident, itm, idxexp.dest_v);
+            exp = fmt::asprintf("{0}    %{1}.l =l loadl %{1}\n    {2}.w =w call $rt.indxb(l %{1}.l, l {3})\n",
+                exp, nm.ident, itm, idx);
             return (exp, kwd::U8__TYPE, itm);
 
         } else if(nm.vtype == kwd::ARRAY__T){
@@ -1570,8 +1588,8 @@ fn parse_fcall(fun: *func, f: *file, ctxt: *context, refs: *[]idref) ((str, str)
     return (hdr, strings::concat(out, ")"));
 };
 
-fn parse_asg(f: *file, dest: idt, pub: bool, asgn: opr, ctxt: *context, defn: (*nmsp | *func | void) = void, mutbl: bool = false)
-    (*memio::stream | void | CMP_ERR) = {
+fn parse_asg(f: *file, dest: idt, pub: bool, asgn: opr, ctxt: *context,
+    defn: (*nmsp | *func | void) = void, mutbl: bool = false) (*memio::stream | void | CMP_ERR) = {
     if(stacktrace){
         if(defn is void){
             fmt::printfln("parsing assignment to \"{}\" at {}", dest, gen_pos(f))!;
@@ -1731,7 +1749,8 @@ fn parse_asg(f: *file, dest: idt, pub: bool, asgn: opr, ctxt: *context, defn: (*
     return asgdef;
 };
 
-fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], ini_t: ((size, kwd) | void) = void) (expr_c | CMP_ERR) = {
+fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ],
+    ini_t: ((size, kwd) | void) = void, unry: (opr | void) = void) (expr_c | CMP_ERR) = {
     if(stacktrace)
         fmt::printfln("parsing expression at {}", gen_pos(f))!;
     let exp = "";
@@ -1755,13 +1774,27 @@ fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], i
     // TODO: handle statements as valid hands
     let next = nxttk(f)?;
     assert(!is_limit(next, limit));
-    const vall = expct(next is num || next is txt || next is idt,
-        next, f, void: EXPECTD, "valid operand")?: (num | txt | idt);
+    const vall = expct(next is num || next is txt || next is idt || next is opr || next is sym,
+        next, f, void: EXPECTD, "valid operand")?;
     match(vall){
     case let n: num =>
-        dest = fmt::asprint(n: i64);
         expr_t = parse_cast(f, kwd::NUMBER_T)?;
-        check_uof(f, n, expr_t)?;
+        const val =
+            if(unry is void){
+                yield n: u64;
+            } else {
+                yield
+                switch(unry: opr){
+                case opr::ARTH_MIN =>
+                    yield -(n: i64);
+                case opr::LOGICNOT =>
+                    yield ~(n: i64);
+                case =>
+                    yield n: i64;
+                };
+            };
+        check_uof(f, val, expr_t)?;
+        dest = fmt::asprint((val): i64);
 
         next = nxttk(f, true)?;
         if(is_limit(next, limit)){
@@ -1775,6 +1808,7 @@ fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], i
             return result;
         };
     case let t: txt =>
+        expct(unry is void, t, f, void: CANT_DO, "do arithmetic on strings")?;
         const val = tostr(t);
         const (strl, idx) = pushstr(val, ctxt);
         dest = idx;
@@ -1848,6 +1882,19 @@ fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], i
                     } else {
                         exp = strings::concat(exp, cast);
                     };
+                };
+                if(is_subt(nm.vtype, kwd::NUMBER_T)){
+                    switch(unry: opr){
+                    case opr::ARTH_MIN =>
+                        if(is_num(expr_t))
+                            expr_t = utos_tp(expr_t);
+                        exp = fmt::asprintf("{0}    {1} ={2} neg {1}\n", exp, dest, get_qbe_t(expr_t));
+                    case opr::LOGICNOT =>
+                        fmt::fatal("fatal TODO: implement not operator on variables");
+                    case => void;
+                    };
+                } else {
+                    expct(unry is void, i, f, void: CANT_DO, "do arithmetic on non-numerical types")?;
                 };
                 next = nxttk(f, true)?;
                 if(is_limit(next, limit)){
@@ -1938,6 +1985,24 @@ fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ], i
                 result.single = false;
                 return result;
             };
+        };
+    case let o: opr =>
+        expct(is_unry(o), o, f, void: EXPECTD, "valid unary operator")?;
+        return parse_exp(f, ctxt, refs, limit, ini_t, o);
+    case let s: sym =>
+        expct(s == sym::OPEN_PAR, s, f, void: EXPECTD, "valid operand")?;
+        const subexp = parse_exp(f, ctxt, refs, [ sym::CLOSEPAR ], ini_t)?;
+        nxttk(f)!;
+        dest = subexp.dest_v;
+        expr_t = parse_cast(f, subexp.extype)?;
+        single = false;
+        next = nxttk(f, true)?;
+        if(is_limit(next, limit)){
+            setptr(f, true);
+            result.dest_v = dest;
+            result.extype = expr_t;
+            result.single = single;
+            return result;
         };
     };
     assert(expr_t != kwd::NOT_KWRD);
@@ -2054,7 +2119,7 @@ fn parse_opr(f: *file, oper: opr, expr_t: kwd, ctxt: *context, refs: *[]idref) (
         fmt::printfln("parsing operation at {}", gen_pos(f))!;
     const dup = alloc(*f);
     let next = nxttk(f)?;
-    const rgth = expct(next is num || next is idt, next, f,
+    const rgth = expct(next is num || next is idt || next is sym, next, f,
         void: EXPECTD, "numeric literal or identifier")?;
 
     const inst_id = inst[oper];
@@ -2135,6 +2200,29 @@ fn parse_opr(f: *file, oper: opr, expr_t: kwd, ctxt: *context, refs: *[]idref) (
                     ptr = dup,
                 }: MISMTCH;
             };
+        };
+    case let s: sym =>
+        expct(s == sym::OPEN_PAR, s, f, void: EXPECTD, "valid operand")?;
+        const subexp = parse_exp(f, ctxt, refs, [ sym::CLOSEPAR ], (0, expr_t))?;
+        nxttk(f)!;
+        const rgth = subexp.dest_v;
+        const cast = parse_cast(f, subexp.extype)?;
+        if(operable(cast, expr_t, oper)){
+            let exp = subexp.exprss;
+            let val = rgth;
+            if(need_ext(cast, expr_t)){
+                val = fmt::asprintf("%par.{}", get_qbe_t(cast, 1));
+                exp = fmt::asprintf("{}    {} ={} ext{} {}\n", exp, val, get_qbe_t(cast, 1),  get_qbe_t(expr_t, 2), rgth);
+            };
+            let exp = fmt::asprintf("{0}    %val.{1} ={1} {2} %val.{1}, {3}\n",
+                exp, get_qbe_t(expr_t, 1), inst_id, rgth);
+            return (exp, cast);
+        } else {
+            return unimsg {
+                msg = "member types",
+                tip =  cast_err(cast, expr_t, true),
+                ptr = dup,
+            }: MISMTCH;
         };
     case =>
         free(dup);
