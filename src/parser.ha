@@ -704,6 +704,10 @@ fn push_fun(name: idt, pub: bool, f: *file, parm_l: []kwd, parm_n : []idt, retrn
     };
 };
 
+fn is_obj(tp: kwd) bool = {
+    return tp == kwd::STRING_T || tp == kwd::ARRAY__T || tp == kwd::RECORD_T;
+};
+
 // parses a source. if `from` is a string, opens the file and parses its contents, if the file
 // itself, parses a new scope withih `within`. returns a header containing global definitions,
 // the parsed source itself in the QBE IR and the final type of return, in the case of parsing
@@ -1036,10 +1040,18 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                 let add = []: []idref;
                 const dup = alloc(*f);
                 const retexp = parse_exp(f, ctxt, &add, [eol], (0, fun_tp))?;
-                expct(is_subt(retexp.extype, ret_tp), retexp.extype, dup, void: MISMTCH,
+                expct(is_subt(retexp.extype, ret_tp), retexp.extype, f, void: MISMTCH,
                     "return types", "union types are not implemented yet")?;
                 ret_tp = retexp.extype;
-                let expr_t = cast_to(ret_tp, fun_tp, kwd::RETURNTO, dup)?;
+
+                let expr_t = cast_to(ret_tp, fun_tp, kwd::RETURNTO, f)?;
+                if(retexp.single && is_obj(expr_t) && match_linear()){
+                    return unimsg {
+                        msg = "return non-linear composite types",
+                        tip = "strings, arrays and records are stack-allocated and become invalid out of their scope",
+                        ptr = dup,
+                    }: CANT_DO;
+                };
                 free(dup);
                 let src_id = retexp.dest_v;
                 let wrp =
@@ -1077,7 +1089,8 @@ fn parse(from: (str | *file), ctxt: *context, stop: size = 0, fun_tp: kwd = kwd:
                         const oper = expct(is_asg_opr(next), next, f, void: EXPECTD, "assignment operator")?: opr;
                         const dup = alloc(*f);
                         const valexp = parse_exp(f, ctxt, &refs, [ eol ], (0, kwd::U8__TYPE))?;
-                        expct(valexp.extype == kwd::U8__TYPE, next, dup, void: GENERIC,
+
+                        expct(is_subt(valexp.extype, kwd::U8__TYPE) , next, dup, void: GENERIC,
                             "value type exeeeds max type size of string items", "strings are UTF-8 (u8) encoded")?;
                         free(dup);
 
@@ -1418,6 +1431,7 @@ fn parse_objfield(f: *file, nm: *nmsp, refs: *[]idref, ctxt: *context) ((str, kw
             todo(f, "record and array field access")?;
             return ("", nm.vtype, "");
         };
+    // indexing
     } else if(cmp_tok(next, sym::OPN_SQRB)){
         if(nm.vtype == kwd::STRING_T){
             const idxexp = parse_exp(f, ctxt, refs, [ sym::CLS_SQRB ], (0, kwd::NUMBER_T))?;
@@ -1682,7 +1696,7 @@ fn parse_asg(f: *file, dest: idt, pub: bool, asgn: opr, ctxt: *context,
             if(asgnmt.single && next is idt){
                 match(get_idt(next: idt, f, ctxt.scp, ctxt)!){
                 case let nm: *nmsp =>
-                    if(mutbl && !nm.mutbl && match_linear()){
+                    if(mutbl && !nm.mutbl){
                         return unimsg {
                             msg = "assign an immutable value to a mutable namespace",
                             tip = "assignment is always by move, not copy",
@@ -1857,6 +1871,7 @@ fn parse_exp(f: *file, ctxt: *context, refs: *[]idref, limit: []tok = [ eol ],
                 skip_field(f)?;
                 const mod = ftomod(nm.origin);
                 const (pre, tp, lfth) = parse_objfield(f, nm, refs, ctxt)?;
+                single = lfth != nm.ident;
                 const cast = parse_cast(f, tp)?;
                 if(len(pre) > 0)
                     exp = strings::concat(exp, pre);
@@ -2214,7 +2229,7 @@ fn parse_opr(f: *file, oper: opr, expr_t: kwd, ctxt: *context, refs: *[]idref) (
                 val = fmt::asprintf("%par.{}", get_qbe_t(cast, 1));
                 exp = fmt::asprintf("{}    {} ={} ext{} {}\n", exp, val, get_qbe_t(cast, 1),  get_qbe_t(expr_t, 2), rgth);
             };
-            let exp = fmt::asprintf("{0}    %val.{1} ={1} {2} %val.{1}, {3}\n",
+            exp = fmt::asprintf("{0}    %val.{1} ={1} {2} %val.{1}, {3}\n",
                 exp, get_qbe_t(expr_t, 1), inst_id, rgth);
             return (exp, cast);
         } else {

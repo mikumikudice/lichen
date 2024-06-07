@@ -16,7 +16,7 @@ if not tdir then os.exit(1) end
 local tests = { "test_exp", "test_fun", "test_mem", "test_glob", "demo", "test_loop", "test_fmt", "test_if" }
 local results = {
     {},                                                     -- test_exp
-    { "working!\n" },                                       -- test_fun
+    { "working!\n4\n" },                                    -- test_fun
     { "working!\n", "working!\n" },                         -- test_mem
     {},                                                     -- test_glob
     { "mornin' sailor!\n" },                                -- demo

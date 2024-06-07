@@ -213,6 +213,9 @@ fn load(fname: str) (*file | CMP_ERR) = {
             append(src.src, l...);
             append(src.src, '\n');
     };
+    if(len(src.src) == 0){
+        fmt::fatalf("the file {} is empty", fmtc(fname, cmd::BLU));
+    };
     return src;
 };
 
