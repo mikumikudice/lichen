@@ -42,7 +42,7 @@ these are the current goals of this project:
         - [x] global reference to functions at any position
         - [x] expressions on function call arguments
         - [ ] operators on records
-        - [ ] expressions within parenthesis
+        - [x] expressions within parenthesis
         - [ ] destructive read
         - [ ] defer
         - [ ] yield and statements as expressions
@@ -99,14 +99,19 @@ these are the current goals of this project:
     - [ ] compile-time constant values are optimized-out in the final code
     - [ ] runtime constant values evaluated at compile time
 - [ ] core lib and kernels
-    - [ ] os
-    - [ ] rt
-    - [ ] fmt
-    - [ ] mem
-    - [ ] str
-    - [ ] fun
-    - [ ] time
-    - [ ] math
+    - [] libs
+        - [ ] os
+        - [ ] rt
+        - [ ] fmt
+        - [ ] mem
+        - [ ] str
+        - [ ] fun
+        - [ ] time
+        - [ ] math
+    - [ ] kernels
+        - [x] MEM
+        - [ ] IO
+        - [ ] CLI
 
 # building moss
 moss is written in the [hare programming language](https://hare-lang.org), uses the [QBE](https://c9x.me/compile/) IR as a backend to generate the binaries, [nasm](https://nasm.us) as assembler for the language kernels and [mold](https://github.com/rui314/mold) as a linker. once all dependencies are installed, you're ready to both build the compiler and use it with no other dependencies. note that each of moss' dependencies have theirs own dependencies. once everything is set, simply run the `build.sh`. it will generate the compiler binary by the name `mossy`.
