@@ -1,12 +1,12 @@
 use fs;
 use os;
 use fmt;
+use memio;
 use errors;
 use strings;
 
 let silent = true;
-let stacktrace = false;
-const version = "0.0.1-n100a";
+const version = "0.3.0";
 
 export fn main() void = {
     const abt = "mossy is the compiler for the moss programming language.\n";
@@ -28,9 +28,6 @@ export fn main() void = {
 
         fmtc("\n -vb\t\t", cmd::GRN),
         fmtc("-- makes the compiler print each executed command", cmd::YEL),
-
-        fmtc("\n -st\t\t", cmd::GRN),
-        fmtc("-- makes the compiler print every parsing step", cmd::YEL)
     );
     const flg = fmt::asprintf("\nflags usage:\n{}", allflags);
     const hlp = fmt::asprintf("\nget help on learning how to use moss in {}",
@@ -75,9 +72,6 @@ export fn main() void = {
             case "-vb" =>
                 silent = false;
                 continue;
-            case "-st" =>
-                stacktrace = true;
-                continue;
             case =>
                 fmt::fatalf("{} {}\n{}\n",
                     fmtc("unknown flag", cmd::RED), fmtc(arg, cmd::GRN), flg);
@@ -94,38 +88,37 @@ export fn main() void = {
     if(!infset){
         fmt::fatalf("{}\n{}\n", fmtc("no input file given", cmd::RED), usg);
     };
-    const path =
+    libpath =
         if(strings::hassuffix(libpath, "/")){
             yield libpath;
         } else {
             yield strings::concat(libpath, "/");
         };
-    const filename = rem_path(srcname).0;
+    const (filename, filepath) = rem_path(srcname);
     if(!outset){
         outfile = strings::replace(filename, ".ms", "");
     };
-    if(!os::exists(path)){
+    if(!os::exists(libpath)){
         fmt::fatalf("{} the given path {} does not exists",
-            fmtc("lib path error:", cmd::BOX_RED), fmtc(path, cmd::YEL));
+            fmtc("lib path error:", cmd::BOX_RED), fmtc(libpath, cmd::YEL));
     };
-    let mods = []: []*module;
     let glob = scope {
+        pos = (0, 0),
         over = void,
-        defs = [],
+        vars = [],
         funs = [],
     };
-    append(glob.defs, &unit);
+    defer free_scp(&glob);
     let ctxt = context {
         scp = &glob,
-        uses = &mods,
-        libpath = path,
-        datasec = "",
+        uses = [],
+        srcpath = filepath,
+        libpath = libpath,
+        datasec = memio::dynamic(),
         strlits = [],
-        onloop = false,
-        loopid = 0,
+        fnname = void,
+        branch = false,
         nomain = false,
-        hasmain = false,
-        hostfn = "",
         effect = [],
     };
     build(srcname, outfile, &ctxt)!;

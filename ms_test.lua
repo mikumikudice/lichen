@@ -1,6 +1,6 @@
 #! /usr/bin/lua
-function exec(cmd)
-    print("+ " .. cmd)
+function exec(cmd, silent)
+    if not silent then print("+ " .. cmd) end
     return os.execute(cmd)
 end
 
@@ -13,18 +13,14 @@ if not init then os.exit(1) end
 local tdir = exec("mkdir -p " .. tmp)
 if not tdir then os.exit(1) end
 
-local tests = { "test_exp", "test_fun", "test_mem", "test_glob", "demo", "test_loop", "test_fmt", "test_if" }
+local tests = { "mile_0", "mile_1", "mile_2", "mile_3", "mile_4", "mile_5" }
 local results = {
-    {},                                                     -- test_exp
-    { "working!\n4\n" },                                    -- test_fun
-    { "working!\n", "working!\n" },                         -- test_mem
-    {},                                                     -- test_glob
-    { "mornin' sailor!\n" },                                -- demo
-    { "hi!\nhoy!\nhi!\nhoy!\nhi!\nyay!\nyay!\nyay!\n" },    -- loop
-    { "128\n", "128\n128 + 2 = 130\n" },                    -- test_fmt
-    { "5\n", "3\n", "if!\n" },                              -- test_if
-    { "3\n", "4\n", "else if!\n" },
-    { "1\n", "0\n", "else!\n" },
+    {},
+    { "mornin' sailor!\n" },
+    { "mornin' sailor!\n" },
+    { "mikaela\n", "what's your name?\n> hello, mikaela!\n" },
+    { "test 1 ok\ntest 2 ok\ntest 3 ok\ntest 4 ok\n" },
+    { "test ok\n" },
 }
 local fails = 0
 local failed = {}
@@ -109,6 +105,8 @@ if fails > 0 then
     for i, err in pairs(failed) do
         print("- fail " .. (i) .. ": " .. err)
     end
+    os.exit(1)
 end
 
-os.remove(".test/")
+exec("rm -r " .. tmp, true)
+exec("rm -r .tmp/", true)

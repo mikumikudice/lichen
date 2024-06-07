@@ -1,29 +1,25 @@
 # a small, simple and concise language for delightful tiny jobs
-moss is a strongly typed, imperatively functional, AOT compiled programming language designed specifically to do things in a reliable and simple way.
+moss is a strongly typed, imperatively functional, AOT compiled programming language for developing desktop applications.
 ## code example
 this is a demo code for printing a hello world (in a mossy way):
 ```rust
 use fmt;
 
-pub main = fn() : unit \ fmt {
-    fmt::putl("mornin' sailor!")!;
+pub main = fn() void & fmt {
+    fmt::debug("mornin' sailor!");
 };
 ```
 ## special features
-- memory safe through linear types. no GC, no lifetime tags.
 - effect system and encapsulated state within in-practice pure functions.
-- modern and clever casting system for convenient (smart) type conversions.
 - simple, small and concise syntax semantics. new and yet familiar.
 - no dependencies on libc and rich (yet simple) core libraries, producing statically linked, stand-alone binary files.
-- no command line settings for the compiler; compilation flags are set in-code.
-- no floats, but instead ratio types.
 - extremely concise syntax. if it does the same thing, you write it in the same way.
+- rich standard library for CLI and GUI applications.
 
 ## uncommon but already known features
-- tagged unions for error handling (no runtime exceptions).
+- tagged unions and error as values.
 - lazy evaluation.
 - no undefined behavior.
-- memory and type safety.
 - limited scope. moss is not meant to be general purpose, but for domain specific issues.
 - no global state i.e. no global mutable variables.
 
@@ -37,19 +33,17 @@ moss is still heavily in development. not only the compiler, but everything rela
 these are the current goals of this project:
 - [x] lexer
 - [ ] parser and code gen
+    - [ ] floats
     - [ ] expressions
         - [x] operators on primitives
-        - [x] global reference to functions at any position
+        - [ ] global reference to functions at any position
         - [x] expressions on function call arguments
         - [ ] operators on records
         - [x] expressions within parenthesis
-        - [ ] destructive read
         - [ ] defer
-        - [ ] yield and statements as expressions
-        - [ ] allow functions as first class objects
+        - [x] allow functions as first class objects*
         - [ ] parallel assignment
         - [ ] range comparisons
-    - [x] mutability checking
     - [x] hex, oct and bin literals
     - [x] prime notation
     - [x] multi-line, nestable comments
@@ -59,38 +53,33 @@ these are the current goals of this project:
             - [x] on function calls
             - [ ] on record assignments
             - [x] casting for function arguments
-        - [ ] field access for records, arrays and string literals
-            - [ ] for records
-            - [ ] for arrays
-            - [ ] for strings
-        - [ ] arrays
-            - [ ] sugar syntax
-            - [ ] multidimensional arrays
-            - [ ] indexing of function returns
         - [ ] lists
-        - [ ] ratios
+            - [ ] multidimensional arrays
+        - [ ] built-in functions on lists
+            - [ ] index?
+            - [ ] head/tail?
+            - [ ] map
+            - [ ] reduce
+            - [ ] filter
+            - [ ] fold
+            - [ ] sugar syntax
         - [ ] records
             - [ ] default values for record fields
             - [ ] field access of function returns
         - [ ] unions
-        - [ ] error tags
-        - [ ] error assertion and bubble operators
-        - [ ] linear types
-        - [ ] test statement
+        - [ ] errors
+            - [ ] `fail` statement
+            - [ ] error types
+        - [ ] error assertion and short-circuit
+        - [x] `todo` statement
     - [ ] control flow
         - [ ] if/else
             - [x] basic functionality
-            - [ ] local statement definitions 
-        - [ ] for loop
-            - [x] for while
-            - [ ] for each
-            - [x] for range
             - [ ] local statement definitions
         - [ ] match
         - [ ] defer
     - [ ] local functions
     - [ ] default values for function arguments
-    - [x] modules
     - [ ] FFI
     - [x] effect system
 - [ ] compile-time tests
@@ -98,20 +87,20 @@ these are the current goals of this project:
 - [ ] code optimizations.
     - [ ] compile-time constant values are optimized-out in the final code
     - [ ] runtime constant values evaluated at compile time
-- [ ] core lib and kernels
+    - [ ] tail-call elimination
+- [ ] runtime module
+- [ ] standard library
     - [] libs
         - [ ] os
-        - [ ] rt
         - [ ] fmt
         - [ ] mem
-        - [ ] str
-        - [ ] fun
+        - [ ] cli
+        - [ ] gui
         - [ ] time
         - [ ] math
-    - [ ] kernels
-        - [x] MEM
-        - [ ] IO
-        - [ ] CLI
+
+- things marked with * are those who is implemented partially or are subject to change
+- things marked with ? are not yet confirmed to be added
 
 # building moss
 moss is written in the [hare programming language](https://hare-lang.org), uses the [QBE](https://c9x.me/compile/) IR as a backend to generate the binaries, [nasm](https://nasm.us) as assembler for the language kernels and [mold](https://github.com/rui314/mold) as a linker. once all dependencies are installed, you're ready to both build the compiler and use it with no other dependencies. note that each of moss' dependencies have theirs own dependencies. once everything is set, simply run the `build.sh`. it will generate the compiler binary by the name `mossy`.

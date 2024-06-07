@@ -8,46 +8,48 @@ use strings;
 use os::exec;
 use unix::signal;
 
-
-const fix_entry = "export function $_start(){\n@start\n    call $main()\n    hlt\n}\n";
-
 let also_link = []: []str;
 let cmpd_mods = []: []str;
 
-fn build(src: str, dest: str, ctxt: *context) (void | CMP_ERR) = {
-    if(findl(cmpd_mods, src) is size && ctxt.nomain){
+fn build(src: str, dest: str, ctxt: *context) (void | COMP_ERR) = {
+    if(finds(cmpd_mods, src) is size && ctxt.nomain){
         return;
     } else {
         append(cmpd_mods, src);
     };
     const qbe_ir =
         match(parse(src, ctxt)){
-        case let e: CMP_ERR =>
-            if(!ctxt.nomain) cmperr(e);
-            return e;
-        case let s: (*memio::stream, kwd) => yield s.0;
+        case let e: COMP_ERR =>
+            if(ctxt.nomain){
+                if(e is FILE_ERR && ctxt.libpath != ctxt.srcpath){
+                    let newsrc = strings::replace(src, ctxt.libpath, ctxt.srcpath);
+                    return build(newsrc, dest, ctxt);
+                };
+                return e;
+            } else {
+                cmperr(e);
+            };
+        case let s: memio::stream => yield s;
         };
-    defer io::close(qbe_ir)!;
-    const code =
-        if(!ctxt.nomain){
-            yield fmt::asprintf("# moss {}\n{}{}{}", version, ctxt.datasec, fix_entry, memio::string(qbe_ir)!);
-        } else {
-            yield fmt::asprintf("# moss {}\n{}{}", version, ctxt.datasec, memio::string(qbe_ir)!);
-        };
-    const temp = ".tmp";
-    runc(silent, "mkdir", "-p", temp);
-    
-    const (objf, _) = rem_path(dest);
-    const rt_src = fmt::asprintf("{}rt.asm", ctxt.libpath);
-    const rt_out = fmt::asprintf("{}/rt.o", temp);
+    defer io::close(&qbe_ir)!;
 
-    const qbe_out = fmt::asprintf("{}/{}.ssa", temp, objf);
-    const bin_src = fmt::asprintf("{}/{}.asm", temp, objf);
-    const bin_out = fmt::asprintf("{}/{}.o", temp, objf);
+    const datasec = memio::string(&ctxt.datasec)!;
+    defer io::close(&ctxt.datasec)!;
+
+    const code = fmt::asprintf("# moss {}\n{}{}",
+        version, datasec, memio::string(&qbe_ir)!);
+
+    const temp = ".tmp/";
+    if(len(also_link) == 0) runc(silent, "mkdir", "-p", temp);
+
+    const (objf, _) = rem_path(dest);
+    const qbe_out = fmt::asprintf("{}{}.ssa", temp, objf);
+    const bin_src = fmt::asprintf("{}{}.asm", temp, objf);
+    const bin_out = fmt::asprintf("{}{}.o", temp, objf);
 
     const file = match(os::create(qbe_out, fs::mode::USER_RWX)){
         case let f: io::file => yield f;
-        case let e: fs::error => cmperr(qbe_out: CRTFAIL);
+        case let e: fs::error => cmperr(qbe_out: FILE_ERR);
     };
 
     io::write(file, strings::toutf8(code))!;
@@ -58,9 +60,14 @@ fn build(src: str, dest: str, ctxt: *context) (void | CMP_ERR) = {
     if(ctxt.nomain){
         append(also_link, bin_out);
         const (name, _) = rem_path(src);
-        fmt::printfln(fmtc("successfully compiled {}", cmd::GRN), name)!;
+        if(!silent){
+            fmt::printfln(fmtc("successfully compiled {}", cmd::GRN), name)!;
+        };
         return;
     };
+
+    const rt_src = fmt::asprintf("{}rt.asm", ctxt.libpath);
+    const rt_out = fmt::asprintf("{}rt.o", ctxt.libpath);
     runc(silent, "nasm", "-felf64", "-o", rt_out, rt_src);
 
     if(!os::exists(dest)){
@@ -76,10 +83,13 @@ fn build(src: str, dest: str, ctxt: *context) (void | CMP_ERR) = {
     append(mold_args, also_link...);
     runc(silent, "mold", mold_args...);
 
-    if(!(stacktrace || !silent)) runc(silent, "rm", "-r", temp);
+    if(silent) runc(silent, "rm", "-r", temp);
 
     const (name, _) = rem_path(src);
-    fmt::printfln(fmtc("successfully compiled {} in {}", cmd::GRN), name, dest)!;
+    if(!silent){
+        fmt::printfln(fmtc("successfully compiled {} into {}", cmd::GRN),
+            name, dest)!;
+    };
 };
 
 fn runc(noprint: bool, cmd: str, args: str...) void = {
@@ -117,163 +127,32 @@ fn runc(noprint: bool, cmd: str, args: str...) void = {
     };
 };
 
-fn rem_path(f: str) (str, str) = {
-    let name =
-        if(strings::hasprefix(f, "/")){
-            yield strings::sub(f, 1);
-        } else {
-            yield f;
-        };
-    let path = "";
-    let i = strings::index(name, "/");
-    for(i is size){
-        path = strings::sub(name, 0, i + 1);
-        name = strings::sub(name, i + 1);
-        i = strings::index(name, "/");
+fn errmsg(f: *file, msg: str, tip: (str | void) = void) COMP_ERR = {
+    const buff = memio::dynamic();
+
+    if(f.cln == 0 && iswsp(f.src[f.lst])){
+        puttk(f);
     };
-    return (name, path);
+    const lin = gen_lin(f);
+    const pos = gen_pos(f);
+
+    fmt::fprintfln(&buff, fmtc("{}: {}\n", cmd::BOX_RED), pos, msg)!;
+    fmt::fprint(&buff, CMD[cmd::BLU])!;
+    const pad = fmt::fprintf(&buff, " {} ", f.lin + 1)!;
+    fmt::fprintfln(&buff, "{}\n {}", lin, fmtc(strings::lpad("^", '~', pad + f.cln), cmd::RED))!;
+
+    if(tip is str){
+        fmt::fprintfln(&buff, "\n{}", tip as str)!;
+    };
+    return buff: SNTX_ERR;
 };
 
-fn errstr(e: CMP_ERR) (str, (*file | void), (str | void)) = {
+fn cmperr(e: COMP_ERR) never = {
     match(e){
-    case let err: LDDFAIL =>
-        const msg = fmt::asprintf(fmtc("error while loading file {}", cmd::BOX_RED), err: str);
-        return (msg, void, void);
+    case let msg: FILE_ERR =>
+        fmt::fatal(msg);
 
-    case let err: CRTFAIL =>
-    const msg = fmt::asprintf(fmtc("error while creating file {}", cmd::BOX_RED), err: str);
-        return (msg, void, void);
-
-    case let ptr: UNREACH =>
-        const msg = fmt::asprintf("compiler stuck in a unreachable path: {}",
-            fmtc(ptr.0, cmd::BOX_BLK));
-        return (msg, ptr.1, void);
-
-    case let uni: INVALID =>
-        const err = uni as unimsg;
-        const msg = fmt::asprintf(
-            "found invalid {}", fmtc(err.msg, cmd::YEL));
-        return (msg, err.ptr, err.tip);
-
-    case let bim: EXPECTD =>
-        const err = bim as bi_msg;
-        const msg = fmt::asprintf(
-            "expected {}, found {}",
-            fmtc(err.lft, cmd::YEL), fmtc(err.rgt, cmd::YEL));
-        return (msg, err.ptr, err.tip);
-
-    case let uni: UNDEFNS =>
-        const err = uni as unimsg;
-        const idt = strings::replace(err.msg, ".p", "'");
-        const msg = fmt::asprintf("the variable {} is undefined at this point",
-            fmtc(idt, cmd::YEL));
-        return (msg, err.ptr, err.tip);
-
-    case let uni: MISMTCH =>
-        const err = uni as unimsg;
-        const msg = fmt::asprintf("mismatch between {}",
-            fmtc(err.msg, cmd::YEL));
-        return (msg, err.ptr, err.tip);
-
-    case let uni: CANT_DO =>
-        const err = uni as unimsg;
-        const msg = fmt::asprintf("you're not allowed to {}",
-            fmtc(err.msg, cmd::YEL));
-        return (msg, err.ptr, err.tip);
-
-    case let uni: IDTCDUP =>
-        const err = uni as bi_msg;
-        const idt = strings::replace(err.lft, ".p", "'");
-        const msg = fmt::asprintf("the identifier {} is already in use. it was previously defined at {}",
-            fmtc(idt, cmd::YEL), fmtc(err.rgt, cmd::BLU));
-        return (msg, err.ptr, err.tip);
-
-    case let uni: MODCDUP =>
-        const err = uni as bi_msg;
-        const msg = fmt::asprintf("the module {} was already imported. it was previously required at {}",
-            fmtc(err.lft, cmd::YEL), fmtc(err.rgt, cmd::BLU));
-        return (msg, err.ptr, err.tip);
-
-    case let uni: NOTPUBL =>
-        const err = uni as bi_msg;
-        const msg = fmt::asprintf("the field {} from the {} module is not public and hence not accessible",
-            fmtc(err.lft, cmd::YEL), fmtc(err.rgt, cmd::YEL));
-        return (msg, err.ptr, err.tip);
-
-    case let uni: NOTCALL =>
-        const err = uni as unimsg;
-        const idt = strings::replace(err.msg, ".p", "'");
-        const msg = fmt::asprintf("the namespace {} is not callable", fmtc(idt, cmd::YEL));
-        return (msg, err.ptr, err.tip);
-    
-    case let uni: NOFIELD =>
-        const err = uni as bi_msg;
-        const msg = fmt::asprintf("the type {} has no field named {}",
-            fmtc(err.lft, cmd::YEL), fmtc(err.rgt, cmd::YEL));
-        return (msg, err.ptr, err.tip);
-
-    case let uni: NOTINDX =>
-        const err = uni as unimsg;
-        const msg = fmt::asprintf("the type {} is not indexable", fmtc(err.msg, cmd::YEL));
-        return (msg, err.ptr, err.tip);
-
-    case let uni: EFX_ERR =>
-        const err = uni as bi_msg;
-        const lft = strings::replace(err.lft, ".p", "'");
-        const rgt = strings::replace(err.rgt, ".p", "'");
-        const msg = fmt::asprintf("the function {} produces unhandled effects by the function caller {}",
-            fmtc(lft, cmd::YEL), fmtc(rgt, cmd::YEL));
-        return (msg, err.ptr, err.tip);
-
-    case let uni: GENERIC =>
-        const err = uni as unimsg;
-        return (err.msg, err.ptr, err.tip);
-
-    case let uni: GENTODO =>
-        const err = uni as unimsg;
-        const msg = fmt::asprintf("TODO: {}", fmtc(err.msg, cmd::YEL));
-        return (msg, err.ptr, void);
+    case let msg: SNTX_ERR =>
+        fmt::fatal(memio::string(&msg)!);
     };
-};
-
-fn cmperr(e: CMP_ERR) never = {
-    const (out, ptr, tip) = errstr(e);
-    if(ptr is void){
-        fmt::errorfln(out)!;
-    } else {
-        const pos = ptr: *file;
-        defer free(pos);
-        if(pos.iseol){
-            pos = pos.eolat: *file;
-        };
-        const src = gen_lin(pos);
-        const num = fmt::asprintf("{} ", pos.lin + 1);
-        defer free(num);
-
-        fmt::errorfln("{} {}", fmtc(fmt::asprintf("error at {}:{}:{}:",
-            pos.name, pos.lin + 1, pos.cln + 1), cmd::BOX_RED), out)!;
-
-        const line = strings::concat(num, src);
-        const ofst = len(line) - len(src);
-
-        let arw = "";
-        for(let cnt = 0: size; cnt < pos.cln + ofst; cnt += 1){
-            if(cnt < len(num) - 1){
-                arw = strings::concat(arw, " ");
-            } else {
-                arw = strings::concat(arw, "~");
-            };
-        };
-        arw = fmt::asprintf("{}^\n", arw);
-        fmt::errorfln(
-            "\n{}\n{}",
-            fmtc(line, cmd::BLU),
-            fmtc(arw, cmd::RED)
-        )!;
-        if(!(tip is void)){
-            fmt::errorfln("{} {}", fmtc("compiler tip:",
-            cmd::GRN), tip: str)!;
-        };
-    };
-    os::exit(1);
 };

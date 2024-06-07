@@ -24,26 +24,18 @@ fn fmtc(t: fmt::formattable, c: cmd) str = {
     };
 };
 
-fn findl(strl: []str, itm: str) (size | void) = {
+fn findl(strl: []str, itm: []u8) (size | void) = {
     const max = len(strl);
+    const lit = tostr(itm);
     for(let i = 0z; i < max; i += 1){
-        if(strl[i] == itm) return i;
+        if(strl[i] == lit) return i;
     };
 };
 
-fn findstrlit(lits: *[](size, str), lit: str) ((size, size) | void) = {
-    const max = len(lits);
-    for(let s = 0z; s < max; s += 1){
-        const l = lits[s].1;
-        if(lit == l)
-            return (lits[s].0, s);
-    };
-};
-
-fn findref(refs: *[]idref, nm: *nmsp) (*idref | void) = {
-    for(let r ..& refs){
-        if(r.idt == nm.ident && cmp_origin(r.origin, nm.origin))
-            return &r;
+fn finds(strs: []str, itm: str) (size | void) = {
+    const max = len(strs);
+    for(let i = 0z; i < max; i += 1){
+        if(strs[i] == itm) return i;
     };
 };
 
@@ -65,4 +57,21 @@ fn upper(src: str) str = {
             out[c] = out[c] ^ 0b0100000;
     };
     return strings::fromutf8(out)!;
+};
+
+fn rem_path(f: str) (str, str) = {
+    let name =
+        if(strings::hasprefix(f, "/")){
+            yield strings::sub(f, 1);
+        } else {
+            yield f;
+        };
+    let path = "";
+    let i = strings::index(name, "/");
+    for(i is size){
+        path = strings::sub(name, 0, i + 1);
+        name = strings::sub(name, i + 1);
+        i = strings::index(name, "/");
+    };
+    return (name, path);
 };

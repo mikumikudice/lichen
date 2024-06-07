@@ -1,10 +1,4 @@
 segment .rod
-    IO.stdin dd 0
-    IO.stdout dd 1
-    IO.stderr dd 2
-    
-    t.unt dd 0xcafe00
-
     empty.str:
         dq 8
         db 0
@@ -15,28 +9,35 @@ segment .rod
 
 segment .data
     buffb db 0
+    time_t:
+        dq 0
+        dq 0
+segment .bss
+    cstr_b resb 2048
 
 segment .text
-global IO.stdin
-global IO.stdout
-global IO.stderr
-
-global t.unt
-
 global empty.str
 global empty.arr
 
-global IO.read
-global IO.write
-global IO.putb
+global rt.dummy
 
-global MEM.alloc
-global MEM.free
-global MEM.copy
-global MEM.strlset
-global MEM.strcpy
-global MEM.strrev
-global MEM.memset
+global rt.gets
+global rt.puts
+global rt.open
+global rt.close
+global rt.putb
+
+global rt.arena
+global rt.free
+global rt.copy
+global rt.strlset
+global rt.strcpy
+global rt.strrev
+global rt.memset
+
+global rt.sleep
+global rt.unlink
+global rt.exit
 
 global rt.indxb
 global rt.mvtob
@@ -45,30 +46,76 @@ global rt.absb
 global rt.absh
 global rt.absw
 global rt.absl
-global rt.exit
 
-; read = fn(handler : u32, buff : str) : u32
-IO.read:
-    push rdi
+; fn(...) unit
+rt.dummy:
+    ret
+
+; fn(filepath : str, flags : u32, mode : u32) : u32
+rt.open:
     push rsi
-    push rcx
     push rdx
-    mov ecx, edi
-    xor rdi, rdi        ; clear residual bytes
-    mov edi, ecx
-    mov rdx, [rsi]      ; gets input max length
-    sub rdx, 8
+    push rcx
+    push rdi
+
+    mov rsi, rdi
+    mov rdx, [rdi]
     add rsi, 8
-    mov rax, 0          ; system call (read)
-    syscall             ; calls it
-    pop rdx
+    mov rdi, cstr_b
+    call rt.copy
+    add rdx, rdi
+    mov rcx, 0
+    mov [rdx], cl
+
     pop rcx
+    pop rdx
     pop rsi
+    mov rax, 2
+    syscall
     pop rdi
     ret
 
-; write = fn(handler : u32, data : str) : u32
-IO.write:
+; (handle : u32) unit
+rt.close:
+    mov rax, 3
+    syscall
+    ret
+
+; fn(handler : u32, arena : rec { u64, u64 }) str
+rt.gets:
+    push rdx
+    push rcx
+    push rsi
+
+    mov rdx, [rsi + 8]
+    sub rdx, rsi
+    sub rdx, 16
+    mov rcx, [rsi]
+    add rcx, 8
+    mov rsi, rcx
+    mov rax, 0
+    syscall
+    
+    cmp rax, 0
+    jl .err
+    mov rdx, rax
+    dec rdx
+
+    pop rsi
+    mov rcx, [rsi]
+    add rcx, rdx
+    mov rax, [rsi]
+    mov [rsi], rdx
+    mov [rax], rdx
+
+    pop rcx
+    pop rdx
+    ret
+    .err:
+    call rt.exit
+
+; fn(handler : u32, data : str) u32
+rt.puts:
     push rdi
     push rsi
     push rcx
@@ -77,7 +124,6 @@ IO.write:
     xor rdi, rdi        ; clear residual bytes
     mov edi, ecx
     mov rdx, [rsi]      ; gets length
-    sub rdx, 8
     add rsi, 8
     mov rax, 1          ; system call (write)
     syscall             ; calls it
@@ -88,7 +134,7 @@ IO.write:
     ret
 
 ; putb = fn(handler : u32, data : u8) : u32
-IO.putb:
+rt.putb:
     push rdi
     push rsi
     push rcx
@@ -108,42 +154,67 @@ IO.putb:
     pop rdi
     ret
 
-; alloc = fn(len : u64) : raw
-MEM.alloc:
+; fn(size : u64) rec { u64, u64 }
+rt.arena:
     push rdi
     push rsi
     push rdx
     push r10
+    push r9
+    push r8
+    xor r9, r9
+    xor r8, r8
     mov rsi, rdi        ; get memory size
+    add rsi, 16
     xor rdi, rdi        ; clear register for null
     mov rdx, 7          ; prot
     mov r10, 22h        ; MAP_ANONYMOUS | MAP_PRIVATE
     mov rax, 09h        ; mmap syscall
     syscall
+
+    cmp rax, 0
+    jl .err
+
+    mov rdx, rax
+    add rdx, 16
+    mov [rax], rdx
+    mov rdi, rax
+    add rdi, 8
+    mov [rdi], rsi
+    add [rdi], rax
+    pop r8
+    pop r9
     pop r10
     pop rdx
     pop rsi
-    pop rdx
+    pop rdi
     ret
+    .err:
+    call rt.exit
 
-; free = fn(ptr : raw) : unit
-MEM.free:
+; fn(ptr : rec { u64, u64 }) unit
+rt.free:
     push rdi
     push rdx
     push rsi
-    xor rdx, rdx
-    mov edx, [rdi]      ; get length from pointer
+    mov rdx, [rdi + 8]  ; get length from pointer
+    sub rdx, rdi
     mov rsi, rdx
     mov rax, 0bh        ; munmap syscall
     syscall
-    lea rax, t.unt
+
+    cmp rax, 0
+    jl .err
+
     pop rsi
     pop rdx
     pop rdi
     ret
+    .err:
+    call rt.exit
 
 ; copy = fn(dest : raw, src : raw, size : u64) : raw
-MEM.copy:
+rt.copy:
     push rcx
     push rdi
     push rsi
@@ -170,31 +241,25 @@ MEM.copy:
     pop rcx
     ret
 
-; strcpy = fn(dest : str, size : u64) : unit
-MEM.strlset:
-    mov [rdi], rsi
-    lea rax, t.unt
-    ret
-
 ; strcpy = fn(dest : str, src : str, size : u64) : unit
-MEM.strcpy:
+rt.strcpy:
     push rdi
     push rsi
     push rdx
 
     add rdi, 8
     add rsi, 8
-    call MEM.copy
+    call rt.copy
 
     pop rdx
     pop rsi
     pop rdi
     mov [rdi], rdx
-    lea rax, t.unt
+    xor rax, rax
     ret
 
 ; strrev = fn(src : str) : str
-MEM.strrev:
+rt.strrev:
     push rbx
     push rcx
     push rdi
@@ -251,50 +316,48 @@ MEM.strrev:
         pop rbx
         ret
 
-; memset = fn(dest : raw, src : u8, size : u64) : unit
-MEM.memset:
+; sleep = fn(sec : u64, mili : u64) : unit
+rt.sleep:
     push rdi
-    push rdx
-    push rcx
-    cmp rdx, 0
-    jz .end
-    .next:
-        mov rcx, rsi
-        mov [rdi], cl
-
-        inc rdi
-        dec rdx
-
-        cmp rdx, 0
-        jz .end
-        jmp .next
-    .end:
-    lea rax, t.unt
-    pop rcx
-    pop rdx
+    mov rax, time_t
+    mov [rax], rdi
+    add rax, 8
+    mov [rax], rsi
+    lea rdi, time_t
+    mov eax, 23h
+    syscall
     pop rdi
     ret
 
-; indxb = fn(arr : raw, idx : u64) : u8
-rt.indxb:
-    push rdi
-    add rdi, 8
-    add rdi, rsi
-    xor rax, rax
-    mov al, [rdi]
-    pop rdi
-    ret
-; asetb = fn(arr : raw, idx : u64, val : u8) : unit
-rt.mvtob:
-    push rdi
-    add rdi, 8
-    add rdi, rsi
-    mov [rdi], dl
-    pop rdi
-    lea rax, t.unt
+; unlink = fn(filepath : str) : i32
+rt.unlink:
+    mov rsi, rdi
+    mov rdx, [rdi]
+    sub rdx, 8
+    add rsi, 8
+    mov rdi, cstr_b
+    call rt.copy
+    add rdx, rdi
+    mov rcx, 0
+    mov [rdx], cl
+    mov rax, 57h
+    syscall
     ret
 
-; strcmp = fn(a : str, b : str) : u8
+; TODO
+; rename = fn(old_filepath : str, new_filepath : str) : i32
+OS.rename:
+    mov rax, 52h
+    syscall
+    ret
+
+; fn(code : u32) void
+rt.exit:
+    mov rax, 3ch
+    syscall
+    hlt
+
+; fn(a : str, b : str) u8
 rt.strcmp:
     push rdi
     push rsi
@@ -307,7 +370,6 @@ rt.strcmp:
     cmp rbx, rcx
     jne .f
     mov rdx, rbx
-    sub rdx, 8
     add rdi, 8
     add rsi, 8
     .rpt:
@@ -387,8 +449,3 @@ rt.absl:
     sub rax, rbx
     pop rbx
     ret
-
-; exit = fn(code : u32) : never
-rt.exit:
-    mov rax, 3ch
-    syscall
