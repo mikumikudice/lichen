@@ -1,0 +1,12 @@
+0.3.0
+- remove mutability
+- syntax changes
+    - type casting: `foo : type` => `foo type`
+    - function syntax: `fn() : type [\ tag [& tag]] { }` => `fn() : type [& tag] { }`
+    - remove `return` & `yield`
+- remove language kernels
+- remove linear objects
+- remove ratios
+- remove error tag from unions
+- add floating point numbers
+- add `void` type

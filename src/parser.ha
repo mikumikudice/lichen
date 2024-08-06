@@ -62,10 +62,10 @@ fn get_t_len(vtp: prim) int = {
         return 1;
     case prim::U16, prim::I16 =>
         return 2;
-    case prim::U32, prim::I32 =>
+    case prim::U32, prim::I32, prim::UNIT =>
         return 4;
     case prim::U64, prim::I64, prim::NUMBER,
-        prim::STRING, prim::UNIT, prim::ANY =>
+        prim::STRING, prim::ANY =>
         return 8;
     case =>
         fmt::fatalf("gen_t_len: unexpected type {}", vtp: int);
@@ -296,9 +296,11 @@ fn free_scp(scp: *scope) void = {
 // buffer. returns an error if the file cannot be read or any
 // compilation error occurs.
 fn parse(fname: str, ctxt: *context) (memio::stream | COMP_ERR) = {
-    let f = load(fname)!;
+    let f = load(fname)?;
     const buff = memio::dynamic();
     const max = len(f.src);
+
+    let delay = []: []fun_def;
     for(f.ptr < max){
         let next = nxttk(f)?;
         if(next is eol || next is eos) continue;
@@ -308,17 +310,26 @@ fn parse(fname: str, ctxt: *context) (memio::stream | COMP_ERR) = {
         // private global assignment
         case let i: idt =>
             const idef = eval_globdef(f, ctxt, i)?;
-            defer io::close(&idef)!;
-            fmt::fprintln(&buff, "{}", memio::string(&idef)!)!;
+            match(idef){
+                case let d: memio::stream =>
+                    fmt::fprintfln(&buff, "{}", memio::string(&d)!)!;
+                    io::close(&d)!;
+                case let fd: fun_def =>
+                    append(delay, fd);
+                };
         case let k: kwd =>
             switch(k){
             case kwd::PUBFIELD =>
                 next = nxttk(f)?;
                 const nm = expct(next is idt, next, f, "invalid identifiver")?: idt;
                 const idef = eval_globdef(f, ctxt, nm, true)?;
-                defer io::close(&idef)!;
-                fmt::fprintfln(&buff, "export {}", memio::string(&idef)!)!;
-
+                match(idef){
+                case let d: memio::stream =>
+                    fmt::fprintfln(&buff, "export {}", memio::string(&d)!)!;
+                    io::close(&d)!;
+                case let fd: fun_def =>
+                    append(delay, fd);
+                };
             case kwd::USE__MOD =>
                 next = nxttk(f)?;
                 const mod = expct(next is idt, next, f, "expected module name")?: idt;
@@ -351,6 +362,7 @@ fn parse(fname: str, ctxt: *context) (memio::stream | COMP_ERR) = {
                             fnname = void,
                             branch = false,
                             nomain = true,
+                            assign = false,
                             effect = [],
                         };
                         const filename = fmt::asprintf("{}{}.ms", modctxt.libpath, mod: str);
@@ -374,30 +386,45 @@ fn parse(fname: str, ctxt: *context) (memio::stream | COMP_ERR) = {
             return errmsg(f, "expected type or namespace definition or module requirement");
         };
     };
+    for(let fd .. delay){
+        const fun = eval_fundef(&fd.f, ctxt, fd.nm,
+            memio::dynamic(), fd.pub, false)? as memio::stream;
+        defer io::close(&fun)!;
+        if(fd.pub){
+            fmt::fprintfln(&buff, "export {}", memio::string(&fun)!)!;
+        } else {
+            fmt::fprintfln(&buff, "{}", memio::string(&fun)!)!;
+        };
+    };
     return buff;
 };
 
 fn eval_globdef(f: *file, ctxt: *context, nm: idt, pub: bool = false)
-    (memio::stream | COMP_ERR) = {
+    (memio::stream | fun_def | COMP_ERR) = {
     const buff = memio::dynamic();
     let next = nxttk(f)?;
     const oper = expct(next is opr, next, f, "type or namespace definition")?: opr;
     switch(oper){
     case opr::ASSIGNMT =>
-        if(ahead(f, 1, kwd::FUNCTION) is kwd){
-            return eval_fundef(f, ctxt, nm, buff, pub);
+        if(ahead(f, kwd::FUNCTION) is kwd){
+            const fd = fun_def {
+                f = *f,
+                nm = nm,
+                pub = pub,
+            };
+            eval_fundef(f, ctxt, nm, buff, pub)?;
+            return fd;
         } else {
             // TODO: comptime expressions
             void;
         };
-    case opr::CASTTOTP => void;
     case => assert(false, "unreachable");
     };
     return buff;
 };
 
-fn eval_fundef(f: *file, ctxt: *context, nm: idt, buff: memio::stream, pub: bool)
-    (memio::stream | COMP_ERR) = {
+fn eval_fundef(f: *file, ctxt: *context, nm: idt, buff: memio::stream, pub: bool,
+    skip: bool = true) (memio::stream | void | COMP_ERR) = {
     let next = nxttk(f)?;
     assert(cmp_tok(next, kwd::FUNCTION));
 
@@ -410,11 +437,7 @@ fn eval_fundef(f: *file, ctxt: *context, nm: idt, buff: memio::stream, pub: bool
     for(!is_limit(next, [sym::CLOSEPAR])){
         const prm = expct(next is idt, next, f,
             "invalid parameter name")?: idt;
-        // TODO: add `foo, bar : type` syntax
-        next = nxttk(f)?;
-        expct(cmp_tok(next, opr::CASTTOTP), next, f,
-            "expected parameter type definition")?;
-        
+        // TODO: add `foo, bar type` syntax
         next = nxttk(f)?;
         const ptp = expct(is_type(next), next, f,
             "invalid parameter type")?: kwd;
@@ -432,18 +455,27 @@ fn eval_fundef(f: *file, ctxt: *context, nm: idt, buff: memio::stream, pub: bool
     next = nxttk(f)?;
     const tp = expct(is_type(next), next, f,
         "function type definition")?: kwd;
+    const f_tp = kwd_to_tp(tp);
 
     let efx = []: []str;
-    for(ahead(f, 1, opr::LOGICAND) is opr){
+    for(ahead(f, opr::LOGICAND) is opr){
         nxttk(f)!;
         next = nxttk(f)?;
         const e = expct(next is idt, next, f,
             "expected valid effect tag")?: idt;
         append(efx, e: str);
     };
-    const f_tp = kwd_to_tp(tp);
-    const self = push_fun(nm, f, ctxt, params, f_tp, efx, pub)?;
-
+    const self =
+        if(!skip){
+            yield get_nm(nm, ctxt.scp): *func;
+        } else {
+            push_fun(nm, f, ctxt, params, f_tp, efx, pub)?;
+            next = nxttk(f)?;
+            expct(cmp_tok(next, sym::OPN_CRLY), next, f,
+            "expected scope declaration")?;
+            mtchs(sym::OPN_CRLY, f, false)?;
+            return;
+        };
     let over = ctxt.scp;
     let fun_scp = scope {
         pos = (f.lin, f.cln),
@@ -471,7 +503,7 @@ fn eval_fundef(f: *file, ctxt: *context, nm: idt, buff: memio::stream, pub: bool
     ctxt.effect = efx;
     defer ctxt.effect = [];
 
-    const body = eval_body(f, ctxt, f_tp)?;
+    const (body, _) = eval_body(f, ctxt, f_tp)?;
     defer io::close(&body)!;
 
     const prms = gen_params(params);
@@ -497,13 +529,15 @@ fn eval_fundef(f: *file, ctxt: *context, nm: idt, buff: memio::stream, pub: bool
     return buff;
 };
 
-fn eval_body(f: *file, ctxt: *context, ret_tp: prim) (memio::stream | COMP_ERR) = {
+fn eval_body(f: *file, ctxt: *context, ret_tp: prim, dest: (str | void) = void)
+    ((memio::stream, prim) | COMP_ERR) = {
     const buff = memio::dynamic();
     let next = nxttk(f)?;
     expct(cmp_tok(next, sym::OPN_CRLY), next, f,
         "expected scope declaration")?;
-    const close = mtchs(sym::OPN_CRLY, f, true)?;
+    const close = mtchs(sym::OPN_CRLY, f)?;
 
+    if(ret_tp == prim::VOID) ret_tp = prim::UNIT;
     for(f.ptr < close){
         next = nxttk(f)?;
         if(next is eol || next is eos) continue;
@@ -512,19 +546,25 @@ fn eval_body(f: *file, ctxt: *context, ret_tp: prim) (memio::stream | COMP_ERR) 
         case let n: num =>
             const exp = eval_exp(f, ctxt, n, memio::dynamic())?;
             defer io::close(&exp)!;
+            if(exp.is_ret && !is_untyped(ret_tp)){
+                expct(is_subt(exp.expr_t, ret_tp), exp.finish, f,
+                    "mismatch between function and return value types",
+                    cast_err(exp.expr_t, ret_tp))?;
+                expct(cmp_tok(exp.finish, sym::CLS_CRLY), exp.finish, f,
+                    "void statements cannot be followed by more code")?;
+            } else if(exp.is_ret){
+                ret_tp = exp.expr_t;
+            };
             if(exp.single){
                 if(exp.is_ret){
-                    expct(is_subt(exp.expr_t, ret_tp), n, f,
-                        "mismatch between function and return value types",
-                        cast_err(exp.expr_t, ret_tp))?;
-                    fmt::fprintfln(&buff, "\tret {}", memio::string(&exp)!)!;
+                    if(ctxt.branch){
+                        fmt::fprintfln(&buff, "\t%{} ={} copy {}", dest,
+                            get_qbe_t(exp.expr_t, 1), memio::string(&exp)!)!;
+                    } else {
+                        fmt::fprintfln(&buff, "\tret {}", memio::string(&exp)!)!;
+                    };
                 } else {
                     return errmsg(f, "meaningless statement", "to return a value, remove the semicolon");
-                };
-                if(exp.expr_t == prim::VOID){
-                    next = nxttk(f)?;
-                    expct(cmp_tok(next, sym::CLS_CRLY), next, f,
-                        "void statements cannot be followed by more code")?;
                 };
             } else {
                 if(!exp.is_ret){
@@ -537,19 +577,25 @@ fn eval_body(f: *file, ctxt: *context, ret_tp: prim) (memio::stream | COMP_ERR) 
         case let t: txt =>
             const exp = eval_exp(f, ctxt, t, memio::dynamic())?;
             defer io::close(&exp)!;
+            if(exp.is_ret && !is_untyped(ret_tp)){
+                expct(is_subt(exp.expr_t, ret_tp), exp.finish, f,
+                    "mismatch between function and return value types",
+                    cast_err(exp.expr_t, ret_tp))?;
+                expct(cmp_tok(exp.finish, sym::CLS_CRLY), exp.finish, f,
+                    "void statements cannot be followed by more code")?;
+            } else if(exp.is_ret){
+                ret_tp = exp.expr_t;
+            };
             if(exp.single){
                 if(exp.is_ret){
-                    expct(is_subt(exp.expr_t, ret_tp), t, f,
-                        "mismatch between function and return value types",
-                        cast_err(exp.expr_t, ret_tp))?;
-                    fmt::fprintfln(&buff, "\tret {}", memio::string(&exp)!)!;
+                    if(ctxt.branch){
+                        fmt::fprintfln(&buff, "\t%{} ={} copy {}", dest,
+                            get_qbe_t(exp.expr_t, 1), memio::string(&exp)!)!;
+                    } else {
+                        fmt::fprintfln(&buff, "\tret {}", memio::string(&exp)!)!;
+                    };
                 } else {
                     return errmsg(f, "meaningless statement", "to return a value, remove the semicolon");
-                };
-                if(exp.expr_t == prim::VOID){
-                    next = nxttk(f)?;
-                    expct(cmp_tok(next, sym::CLS_CRLY), next, f,
-                        "void statements cannot be followed by more code")?;
                 };
             } else {
                 if(!exp.is_ret){
@@ -562,12 +608,35 @@ fn eval_body(f: *file, ctxt: *context, ret_tp: prim) (memio::stream | COMP_ERR) 
         case let i: idt =>
             const exp = eval_exp(f, ctxt, i, memio::dynamic())?;
             defer io::close(&exp)!;
+            if(exp.is_ret && !is_untyped(ret_tp)){
+                expct(is_subt(exp.expr_t, ret_tp), exp.finish, f,
+                    "mismatch between function and return value types",
+                    cast_err(exp.expr_t, ret_tp))?;
+                expct(cmp_tok(exp.finish, sym::CLS_CRLY), exp.finish, f,
+                    "void statements cannot be followed by more code")?;
+            } else {
+                if(exp.expr_t == prim::VOID){
+                    next = nxttk(f)?;
+                    expct(cmp_tok(next, sym::CLS_CRLY), next, f,
+                        "void statements cannot be followed by more code")?;
+                };
+                if(exp.is_ret && is_untyped(ret_tp)){
+                    ret_tp = exp.expr_t;
+                };
+            };
             if(exp.single){
                 if(exp.is_ret){
-                    expct(is_subt(exp.expr_t, ret_tp), i, f,
-                        "mismatch between function and return value types",
-                        cast_err(exp.expr_t, ret_tp))?;
-                    fmt::fprintfln(&buff, "\tret {}", memio::string(&exp)!)!;
+                    if(ctxt.branch){
+                        if(need_extnd(exp.expr_t, ret_tp)){
+                            fmt::fprintfln(&buff, "\t%{} =l ext{} {}", dest,
+                                get_qbe_t(exp.expr_t, 2), memio::string(&exp)!)!;
+                        } else {
+                            fmt::fprintfln(&buff, "\t%{} ={} copy {}", dest,
+                                get_qbe_t(exp.expr_t, 1), memio::string(&exp)!)!;
+                        };
+                    } else {
+                        fmt::fprintfln(&buff, "\tret {}", memio::string(&exp)!)!;
+                    };
                 } else {
                     fmt::fprintfln(&buff, "\t{}", memio::string(&exp)!)!;
                 };
@@ -577,61 +646,33 @@ fn eval_body(f: *file, ctxt: *context, ret_tp: prim) (memio::stream | COMP_ERR) 
                 } else if(!exp.is_ret){
                     fmt::fprintfln(&buff, "\t{}", memio::string(&exp)!)!;
                 } else {
-                    fmt::fprintfln(&buff, "{}\n\tret %{}.v",
-                        memio::string(&exp)!, exp.exp_id)!;
-                };
-            };
-            if(exp.expr_t == prim::VOID || exp.is_ret){
-                next = nxttk(f)?;
-                expct(cmp_tok(next, sym::CLS_CRLY), next, f,
-                    "void statements cannot be followed by more code")?;
-            };
-        case let k: kwd =>
-            switch(k){
-            case kwd::IF___BLK =>
-                let over = ctxt.scp;
-                let if_scp = scope {
-                    pos = (f.lin, f.cln),
-                    over = over,
-                    vars = [],
-                    funs = [],
-                };
-                defer free_scp(&if_scp);
-                ctxt.scp = &if_scp;
-                defer ctxt.scp = over;
-
-                const (l, c) = (f.lin + 1, f.cln + 1);
-                for(cmp_tok(next, kwd::IF___BLK)){
-                    const bexp = eval_boolexp(f, ctxt, l, c, memio::dynamic())?;
-                    defer io::close(&bexp)!;
-                    const ifbody = eval_body(f, ctxt, ret_tp)?;
-                    defer io::close(&ifbody)!;
-
-                    fmt::fprintf(&buff, "{2}\tjnz %{3}, @t.{0}.{1}, @f.{0}.{1}\n@t.{0}.{1}\n{4}\tjmp @end.{0}.{1}\n@f.{0}.{1}\n",
-                        l, c, memio::string(&bexp)!, bexp.exp_id, memio::string(&ifbody)!)!;
-
-                    next = nxttk(f)?;
-                    if(cmp_tok(next, kwd::ELSE_BLK)){
-                        if(ahead(f, 1, kwd::IF___BLK) is kwd){
-                            continue;
-                        } else {
-                            const elbody = eval_body(f, ctxt, ret_tp)?;
-                            defer io::close(&elbody)!;
-                            fmt::fprintf(&buff, "{2}@end.{0}.{1}\n", l, c, memio::string(&elbody)!)!;
-                        };
+                    if(ctxt.branch){
+                        fmt::fprintfln(&buff, "\t%{} ={} copy %{}.v", dest,
+                            get_qbe_t(exp.expr_t, 1), exp.exp_id)!;
+                    } else {
+                        fmt::fprintfln(&buff, "{}\n\tret %{}.v",
+                            memio::string(&exp)!, exp.exp_id)!;
                     };
                 };
-                finsh(f, "expected end of if block")?;
-            case kwd::MATCHBLK => void;
-            case kwd::TODO_HLT =>
-                const val = getdefval(ret_tp);
-                fmt::fprintfln(&buff, "\tret {}", val)!;
-                next = nxttk(f)?;
-                expct(cmp_tok(next, sym::CLS_CRLY), next, f,
+            };
+        case let k: kwd =>
+            const exp = eval_statement(k, f, ctxt, ret_tp)?;
+            if(exp.is_ret){
+                expct(cmp_tok(exp.finish, sym::CLS_CRLY), exp.finish, f,
                     "void statements cannot be followed by more code")?;
-            case kwd::FAIL_HLT => void;
-            case =>
-                return errmsg(f, "expected valid statement");
+                if(ctxt.branch){
+                    fmt::fprint(&buff, memio::string(&exp)!)!;
+                } else {
+                    fmt::fprintf(&buff, "{}\tret %{}\n",
+                        memio::string(&exp)!, exp.exp_id)!;
+                };
+            } else {
+                if(exp.expr_t == prim::VOID){
+                    next = nxttk(f)?;
+                    expct(cmp_tok(next, sym::CLS_CRLY), next, f,
+                        "void statements cannot be followed by more code")?;
+                };
+                fmt::fprint(&buff, memio::string(&exp)!)!;
             };
         case let s: sym =>
             switch(s){
@@ -643,15 +684,14 @@ fn eval_body(f: *file, ctxt: *context, ret_tp: prim) (memio::stream | COMP_ERR) 
             return errmsg(f, "expected valid expression");
         };
     };
-    return buff;
+    return (buff, ret_tp);
 };
 
-fn eval_exp(f: *file, ctxt: *context, tk: tok, buff: memio::stream, limit: []tok = [eos])
-    (synthexp | COMP_ERR) = {
+fn eval_exp(f: *file, ctxt: *context, tk: tok, buff: memio::stream, limit: []tok = [eos],
+    l: size = 0, c: size = 0) (synthexp | COMP_ERR) = {
     // TODO: handle unary operators at the beginning
-    const lastat = *f;
-    let (hand, hand_t) = solve_hand(tk, f, ctxt)?;
-    let (ndef, expr_t) =
+    const (hand, hand_t) = solve_hand(tk, f, ctxt)?;
+    const (ndef, expr_t) =
         match(hand_t){
         case void => yield (true, prim::UNIT);
         case let tp: prim => yield (false, tp);
@@ -663,6 +703,7 @@ fn eval_exp(f: *file, ctxt: *context, tk: tok, buff: memio::stream, limit: []tok
     };
     append(expr.args, hand);
 
+    const vid = fmt::asprintf(".{}.{}.v", f.lin + 1, f.cln + 1);
     let out = synthexp {
         buffer = buff,
         expr_t = expr_t,
@@ -670,8 +711,7 @@ fn eval_exp(f: *file, ctxt: *context, tk: tok, buff: memio::stream, limit: []tok
         single = false,
         fncall = void,
         finish = eol,
-        lastat = lastat,
-        exp_id = "",
+        exp_id = vid,
     };
     let next = nxttk(f)?;
     for(!is_limit(next, limit)){
@@ -681,24 +721,39 @@ fn eval_exp(f: *file, ctxt: *context, tk: tok, buff: memio::stream, limit: []tok
             if(ndef){
                 expct(o == opr::ASSIGNMT, o, f,
                     "expected variable assignment")?;
+
+                ctxt.assign = true;
                 const var = hand: *nmsp;
                 const val = eval_exp(f, ctxt, next, memio::dynamic())?;
                 defer io::close(&val)!;
 
+                expct(val.expr_t != prim::VOID, eol, f,
+                    "void expressions are not assignable")?;
+
                 var.vtype = val.expr_t;
+                out.expr_t = val.expr_t;
+                ctxt.assign = false;
+
                 if(val.single && val.fncall is void){
-                    fmt::fprintf(&out.buffer, "\t%{} ={} copy {}", var.name,
+                    fmt::fprintf(&out, "\t%{} ={} copy {}", var.name,
                         get_qbe_t(val.expr_t, 1), memio::string(&val)!)!;
                 } else if(val.fncall is funcall){
-                    fmt::fprintf(&out.buffer, "\t%{} ={} {}", var.name,
-                        get_qbe_t(val.expr_t, 1), memio::string(&val)!)!;
+                    if(val.expr_t == prim::UNIT || val.expr_t == prim::VOID){
+                            fmt::fprintf(&out, "\t{}", memio::string(&val)!)!;
+                        } else {
+                            fmt::fprintf(&out, "\t%{} ={} {}", var.name,
+                                get_qbe_t(val.expr_t, 1), memio::string(&val)!)!;
+                        };
                 } else {
-                    fmt::fprintf(&out.buffer, "{}\t%{} ={} copy %{}",
+                    fmt::fprintf(&out, "{}\t%{} ={} copy %{}",
                         memio::string(&val)!, var.name,
                         get_qbe_t(val.expr_t, 1), val.exp_id)!;
                 };
                 return out;
             } else {
+                expct(o != opr::ASSIGNMT, o, f,
+                    "cannot reassign values to namespaces")?;
+
                 append(expr.oprs, o);
                 let (h, t) = solve_hand(next, f, ctxt)?;
 
@@ -707,13 +762,12 @@ fn eval_exp(f: *file, ctxt: *context, tk: tok, buff: memio::stream, limit: []tok
                     if(!is_untyped(t: prim)){
                         yield t as prim;
                     } else {
-                        yield expr_t;
+                        yield out.expr_t;
                     };
-                expct(operable(expr_t, tp, o), o, f, "mismatch between member types",
-                    cast_err(expr_t, tp, true))?;
+                expct(operable(out.expr_t, tp, o), o, f, "mismatch between member types",
+                    cast_err(out.expr_t, tp, true))?;
 
-                expr_t = tp;
-                out.expr_t = expr_t;
+                out.expr_t = tp;
                 append(expr.args, h);
             };
         case =>
@@ -724,9 +778,9 @@ fn eval_exp(f: *file, ctxt: *context, tk: tok, buff: memio::stream, limit: []tok
         next = nxttk(f)?;
     };
     out.finish = next;
-    out.lastat = *f;
     out.single = len(expr.args) == 1;
     if(out.single){
+        expct(!ndef, eol, f, "invalid usage of undefined variable")?;
         match(expr.args[0]){
         case let var: *nmsp =>
             const wrp = gen_wrp(var, f, ctxt);
@@ -758,32 +812,29 @@ fn eval_exp(f: *file, ctxt: *context, tk: tok, buff: memio::stream, limit: []tok
             if(!out.is_ret){
                 out.single = false;
                 if(len(chdr) > 0){
-                    fmt::fprintf(&out.buffer, "{}\tcall ${}({})", chdr, wrp, argl)!;
+                    fmt::fprintf(&out, "{}\tcall ${}({})", chdr, wrp, argl)!;
                 } else {
-                    fmt::fprintf(&out.buffer, "call ${}({})", wrp, argl)!;
+                    fmt::fprintf(&out, "call ${}({})", wrp, argl)!;
                 };
             } else {
                 out.single = false;
-                fmt::fprintf(&out.buffer, "{0}\t%{1}.v ={2} call ${1}({3})", chdr,
+                fmt::fprintf(&out, "{0}\t%{1}.v ={2} call ${1}({3})", chdr,
                     wrp, get_qbe_t(call.fun.retrn, 1), argl)!;
             };
         case let sub: synthexp =>
             if(sub.single){
-                fmt::fprint(&out.buffer, memio::string(&sub)!)!;
+                fmt::fprint(&out, memio::string(&sub)!)!;
                 io::close(&sub)!;
             } else {
                 out.single = false;
-                fmt::fprint(&out.buffer, memio::string(&sub)!)!;
+                fmt::fprint(&out, memio::string(&sub)!)!;
                 io::close(&sub)!;
                 out.exp_id = sub.exp_id;
             };
         };
     } else {
         const max = len(expr.oprs);
-        const tpz = get_qbe_t(expr_t, 1);
-        const vid = fmt::asprintf(".{}.{}.v", f.lin + 1, f.cln + 1);
-        out.exp_id = vid;
-
+        const tpz = get_qbe_t(out.expr_t, 1);
         let hidx = 1z;
         let lfth =
                 match(expr.args[0]){
@@ -860,10 +911,10 @@ fn eval_exp(f: *file, ctxt: *context, tk: tok, buff: memio::stream, limit: []tok
             if(hidx > 1) lfth = fmt::asprintf("%{}", vid);
             hidx += 1;
             if(expr.oprs[o] == opr::ARTH_DIV){
-                if(is_num(expr_t)){
+                if(is_num(out.expr_t)){
                     fmt::fprintf(&out.buffer, "{}\t%{} ={} udiv {}, {}\n",
                         hdr, vid, tpz, lfth, rgth)!;
-                } else if(is_num(expr_t, true)){
+                } else if(is_num(out.expr_t, true)){
                     hdr = fmt::asprintf("{0}\t%{1}.r ={2} rem {3}, {4}\n\t%{1} ={2} sub {3}, %{1}.r",
                         hdr, vid, tpz, lfth, rgth);
                     fmt::fprintf(&out.buffer, "{0}\tjnz {4}, @ok{1}, @zr{1}\n@ok{1}"
@@ -871,24 +922,42 @@ fn eval_exp(f: *file, ctxt: *context, tk: tok, buff: memio::stream, limit: []tok
                         "\n@end{1}\n",
                         hdr, vid, tpz, lfth, rgth)!;
                 };
-            } else if(expr.oprs[o] == opr::ARTH_REM && is_num(expr_t)){
-                fmt::fprintf(&out.buffer, "{}\t%{} ={} urem {}, {}\n",
+            } else if(expr.oprs[o] == opr::ARTH_REM && is_num(out.expr_t)){
+                fmt::fprintf(&out, "{}\t%{} ={} urem {}, {}\n",
                     hdr, vid, tpz, lfth, rgth)!;
+
             } else if(!is_cmp(expr.oprs[o])){
-                fmt::fprintf(&out.buffer, "{}\t%{} ={} {} {}, {}\n",
+                fmt::fprintf(&out, "{}\t%{} ={} {} {}, {}\n",
                     hdr, vid, tpz, inst[expr.oprs[o]], lfth, rgth)!;
             } else if(is_cmp(expr.oprs[o], true)){
-                if(is_num(expr_t)){
-                    fmt::fprintf(&out.buffer, "{}\t%{} ={} cu{}{} {}, {}\n", hdr, vid, tpz,
-                        inst[expr.oprs[o]], get_qbe_t(expr_t, 1), lfth, rgth)!;
+                if(is_num(out.expr_t)){
+                    fmt::fprintf(&out, "{}\t%{} ={} cu{}{} {}, {}\n", hdr, vid, tpz,
+                        inst[expr.oprs[o]], get_qbe_t(out.expr_t, 1), lfth, rgth)!;
                 } else {
-                    fmt::fprintf(&out.buffer, "{}\t%{} ={} cs{}{} {}, {}\n", hdr, vid, tpz,
-                        inst[expr.oprs[o]], get_qbe_t(expr_t, 1), lfth, rgth)!;
+                    fmt::fprintf(&out, "{}\t%{} ={} cs{}{} {}, {}\n", hdr, vid, tpz,
+                        inst[expr.oprs[o]], get_qbe_t(out.expr_t, 1), lfth, rgth)!;
                 };
+            } else if(out.expr_t != prim::UNIT){
+                fmt::fprintf(&out, "{}\t%{} ={} {}{} {}, {}\n", hdr, vid, tpz,
+                    inst[expr.oprs[o]], get_qbe_t(out.expr_t, 1), lfth, rgth)!;
             } else {
-                fmt::fprintf(&out.buffer, "{}\t%{} ={} {}{} {}, {}\n", hdr, vid, tpz,
-                        inst[expr.oprs[o]], get_qbe_t(expr_t, 1), lfth, rgth)!;
+                fmt::fprintf(&out, "{}\t%{} ={} copy 1\n", hdr, vid, tpz)!;
             };
+        };
+    };
+    if(is_limit(out.finish, [kwd::AND_OPER, kwd::OR__OPER])){
+        if(l == 0 && c == 0){
+            nxttk(f)!;
+            const (lin, cln) = (f.lin + 1, f.cln + 1);
+            let eval = eval_boolexp(f, ctxt, lin, cln,
+                memio::dynamic(), out)?;
+            fmt::fprintf(&eval, "@t.{0}.{1}\n\tjmp @phi.{0}.{1}\n@f.{0}.{1}\n\tjmp @phi.{0}.{1}\n"
+                "@phi.{0}.{1}\n\t%{2} ={3} phi @t.{0}.{1} 1, @f.{0}.{1} 0\n", lin, cln, eval.exp_id,
+                get_qbe_t(eval.expr_t, 1))!;
+            return eval;
+        } else {
+            return eval_boolexp(f, ctxt, l, c,
+                memio::dynamic(), out)?;
         };
     };
     return out;
@@ -910,7 +979,6 @@ fn solve_hand(hand: tok, f: *file, ctxt: *context)
                 single = false,
                 fncall = void,
                 finish = eol,
-                lastat = *f,
                 exp_id = fmt::asprintf("{}.{}",
                     sub.exp_id, get_qbe_t(cast, 1)),
             };
@@ -919,16 +987,23 @@ fn solve_hand(hand: tok, f: *file, ctxt: *context)
             return (wrp, cast);
         };
     };
+    if(hand is kwd){
+        if(cmp_tok(hand, kwd::NOT_OPER)){
+            puttk(f);
+            const sub = eval_boolexp(f, ctxt,
+                f.lin + 1, f.cln + 1, memio::dynamic())?;
+            return (sub, sub.expr_t);
+        };
+        const sub = eval_statement(hand: kwd, f, ctxt, prim::ANY)?;
+        return (sub, sub.expr_t);
+    };
     const pos : (opr | void) =
         if(hand is opr && is_unry(hand: opr)){
             const op = hand: opr;
             hand = nxttk(f)?;
             yield op;
         };
-    expct(hand is num || hand is txt || hand is idt, hand, f,
-        "invalid expression")?;
-
-    const fllw = ahead(f, 1, [opr::MODFIELD, opr::OBJFIELD])?;
+    const fllw = ahead(f,  [opr::MODFIELD, opr::OBJFIELD])?;
     if(fllw is opr){
         if(cmp_tok(fllw: opr, opr::MODFIELD)){
             nxttk(f)!;
@@ -959,7 +1034,6 @@ fn solve_hand(hand: tok, f: *file, ctxt: *context)
                                 single = false,
                                 fncall = void,
                                 finish = eol,
-                                lastat = *f,
                                 exp_id = var.name,
                             };
                             if(pos is opr){
@@ -985,7 +1059,6 @@ fn solve_hand(hand: tok, f: *file, ctxt: *context)
                             single = false,
                             fncall = void,
                             finish = eol,
-                            lastat = *f,
                             exp_id = fmt::asprintf("{}.{}",
                                 var.name, get_qbe_t(cast, 1)),
                         };
@@ -1005,7 +1078,7 @@ fn solve_hand(hand: tok, f: *file, ctxt: *context)
                         return (wrp, cast);
                     };
                 case let fun: *func =>
-                    if(ahead(f, 1, sym::OPEN_PAR) is sym){
+                    if(ahead(f, sym::OPEN_PAR) is sym){
                         const call = eval_fcall(fun, f, ctxt)?;
                         const cast = parse_cast(f, call.fun.retrn)?;
                         if(!need_extnd(call.fun.retrn, cast)){
@@ -1024,7 +1097,6 @@ fn solve_hand(hand: tok, f: *file, ctxt: *context)
                                     single = false,
                                     fncall = void,
                                     finish = eol,
-                                    lastat = *f,
                                     exp_id = fmt::asprintf("{}.{}",
                                         fnm, get_qbe_t(cast, 1)),
                                 };
@@ -1059,7 +1131,6 @@ fn solve_hand(hand: tok, f: *file, ctxt: *context)
                                 single = false,
                                 fncall = void,
                                 finish = eol,
-                                lastat = *f,
                                 exp_id = fmt::asprintf("{}.{}",
                                     call.fun.name, get_qbe_t(cast, 1)),
                             };
@@ -1098,7 +1169,6 @@ fn solve_hand(hand: tok, f: *file, ctxt: *context)
             case opr::ARTH_PLS =>
                 return (n, tp);
             case opr::ARTH_MIN =>
-                fmt::println("here!")!;
                 return (-(n : i64), tp);
             case opr::LOGICNOT =>
                 return (~n, tp);
@@ -1123,7 +1193,6 @@ fn solve_hand(hand: tok, f: *file, ctxt: *context)
                     single = false,
                     fncall = void,
                     finish = eol,
-                    lastat = *f,
                     exp_id = fmt::asprintf("{}.{}", var.name,
                         get_qbe_t(cast, 1)),
                 };
@@ -1132,7 +1201,7 @@ fn solve_hand(hand: tok, f: *file, ctxt: *context)
                 return (wrp, cast);
             };
         case let fun: *func =>
-            if(ahead(f, 1, sym::OPEN_PAR) is sym){
+            if(ahead(f, sym::OPEN_PAR) is sym){
                 const call = eval_fcall(fun, f, ctxt)?;
                 const cast = parse_cast(f, call.fun.retrn)?;
                 if(!need_extnd(call.fun.retrn, cast)){
@@ -1145,7 +1214,6 @@ fn solve_hand(hand: tok, f: *file, ctxt: *context)
                         single = false,
                         fncall = void,
                         finish = eol,
-                        lastat = *f,
                         exp_id = fmt::asprintf("{}.{}",
                             call.fun.name, get_qbe_t(cast, 1)),
                     };
@@ -1156,33 +1224,47 @@ fn solve_hand(hand: tok, f: *file, ctxt: *context)
             };
             return (fun, prim::FUNCTION);
         case void =>
+            expct(!ctxt.assign, eol, f,
+                "invalid use of undefined variable")?;
             // TODO: local functions
             const nm = push_var(i, f, ctxt)?;
             return (nm, void);
         };
+    case =>
+        return (void, prim::UNIT);
     };
 };
 
-fn eval_boolexp(f: *file, ctxt: *context, lin: size, cln: size, buff: memio::stream) (synthexp | COMP_ERR) = {
-    let last = *f;
+fn eval_boolexp(f: *file, ctxt: *context, lin: size, cln: size, buff: memio::stream,
+    frst: (synthexp | void) = void) (synthexp | COMP_ERR) = {
     static let exp_cnt = 0z;
     exp_cnt += 1;
-    const idx = fmt::asprintf(".{:x}", exp_cnt);
-    const exp_id = fmt::asprintf(".{}.{}", lin, cln);
-    let next = nxttk(f)?;
-    const not =
-        if(cmp_tok(next, kwd::NOT_OPER)){
-            next = nxttk(f)?;
-            yield true;
-        } else {
-            yield false;
-        };
-    expct(next is num || next is txt || next is idt || cmp_tok(next, sym::OPEN_PAR),
-        next, f, "invalid truth expression")?;
 
-    const exp = eval_exp(f, ctxt, next, memio::dynamic(),
-        [ kwd::AND_OPER, kwd::OR__OPER ])?;
+    assert(cln != 15);
+
+    const idx = fmt::asprintf("{:x}", exp_cnt);
+    const exp_id = fmt::asprintf(".{}.{}", lin, cln);
+
+    const (exp, next, not): (synthexp, tok, bool) =
+        match(frst){
+        case void =>
+            let next = nxttk(f)?;
+            const not =
+                if(cmp_tok(next, kwd::NOT_OPER)){
+                    next = nxttk(f)?;
+                    yield true;
+                } else {
+                    yield false;
+                };
+            const e = eval_exp(f, ctxt, next, memio::dynamic(),
+                [ kwd::AND_OPER, kwd::OR__OPER ], lin, cln)?;
+            yield (e, e.finish, not);
+        case let e: synthexp =>
+            yield (e, e.finish, false);
+        };
     defer io::close(&exp)!;
+
+    const tpz = get_qbe_t(exp.expr_t, 1);
     let (eval, hdr): (str, str) =
         if(!exp.single){
             const id = fmt::asprintf("%{}", exp.exp_id);
@@ -1193,48 +1275,136 @@ fn eval_boolexp(f: *file, ctxt: *context, lin: size, cln: size, buff: memio::str
             const h = fmt::asprintf("\t%l.v =l loadl {}\n",
                 memio::string(&exp)!);
             yield (id, h);
+        } else if(exp.expr_t == prim::UNIT){
+                yield ("0", "");
         } else {
             yield (memio::string(&exp)!, "");
         };
-    if(get_t_len(exp.expr_t) < 8){
-        hdr = fmt::asprintf("{0}\t{1}.l =l ext{2} {1}\n", hdr,
-            eval, get_qbe_t(exp.expr_t, 2));
-        eval = fmt::asprintf("{}.l", eval);
-    };
     if(!not){
-        fmt::fprintf(&buff, "{}\t%{}.e =l copy {}\n",
-            hdr, exp_id, eval)!;
+        fmt::fprintf(&buff, "{}\t%{}.e ={} copy {}\n",
+            hdr, exp_id, tpz, eval)!;
     } else {
-        fmt::fprintf(&buff, "{}\t%{}.e =l ceql {}, 0\n",
-            hdr, exp_id, eval)!;
+        fmt::fprintf(&buff, "{}\t%{}.e ={} ceql {}, 0\n",
+            hdr, exp_id, tpz, eval)!;
     };
-    match(exp.finish){
+    match(next){
     case let k: kwd =>
         expct(cmp_tok(k, kwd::AND_OPER) || cmp_tok(k, kwd::OR__OPER),
             k, f, "unexpected keyword found here")?;
 
         const rgt = eval_boolexp(f, ctxt, lin, cln, memio::dynamic())?;
         defer io::close(&rgt)!;
-
         if(k == kwd::AND_OPER){
-            fmt::fprintf(&buff, "\tjnz {0}, @c{4}, @f{3}\n@c{4}\n{1}\t%{3}.e =l copy %{2}\n",
-                eval, memio::string(&rgt)!, rgt.exp_id, exp_id, idx)!;
+            fmt::fprintf(&buff, "\tjnz {0}, @c{3}.{4}, @f{3}\n@c{3}.{4}\n{1}\t%{3}.e ={5} copy %{2}\n",
+                eval, memio::string(&rgt)!, rgt.exp_id, exp_id, idx, tpz)!;
         } else {
-            fmt::fprintf(&buff, "\tjnz {0}, @t{3}, @c{4}\n@c{4}\n{1}\t%{3}.e =l copy %{2}\n",
-                eval, memio::string(&rgt)!, rgt.exp_id, exp_id, idx)!;
+            fmt::fprintf(&buff, "\tjnz {0}, @t{3}, @c{3}.{4}\n@c{3}.{4}\n{1}\t%{3}.e ={5} copy %{2}\n",
+                eval, memio::string(&rgt)!, rgt.exp_id, exp_id, idx, tpz)!;
         };
-    case => puttk(f);
+        next = rgt.finish;
+    case => void;
     };
     return synthexp {
         buffer = buff,
-        expr_t = prim::NUMBER,
+        expr_t = exp.expr_t,
         is_ret = false,
         single = false,
         fncall = void,
         finish = next,
-        lastat = last,
         exp_id = fmt::asprintf("{}.e", exp_id),
     };
+};
+
+fn eval_statement(stt: kwd, f: *file, ctxt: *context, ret_tp: prim,
+    limit: []tok = [eos]) (synthexp | COMP_ERR) = {
+    const safe = ctxt.branch;
+    ctxt.branch = true;
+    let out = synthexp {
+        buffer = memio::dynamic(),
+        expr_t = ret_tp,
+        is_ret = false,
+        single = false,
+        fncall = void,
+        finish = eol,
+        exp_id = fmt::asprintf(".{}.{}.eval", f.lin, f.cln),
+    };
+    let next = stt: tok;
+    switch(stt){
+    case kwd::IF___BLK =>
+        let over = ctxt.scp;
+        let if_scp = scope {
+            pos = (f.lin, f.cln),
+            over = over,
+            vars = [],
+            funs = [],
+        };
+        defer free_scp(&if_scp);
+        ctxt.scp = &if_scp;
+        defer ctxt.scp = over;
+
+        const (l, c) = (f.lin + 1, f.cln + 1);
+        for(cmp_tok(next, kwd::IF___BLK)){
+            const bexp = eval_boolexp(f, ctxt, l, c, memio::dynamic())?;
+            defer io::close(&bexp)!;
+            const (ifbody, iftp) = eval_body(f, ctxt, ret_tp, out.exp_id)?;
+            defer io::close(&ifbody)!;
+
+            expct(is_subt(iftp, ret_tp), eol, f, "mismatch between statement and reciever types",
+                cast_err(iftp, ret_tp))?;
+
+            fmt::fprintfln(&out, "{2}\tjnz %{3}, @t.{0}.{1}, @f.{0}.{1}\n@t.{0}.{1}\n{4}\tjmp @end.{0}.{1}\n@f.{0}.{1}",
+                l, c, memio::string(&bexp)!, bexp.exp_id, memio::string(&ifbody)!)!;
+
+            next = nxttk(f)?;
+            if(cmp_tok(next, kwd::ELSE_BLK)){
+                if(ahead(f, kwd::IF___BLK) is kwd){
+                    next = nxttk(f)!;
+                    continue;
+                } else {
+                    const (elbody, eltp) = eval_body(f, ctxt, ret_tp, out.exp_id)?;
+                    defer io::close(&elbody)!;
+
+                    expct(is_subt(eltp, ret_tp), eol, f, "mismatch between statement and reciever types",
+                        cast_err(eltp, ret_tp))?;
+
+                    fmt::fprint(&out, memio::string(&elbody)!)!;
+                };
+                out.finish = nxttk(f)?;
+            } else {
+                out.finish = next;
+            };
+            fmt::fprintfln(&out, "\tjmp @end.{0}.{1}\n@end.{0}.{1}", l, c)!;
+        };
+        out.is_ret = !is_limit(out.finish, limit);
+    case kwd::MATCHBLK => void;
+    case kwd::TODO_HLT =>
+        const val = getdefval(ret_tp);
+        fmt::fprintfln(&out, "\tret {}", val)!;
+        out.expr_t = prim::VOID;
+        out.finish = nxttk(f)?;
+        out.is_ret = true;
+        expct(cmp_tok(out.finish, sym::CLS_CRLY), out.finish, f,
+            "void statements cannot be followed by more code")?;
+    case kwd::FAIL_HLT => void;
+    case kwd::UNIT_LIT =>
+        return synthexp {
+            buffer = memio::dynamic(),
+            expr_t = prim::UNIT,
+            is_ret = false,
+            single = true,
+            fncall = void,
+            finish = eol,
+            exp_id = "",
+        };
+    case =>
+        return errmsg(f, "expected valid statement");
+    };
+    ctxt.branch = safe;
+    if(is_type(out.finish)){
+        out.expr_t = cast_to(out.expr_t,
+            kwd_to_tp(out.finish: kwd), out.finish, f)?;
+    };
+    return out;
 };
 
 fn eval_fcall(fun: *func, f: *file, ctxt: *context) (funcall | COMP_ERR) = {
@@ -1346,12 +1516,6 @@ fn ftomod(file: str) str = {
 fn check_uof(f: *file, val: num, expr_t: prim) (void | COMP_ERR) = {
     if(is_num(expr_t)){
         const n = val;
-            //match(val){
-            //case let u: u64 => yield u;
-            //case let s: i64 =>
-            //    const f = s >> 63;
-            //    yield ((s ^ f) - f): u64;
-            //};
         switch(expr_t){
         case prim::U8 =>
             if(n > (~0: u8): u64){
@@ -1376,14 +1540,6 @@ fn check_uof(f: *file, val: num, expr_t: prim) (void | COMP_ERR) = {
             } else {
                 yield val: i64;
             };
-            //match(val){
-            //case let u: u64 =>
-            //    if(u >= (1 << 64 / 2 - 1): u64){
-            //        return errmsg(f, "numberic literal overflows dest type (i32)"): SNTX_ERR;
-            //    };
-            //    yield u: i64;
-            //case let s: i64 => yield s;
-            //};
         switch(expr_t){
         case prim::I8 =>
             if(n < -(1 << 7): i64 || n > ((1 << 7) - 1): i64){
@@ -1418,22 +1574,19 @@ fn check_efx(f: *file, fun: *func, ctxt: *context) (void | COMP_ERR) = {
             };
         };
         return errmsg(f, "the host function is not tagged with all effects produced by this call",
-            get_efx(fun, effect)): SNTX_ERR;
+            get_efx(fun, effect, ctxt.effect)): SNTX_ERR;
     } else {
         for(let tag .. ctxt.effect){
             if(tag == effect) return;
         };
         return errmsg(f, "the host function is not tagged with all effects produced by this call",
-            get_efx(fun, effect)): SNTX_ERR;
+            get_efx(fun, effect, ctxt.effect)): SNTX_ERR;
     };
 };
 
-fn get_efx(fun: *func, mod: str = "") str = {
+fn get_efx(fun: *func, mod: str, host: []str) str = {
     let out = fmt::asprintf("the function {} produces these effects:", fun.name);
     let first = true;
-    if(mod != ""){
-        return fmt::asprintf("{} {}", out, mod);
-    };
     assert(len(fun.effect) > 0);
     for(let efx .. fun.effect){
         if(first){
@@ -1442,6 +1595,20 @@ fn get_efx(fun: *func, mod: str = "") str = {
         } else {
             out = fmt::asprintf("{}, {}", out, efx);
         };
+    };
+    if(len(host) > 0){
+        out = fmt::asprintf("{}\nand the host function is tagged with:", out);
+        first = true;
+        for(let efx .. host){
+            if(first){
+                out = fmt::asprintf("{} {}", out, efx);
+                first = false;
+            } else {
+                out = fmt::asprintf("{}, {}", out, efx);
+            };
+        };
+    } else {
+        out = fmt::asprintf("{}\nand the host function has no effect tags", out);
     };
     return out;
 };
@@ -1494,7 +1661,7 @@ fn is_untyped(tp: prim) bool = {
 };
 
 fn need_extnd(src: prim, dst: prim) bool = {
-    if(src == prim::NUMBER) return false;
+    if(src == prim::NUMBER || src == prim::UNIT) return false;
     return get_t_len(src) <= 4 && get_t_len(dst) == 8;
 };
 
@@ -1504,11 +1671,9 @@ fn sign_mismtch(l: prim, r: prim) bool = {
 
 fn parse_cast(f: *file, src: prim) (prim | COMP_ERR) = {
     let out_t = src;
-    let next = nxttk(f, true)?;
-    if(cmp_tok(next, opr::CASTTOTP)){
-        next = nxttk(f)?;
-        const cast = expct(is_type(next), next, f, "invalid casting type")?: kwd;
-        out_t = cast_to(src, kwd_to_tp(cast), next, f)?;
+    const next = nxttk(f, true)?;
+    if(is_type(next)){
+        out_t = cast_to(src, kwd_to_tp(next: kwd), next, f)?;
     } else {
         setptr(f, true);
     };
@@ -1522,7 +1687,7 @@ fn cast_to(s: prim, d: prim, t: tok, f: *file) (prim | COMP_ERR) = {
 };
 
 fn castable(s: prim, d: prim) bool = {
-    if(d == prim::ANY) return true;
+    if(d == prim::ANY || s == prim::ANY) return true;
     if((is_num(s) || is_num(s, true)) &&
         (is_num(d) || is_num(d, true))) return true;
     return s == d;

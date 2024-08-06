@@ -1,7 +1,8 @@
 # disclaimer
-until this branch is merged, some of these features must be unavailable or be considered invalid syntax.
+until the compiler is at 1.0, some of these features must be unavailable or be considered invalid syntax.
 
 # syntax
+moss uses c-like (multi-lined) comment blocks with support for nested blocks.
 ## comments
 ```rust
 // single lined
@@ -13,258 +14,199 @@ until this branch is merged, some of these features must be unavailable or be co
     */
 */
 ```
-## variables
-except for strings, all literals must be explicitly casted to some type. on expressions, the casting can be omitted of literals if at least one of the members are typed.
+
+## functions, variables and types
+moss is a functional programming language with focus on concise syntax and grammar, so defining functions, types and variables look the same:
 ```rust
-x = 128 : u32;
-y = "mornin' sailor!\n";
-z = [ 1, 2, 3, 4 ] : [*]u32;
-w = [ 5... ] : [12]u64;
+pi = 355:113 f64;       // global floating point variable
+
+pub main = fn() void {  // public function of return type void
+    x = 124 u32;        // local variable of type 124
+};
+
+dog = rec {             // a record definition
+    name str,
+    owner str,
+    breed = "just a silly boi"
+};
 ```
-all variables are immutable and can have computed values at global scope. 
+global variables are evaluated at compile time and even can use function calls on its expressions as long as these functions are pure. see more on [effects section](#effects).
 
-## operators and expressions
-moss has no operator precedence. everything is parsed concatenatedly from left to right.
+## numerical literals
+moss allows digit separators at any place and decimal, hexadecimal, octal and binary literals, but has no concept of decimal number notation (see more on [floating points section](#floating-points)).
 ```rust
-x = 6 : u32;
-y = 7 : u32;
-z = x * y;
+x = 1_000_000_000 u64;
+y = 0x_77_f3_63 u32;
+z = 0o1117315 u16;
+w = 0b1_1000 u8;
 
-if z == (x * y) {
+a = 3:4 f64;
+b = 91:31 f32;
+```
+
+## modules
+every file in moss is a standalone module which can be required by other modules. when a said file is required, is imperative it has no main function defined, even if it's private.
+```rust
+// foo.ms
+pub div = fn(x i64, y i64) i64 {
+    x / y                           // no semicolon makes it a return statement
+};
+```
+```rust
+// main.ms
+use foo;
+
+pub main = fn() void {
+    x = foo::div(4, 5);
+};
+```
+note that you cannot use a "import all" syntax; all extern fields must be prefixed with its origin module.
+
+# type system
+moss is strongly typed but also does a little of type inferring to avoid repetition. that means all numerical literals must be casted to some type when defining a variable (no default `int` type), but you don't have to cast every single untyped value when dealing with something already typed.
+```rust
+x = 6742 u32;   // untyped literal casted to u32
+y = x;          // y is also an u32
+z = y + 1;      // 1 is implicitly casted to u32 as well
+```
+moss have the following primitive types:
+```rust
+u8, u16, u32, u64   // unsigned integers
+i8, i16, i32, i64   // signed integers
+f32, f64            // floating points
+str                 // string type
+void                // void "never" type
+unit                // unit "empty" type
+```
+moss have no boolean types. address for boolean evaluation in [this section](#ifelse-blocks-and-truthy-and-falsy-values).
+
+the `void` type means that this function does not return anything. in fact, it's a termination function. all void functions halt the program at the end of the scope. that's why the main function is a void function.
+```rust
+foo = fn() void { };
+bar = fn(x u32) u32 {
+    if x == 4 {
+        foo();
+        // no code can be used from this point
+    } else {
+        x + 4
+    };
+};
+```
+
+the `unit` type is an "empty" type in the sense it is a type with a single, non operable type which serves only as a no-return value for impure functions or even as an invalid case for [unions](#union-type-and-match-block).
+```rust
+egg = fn() unit { };
+buz = fn() u32 {
+    x = egg();
+    if x == _ {    // the unit literal is `_`
+        4
+    } else {
+        8
+    }
+};
+```
+
+## floating points
+moss supports floating point numbers, but favors mathematical elegancy over arbitrary values, that's why floating literals use a ratio signature instead of a decimal place approach. this also comes in favor of keeping alway implicit rounding commonly found in floating point arithmetics with decimal place literals. this also makes clearer the distinction between integer division and floating point division. moss uses IEEE 754 standard for floating point numbers.
+```rust
+pi = 355:113 f64;   // approximately 3.1415
+third = 1:3 f32;    // approximately 0.3...
+```
+
+## if/else blocks and truthy and falsy values
+if/else blocks are branching statements that can either only run code but also evaluate values.
+```rust
+x = 6 u64;
+y = 7 u64;
+
+if x * y == 42 and x > y {
+    fmt::putl("true!")!;
+} else {
+    fmt::putl("false!")!;
+};
+
+z = if x + y > 12 {
+    x + 1
+} else {
+    y + 1
+} u32;
+```
+for these blocks, everything but unit values, zero and empty strings/arrays are considered truthy, otherwise considered falsy.
+```rust
+x = "";
+y = "hiii";
+
+if x {
+    fmt::putl("won't run")!;
+} else if y {
     fmt::putl("runs")!;
 };
 
-if z == x * y {
-    fmt::putl("doesn't run")!;
+if _ or 0 {
+    fmt::putl("also won't run")!;
+} else if 4 {
+    fmt::putl("also runs")!;
+};
+
+if not 0 {
+    fmt::putl("runs too!")!;
+};
+```
+also, all boolean expressions are lazily evaluated.
+
+## union type and tag matching
+a tagged union is a unit of data than hold a tag indicating its type and its actual value. it cannot be operated nor casted directly, but can be matched against all its variants.
+```rust
+iora = union i64 | str;
+...
+x = "hi" iora;
+
+num = match x {
+    n i64 => n
+    _ => 0
+};
+
+txt = match x {
+    t str => t
+    _ => ""
 };
 ```
 
-
-## literals
-moss allows digit separators, hex, octal and binary literals. there are also character literals
+## effects
+the root of all effects in moss -- i.e. impure code -- is implemented behind the built-in module `rt` (written in assembly). all functions that use this module must include its name as a tag. similarly, all modules that implement impure functions require the caller to add the module name as an effect tag. for instance, the `fmt` module:
 ```rust
-x = 0xff5e32 : u64;
-y = 1_000_555_789 : u64;
-z = 0b101101 + 0o77115 : u32;
-w = 'a' + 1 : u8;
-```
-for floating points, we use ratio literals:
-```rust
-x = 1:2 : f32; // 1.5f
-y = 355:113 : f64; // 3.1415f
-```
+// fmt.ms
+use rt;
 
-## string escape chars
-`\t` - horizontal tab
-`\b` - backspace
-`\a` - bell
-`\r` - carriage return
-`\n` - line feed
-`\f` - form feed
-`\0` - null character
-`\\` - escape character
-`\'` - single quote
-`\"` - double quote
-
-## functions
-```rust
-pub main = fn() unit {
-    x = sum(4, 5);
-    t = div_pls_one(x, 3);
-};
-
-sum = fn(x : u32, y : u32) u32 {
-    x + y
-};
-
-div_pls_one = fn(x : u32, y : u32) u32 {
-    if y != 0 {
-        div = x / y;
-        div + 1
-    } else {
-        1
-    }
+pub debug = fn(data str) unit & rt {
+    rt::puts(rt::stdout, data);
 };
 ```
-note that:
-- public functions are visible for FFI.
-- removing the semicolon makes the statement as a return value. the function returns the if block, which in turn returns either `div + 1` or `1`
-
-## if-else blocks
 ```rust
-if x = 9 : u32; x == y or x > 4 {
-    ...
-} else if x == 3 and y >= 2 {
-    ...
-} else {
-    ...
-};
-```
-boolean operators are lazily evaluated.
-
-## lists
-TODO
-
-## records
-```rust
-dog : rec {
-    age : u8,
-    name : str,
-    breed = "golden retriever",
-    owner : str,
-};
-
-woofy = dog {
-    age = 2,
-    name = "woofy",
-    owner = "bob",
-    ...
-};
-
-vect : {
-    x : f64,
-    y : f64,
-    z : f64,
-};
-
-up = vect { y = 1, ... };
-lt = vect { x = -1, ... };
-velocity = up * lt * 1:2;
-```
-
-## tagged unions
-```rust
-some : u64 | unit;
-token : str | u64 | i64 | unit;
-```
-
-## error values
-```rust
+// main.ms
 use fmt;
-
-pub main = fn() void {
-    ok = div(5, 7)!; // crashes on error
-    err = div(2, 0) ? fmt::fail("division by zero"); // runs on error
-};
-
-div = fn(x : i64, y : i64) !i64 {
-    r = if y != 0 {
-        x / y
-    } else {
-        fail
-    };
-    r
-};
-```
-errors cannot be ignored, but can be returned:
-```rust
-div2 = fn(x : i64) !i64 {
-    div(x, 2)
-};
-```
-
-## match block
-```rust
-use fmt;
-
-iora : u64 | str;
 
 pub main = fn() void & fmt {
-    x = "hi!" : iora;
-    match x {
-    u64 : fmt::putl("x is an integer")!;
-    txt : str : fmt::putfl("x is %s", txt)!;
-    };
-
-    match x as txt {
-    "hello" : fmt::putl("heya!")!;
-    "hi!" : fmt::putl("hello!")!;
-    _ : fmt::putl("hoy!")!;
-    };
+    fmt::debug("mornin' sailor!");
 };
 ```
-
-# type system
-## primitive types
-- numerical types: `u8, i8, u16, i16, u32, i32, u64, i64, f32, f64`
-- strings: `str`
-- `unit` and `void` types
-there are no boolean types.
-
-## unit and void types
-the unit type has only one valid value, `[]` and is implicitly returned by all unit functions. on the other hand, void functions does not return anything. actually, they terminate the program with an exit code of 0.
+effects can be chained:
 ```rust
-pub main = fn() void {
-    x = 4 : u32;
-    if x == 5 {
-        exit();
-        // cannot run any code after that
-    };
-    y = nothing();
-};
-
-exit = fn() void { };
-nothing = fn() unit { [] };
-```
-
-## lists and strings
-lists have built-in functions for iterating on their items. all functions are pure:
-```rust
-text = "hello!";
-lower = text.map(fn(c : u8) u8 {
-    if 'A' <= c <= "Z" {
-        c ^ 0x40
-    } else {
-        c
-    }
-});
-
-alpha = txt.filter(fn(c : u8) u8 {
-    'A' <= c <= 'z'
-});
-
-list = [ 1, 2, 3, 4, 5, 6, 7, 8 ] : [*]u32;
-sum = list.foldl(fn(ac : u32, itm : u32) u32 {
-    ac + itm
-});
-```
-all the available functions:
-- map
-- fmap
-- foldl/foldr
-- reduce
-- filter
-- index
-- inter
-- head? (only for lists)
-- tail? (only for lists)
-
-## division and decimal numbers
-moss uses IEEE 754 standard for floating point numbers and allows only rational representations for floating point literals. in the case of integer division by zero, the result is also zero to avoid undefined behavior.
-```rust
-x = 1:4 : f32;  // 0.25f
-y = x + 4 / 3;  // 1.25f (0.25 + 1)
-z = y + 1:2;    // 1.75f
-```
-note that `1:4` itself carries no typing and must be explicitly casted to either `f32` or `f64`. in the remaining expressions, the type for the literals is deduced by the typed value (`x`);
-
-## modules and effects
-impure functions are those who produce effects. these must be tagged with the source of their impure code, often modules:
-```rust
-use os;
+use mem;
 use fmt;
 
-pub main = fn() void & fmt & os {
-    file = os::open("data.txt", os::RW) ? fmt::fail("file not found");
-    data = os::read(file)!;
-    dump(data);
-};
+pub main = fn() void & fmt & mem {
+    arena = mem::arena(128);
+    fmt::debug("what's your name?\n> ");
+    name = fmt::read(arena);
 
-dump = fn(data : os::stream) unit & fmt {
-    data' = os::lines(data);
-    data'.map(fn(line : str) unit & fmt {
-        fmt::putl(line)!;
-    });
+    if not name {
+        fmt::debug("please say your name!\n");
+    } else {
+        fmt::debug("hello, ");
+        fmt::debug(name);
+        fmt::debug("!\n");
+    };
+    mem::free(arena);
 };
 ```
-* note that `os::open` and `os::read` as well as `fmt::fail` and `fmt::putl` are all impure functions, which make `main`, `dump` and the lambda passed to the `map` function impure functions, on the other hand, `os::lines` is pure and `map` itself ony becomes impure if the given predicate is also impure.

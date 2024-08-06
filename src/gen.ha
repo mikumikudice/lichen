@@ -67,7 +67,7 @@ fn build(src: str, dest: str, ctxt: *context) (void | COMP_ERR) = {
     };
 
     const rt_src = fmt::asprintf("{}rt.asm", ctxt.libpath);
-    const rt_out = fmt::asprintf("{}rt.o", ctxt.libpath);
+    const rt_out = fmt::asprintf("{}rt.o", temp);
     runc(silent, "nasm", "-felf64", "-o", rt_out, rt_src);
 
     if(!os::exists(dest)){

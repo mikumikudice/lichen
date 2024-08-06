@@ -1,5 +1,5 @@
-use rt;
 use fmt;
+use rt;
 
 pub main = fn() void & fmt & rt {
     arena = rt::arena(128);

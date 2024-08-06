@@ -119,6 +119,7 @@ export fn main() void = {
         fnname = void,
         branch = false,
         nomain = false,
+        assign = false,
         effect = [],
     };
     build(srcname, outfile, &ctxt)!;

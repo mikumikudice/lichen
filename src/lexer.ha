@@ -395,6 +395,12 @@ fn nxttk(f: *file, rev: bool = false) (tok | COMP_ERR) = {
     return errmsg(f, "unhandled lexer path");
 };
 
+fn _nxttk(f: *file, rev: bool = false) (tok | COMP_ERR) = {
+    const t = _nxttk(f, rev)?;
+    fmt::println(tktostr(t, true), gen_pos(f))!;
+    return t;
+};
+
 fn puttk(f: *file) void = {
     assert(f.ptr > 0);
     f.lin = f.last.0;
@@ -409,15 +415,9 @@ fn getltkp(f: *file) *file = {
     return dup;
 };
 
-fn _nxttk(f: *file, rev: bool = false) (tok | COMP_ERR) = {
-    const t = _nxttk(f, rev)?;
-    fmt::println(tktostr(t, true), gen_pos(f))!;
-    return t;
-};
-
 // jumps `num` tokens and checks if it's is/in `tkns`.
 // returns it if yes, otherwise returns void.
-fn ahead(f: *file, num: size, tkns: (tok | []tok)) (tok | void | COMP_ERR) = {
+fn ahead(f: *file, tkns: (tok | []tok), num: size = 1) (tok | void | COMP_ERR) = {
     const valid =
         match(tkns){
         case let one: tok =>

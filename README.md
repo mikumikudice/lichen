@@ -53,15 +53,15 @@ these are the current goals of this project:
             - [x] on function calls
             - [ ] on record assignments
             - [x] casting for function arguments
-        - [ ] lists
-            - [ ] multidimensional arrays
-        - [ ] built-in functions on lists
-            - [ ] index?
+        - [ ] built-in functions on arrays
+            - [ ] index
+            - [ ] inter
             - [ ] head/tail?
             - [ ] map
+            - [ ] fmap
             - [ ] reduce
+            - [ ] foldl/foldr
             - [ ] filter
-            - [ ] fold
             - [ ] sugar syntax
         - [ ] records
             - [ ] default values for record fields
@@ -73,9 +73,7 @@ these are the current goals of this project:
         - [ ] error assertion and short-circuit
         - [x] `todo` statement
     - [ ] control flow
-        - [ ] if/else
-            - [x] basic functionality
-            - [ ] local statement definitions
+        - [x] if/else
         - [ ] match
         - [ ] defer
     - [ ] local functions

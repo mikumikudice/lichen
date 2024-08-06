@@ -22,38 +22,40 @@ type idt = str;
 type txt = []u8;
 type kwd = enum int
     { USE__MOD, PUBFIELD
-    , FUNCTION, IF___BLK, ELSE_BLK, MATCHBLK
+    , FUNCTION, RECORD_T, TUNION_T, ENUMERTR
+    , IF___BLK, ELSE_BLK, MATCHBLK
     , U8__TYPE, U16_TYPE, U32_TYPE, U64_TYPE
     , I8__TYPE, I16_TYPE, I32_TYPE, I64_TYPE
     , F32_TYPE, F64_TYPE, STRING_T, UNITTYPE
     , IS__OPER, NOT_OPER, AND_OPER, OR__OPER
     , TODO_HLT, FAIL_HLT, VOIDTYPE, DEFERBLK
-    , KWRD_END
+    , UNIT_LIT, KWRD_END
 };
 const kwdv =
     [ "use", "pub"
-    , "fn" , "if" , "else", "match"
-    , "u8" , "u16", "u32", "u64"
-    , "i8" , "i16", "i32", "i64"
-    , "f32", "f64", "str", "unit"
-    , "is" , "not", "and", "or"
+    , "fn" , "rec" , "union", "enum"
+    , "if" , "else", "match"
+    , "u8" , "u16" , "u32", "u64"
+    , "i8" , "i16" , "i32", "i64"
+    , "f32", "f64" , "str", "unit"
+    , "is" , "not" , "and", "or"
     , "todo", "fail", "void"
-    , "defer"
+    , "defer", "_"
     ];
 static assert(kwd::KWRD_END: size == len(kwdv), "keyword values not updated");
 
 type opr = enum int
     { LOGICNOT, LOGICAND, LOGIC_OR, BITSHFTR, BITSHFTL, LOGICXOR
     , BOOL_EQL, BOOL_DIF, BOOL_LSS, BOOL_GRT, BOOL_LEQ, BOOL_GEQ
-    , ARTH_PLS, ARTH_MIN, ARTH_MUL, ARTH_DIV, ARTH_REM
-    , ASSIGNMT, RANGE_OP, COMPLETE, CASTTOTP, MODFIELD, OBJFIELD
+    , ARTH_PLS, ARTH_MIN, ARTH_MUL, ARTH_DIV, RATIODIV, ARTH_REM
+    , ASSIGNMT, RANGE_OP, COMPLETE, MODFIELD, OBJFIELD, MAP_CASE
     , PROPAGTN, ASSERTER, OPER_END, NOT_OPER
 };
 const oprv =
     [ "~" , "&"  , "|"  , "<<", ">>", "^" 
     , "==", "!=" , "<"  , ">" , "<=", ">="
-    , "+" , "-"  , "*"  , "/" , "%"
-    , "=" , ".." , "...", ":" , "::", "."
+    , "+" , "-"  , "*"  , "/" , ":" , "%"
+    , "=" , ".." , "...", "::", "." , "=>"
     , "?" , "!"
     ];
 static assert(opr::OPER_END: size == len(oprv), "operator values not updated");
@@ -64,7 +66,7 @@ const inst =
     , "ceq", "cne"
     , "lt", "gt"
     , "le", "ge"
-    , "add", "sub", "mul", "div", "rem"
+    , "add", "sub", "mul", "div", "div", "rem"
     ];
 
 type sym = enum int
@@ -80,7 +82,7 @@ static assert(sym::SYMB_END: size == len(symv), "symbol values not updated");
 
 type eos = void;
 type eol = void;
-type tok = ( num | txt | idt | kwd | opr | sym | eos | eol);
+type tok = ( num | txt | idt | kwd | opr | sym | eos | eol );
 
 type prim = enum int
     { NUMBER, RATIO, U8, U16, U32, U64, I8, I16, I32, I64
@@ -116,6 +118,12 @@ type func = struct {
     effect: []str,
 };
 
+type fun_def = struct {
+    f: file,
+    nm: idt,
+    pub: bool,
+};
+
 type scope = struct {
     pos: (size, size),
     over: (*scope | void),
@@ -132,6 +140,7 @@ type context = struct {
     fnname: (str | void),
     branch: bool,
     nomain: bool,
+    assign: bool,
     effect: []str,
 };
 
@@ -147,7 +156,6 @@ type synthexp = struct {
     single: bool,
     fncall: (void | funcall),
     finish: tok,
-    lastat: file,
     exp_id: str,
 };
 type expr_h = (*nmsp | *func | u64 | i64 | txt | funcall | synthexp | void);
