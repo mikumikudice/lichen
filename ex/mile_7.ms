@@ -1,12 +1,12 @@
 use fmt;
 
-pub main = fn() never & fmt {
-    num = [ 1, 2, 3, 4, 5 ] [*]u32;
-    two = num.map(
-        fn(a u32) u32 {
-            a * 2
-        };
-    );
-    sum = two.reduce();
-    fmt::debug(sum);
+pub main = fn() void & fmt {
+    loop(0, 10);
+};
+
+loop = fn(c u64, max u64) unit & fmt {
+    fmt::debug("here!\n");
+    if c == max {
+        loop(c + 1, max)
+    }
 };

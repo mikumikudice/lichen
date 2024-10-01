@@ -194,7 +194,8 @@ fn load(fname: str) (*file | COMP_ERR) = {
             append(src.src, '\n');
     };
     if(len(src.src) == 0){
-        fmt::fatalf("the file {} is empty", fmtc(fname, cmd::BLU));
+        fmt::fatalf("the file {} is empty\n\ntry adding:\n{}",
+            fmtc(fname, cmd::BLU), fmtc(fn_demo, cmd::GRN));
     };
     return src;
 };

@@ -151,7 +151,6 @@ fn cmperr(e: COMP_ERR) never = {
     match(e){
     case let msg: FILE_ERR =>
         fmt::fatal(msg);
-
     case let msg: SNTX_ERR =>
         fmt::fatal(memio::string(&msg)!);
     };

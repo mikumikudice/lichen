@@ -250,13 +250,6 @@ fn push_var(nm: idt, f: *file, ctxt: *context, pub: bool = false)
 
 fn push_fun(nm: idt, f: *file, ctxt: *context, param: [](idt, prim), retrn: prim,
     efx: []str, pub: bool = false) (*func | COMP_ERR) = {
-    if(ctxt.nomain){
-        expct(nm != "main", eol, f,
-            "modules cannot have a main function")?;
-    } else if(nm == "main"){
-        expct(retrn == prim::VOID, eol, f,
-            "the main function must be of void type")?;
-    };
     match(get_nm(nm, ctxt.scp)){
     case void =>
         const self = alloc(func {
@@ -339,9 +332,10 @@ fn parse(fname: str, ctxt: *context) (memio::stream | COMP_ERR) = {
                 };
                 match(get_mod(mod, ctxt)){
                 case let dup_mod: *module =>
+                    const msg = fmt::asprintf("the module {} was already required", mod);
                     const tip = fmt::asprintf("required at {}:{}:{}",
                         f.name, dup_mod.pos.0, dup_mod.pos.1);
-                    return errmsg(f, "this module was already required", tip);
+                    return errmsg(f, msg, tip);
                 case =>
                     if(mod == "rt"){
                         append(ctxt.uses, &rtmod);
@@ -452,11 +446,22 @@ fn eval_fundef(f: *file, ctxt: *context, nm: idt, buff: memio::stream, pub: bool
         expct(cmp_tok(next, sym::CLOSEPAR), next, f,
             "end of function's parameter list")?;
     };
+    if(nm == "main"){
+        expct(len(params) == 0, eol, f,
+            "the main function must take no arguments")?;
+    };
     next = nxttk(f)?;
     const tp = expct(is_type(next), next, f,
         "function type definition")?: kwd;
     const f_tp = kwd_to_tp(tp);
 
+    if(ctxt.nomain){
+        expct(nm != "main", eol, f,
+            "modules cannot have a main function")?;
+    } else if(nm == "main"){
+        expct(f_tp == prim::VOID, eol, f,
+            "the main function must be of void type")?;
+    };
     let efx = []: []str;
     for(ahead(f, opr::LOGICAND) is opr){
         nxttk(f)!;
@@ -503,9 +508,17 @@ fn eval_fundef(f: *file, ctxt: *context, nm: idt, buff: memio::stream, pub: bool
     ctxt.effect = efx;
     defer ctxt.effect = [];
 
-    const (body, _) = eval_body(f, ctxt, f_tp)?;
+    ctxt.fnname = nm;
+    defer ctxt.fnname = void;
+
+    const (body, _, has_ret) = eval_body(f, ctxt, f_tp)?;
     defer io::close(&body)!;
 
+    if(!has_ret){
+        expct(f_tp == prim::UNIT || f_tp == prim::VOID, eol,
+            f, "function evaluates invalid return type",
+            cast_err(prim::UNIT, f_tp))?;
+    };
     const prms = gen_params(params);
     defer io::close(&prms)!;
 
@@ -530,13 +543,14 @@ fn eval_fundef(f: *file, ctxt: *context, nm: idt, buff: memio::stream, pub: bool
 };
 
 fn eval_body(f: *file, ctxt: *context, ret_tp: prim, dest: (str | void) = void)
-    ((memio::stream, prim) | COMP_ERR) = {
+    ((memio::stream, prim, bool) | COMP_ERR) = {
     const buff = memio::dynamic();
     let next = nxttk(f)?;
     expct(cmp_tok(next, sym::OPN_CRLY), next, f,
         "expected scope declaration")?;
     const close = mtchs(sym::OPN_CRLY, f)?;
 
+    let is_ret = false;
     if(ret_tp == prim::VOID) ret_tp = prim::UNIT;
     for(f.ptr < close){
         next = nxttk(f)?;
@@ -546,6 +560,8 @@ fn eval_body(f: *file, ctxt: *context, ret_tp: prim, dest: (str | void) = void)
         case let n: num =>
             const exp = eval_exp(f, ctxt, n, memio::dynamic())?;
             defer io::close(&exp)!;
+
+            is_ret = exp.is_ret;
             if(exp.is_ret && !is_untyped(ret_tp)){
                 expct(is_subt(exp.expr_t, ret_tp), exp.finish, f,
                     "mismatch between function and return value types",
@@ -577,6 +593,8 @@ fn eval_body(f: *file, ctxt: *context, ret_tp: prim, dest: (str | void) = void)
         case let t: txt =>
             const exp = eval_exp(f, ctxt, t, memio::dynamic())?;
             defer io::close(&exp)!;
+
+            is_ret = exp.is_ret;
             if(exp.is_ret && !is_untyped(ret_tp)){
                 expct(is_subt(exp.expr_t, ret_tp), exp.finish, f,
                     "mismatch between function and return value types",
@@ -608,6 +626,8 @@ fn eval_body(f: *file, ctxt: *context, ret_tp: prim, dest: (str | void) = void)
         case let i: idt =>
             const exp = eval_exp(f, ctxt, i, memio::dynamic())?;
             defer io::close(&exp)!;
+
+            is_ret = exp.is_ret;
             if(exp.is_ret && !is_untyped(ret_tp)){
                 expct(is_subt(exp.expr_t, ret_tp), exp.finish, f,
                     "mismatch between function and return value types",
@@ -657,6 +677,7 @@ fn eval_body(f: *file, ctxt: *context, ret_tp: prim, dest: (str | void) = void)
             };
         case let k: kwd =>
             const exp = eval_statement(k, f, ctxt, ret_tp)?;
+            is_ret = exp.is_ret;
             if(exp.is_ret){
                 expct(cmp_tok(exp.finish, sym::CLS_CRLY), exp.finish, f,
                     "void statements cannot be followed by more code")?;
@@ -684,7 +705,7 @@ fn eval_body(f: *file, ctxt: *context, ret_tp: prim, dest: (str | void) = void)
             return errmsg(f, "expected valid expression");
         };
     };
-    return (buff, ret_tp);
+    return (buff, ret_tp, is_ret);
 };
 
 fn eval_exp(f: *file, ctxt: *context, tk: tok, buff: memio::stream, limit: []tok = [eos],
@@ -854,8 +875,8 @@ fn eval_exp(f: *file, ctxt: *context, tk: tok, buff: memio::stream, limit: []tok
                     defer io::close(&call_h)!;
                     const chdr = memio::string(&call_h)!;
                     const argl = memio::string(&args_l)!;
-                    fmt::fprintf(&out, "{}\t%{}.v ={} call ${}({})\n", chdr, wrp,
-                        get_qbe_t(call.fun.retrn, 1), call.fun.name, argl)!;
+                    fmt::fprintf(&out, "{}\t%{}.v ={} call {}({})\n", chdr, wrp,
+                        get_qbe_t(call.fun.retrn, 1), gen_wrp(call.fun, f, ctxt), argl)!;
                     yield wrp;
                 case let sub: synthexp =>
                     yield
@@ -891,8 +912,8 @@ fn eval_exp(f: *file, ctxt: *context, tk: tok, buff: memio::stream, limit: []tok
                     defer io::close(&call_h)!;
                     const chdr = memio::string(&call_h)!;
                     const argl = memio::string(&args_l)!;
-                    hdr = fmt::asprintf("{}{}\t%{}.v ={} call ${}({})\n", hdr, chdr, wrp,
-                        get_qbe_t(call.fun.retrn, 1), call.fun.name, argl);
+                    hdr = fmt::asprintf("{}{}\t%{}.v ={} call {}({})\n", hdr, chdr, wrp,
+                        get_qbe_t(call.fun.retrn, 1), gen_wrp(call.fun, f, ctxt), argl);
                     yield wrp;
                 case let sub: synthexp =>
                     yield
@@ -1011,7 +1032,12 @@ fn solve_hand(hand: tok, f: *file, ctxt: *context)
                 expct(hand is idt, hand, f, "expected valid module name")?: idt;
             match(get_mod(modname, ctxt)){
             case void =>
-                return errmsg(f, "this module is not included at this point");
+                const msg = fmt::asprintf("the module {} is not included at this point",
+                    modname);
+                const tip = fmt::asprintf("try doing: {}",
+                    fmt::asprintf("{}use {};{}", CMD[cmd::YEL],
+                    modname, CMD[cmd::DEF]));
+                return errmsg(f, msg, tip);
 
             case let mod: *module =>
                 let next = nxttk(f)?;
@@ -1108,7 +1134,7 @@ fn solve_hand(hand: tok, f: *file, ctxt: *context)
                                 const chdr = memio::string(&call_h)!;
                                 const tpz = get_qbe_t(cast, 1);
 
-                                fmt::fprintf(&wrp, "{}\t%{} ={} call %{}({})\n",
+                                fmt::fprintf(&wrp, "{}\t%{} ={} call {}({})\n",
                                     chdr, wrp.exp_id, tpz, wrp_fnm, argl)!;
                                 if(pos is opr){
                                     switch(pos as opr){
@@ -1342,13 +1368,21 @@ fn eval_statement(stt: kwd, f: *file, ctxt: *context, ret_tp: prim,
         ctxt.scp = &if_scp;
         defer ctxt.scp = over;
 
+        let brets = false;
+        let exhst = true;
         const (l, c) = (f.lin + 1, f.cln + 1);
         for(cmp_tok(next, kwd::IF___BLK)){
+            exhst = false;
             const bexp = eval_boolexp(f, ctxt, l, c, memio::dynamic())?;
             defer io::close(&bexp)!;
-            const (ifbody, iftp) = eval_body(f, ctxt, ret_tp, out.exp_id)?;
+            const (ifbody, iftp, if_ret) = eval_body(f, ctxt, ret_tp, out.exp_id)?;
             defer io::close(&ifbody)!;
-
+            if(brets){
+                expct(if_ret || iftp == prim::UNIT, eol, f,
+                    "not all branches produce values")?;
+            } else {
+                brets = if_ret;
+            };
             expct(is_subt(iftp, ret_tp), eol, f, "mismatch between statement and reciever types",
                 cast_err(iftp, ret_tp))?;
 
@@ -1357,13 +1391,19 @@ fn eval_statement(stt: kwd, f: *file, ctxt: *context, ret_tp: prim,
 
             next = nxttk(f)?;
             if(cmp_tok(next, kwd::ELSE_BLK)){
+                exhst = true;
                 if(ahead(f, kwd::IF___BLK) is kwd){
                     next = nxttk(f)!;
                     continue;
                 } else {
-                    const (elbody, eltp) = eval_body(f, ctxt, ret_tp, out.exp_id)?;
+                    const (elbody, eltp, el_ret) = eval_body(f, ctxt, ret_tp, out.exp_id)?;
                     defer io::close(&elbody)!;
-
+                    if(brets){
+                        expct(el_ret || eltp == prim::UNIT, eol, f,
+                            "not all branches produce values")?;
+                    } else {
+                        brets = el_ret;
+                    };
                     expct(is_subt(eltp, ret_tp), eol, f, "mismatch between statement and reciever types",
                         cast_err(eltp, ret_tp))?;
 
@@ -1376,6 +1416,10 @@ fn eval_statement(stt: kwd, f: *file, ctxt: *context, ret_tp: prim,
             fmt::fprintfln(&out, "\tjmp @end.{0}.{1}\n@end.{0}.{1}", l, c)!;
         };
         out.is_ret = !is_limit(out.finish, limit);
+        if(out.is_ret || (brets && !safe)){
+            expct(exhst, eol, f,
+                "not all code branches produce values")?;
+        };
     case kwd::MATCHBLK => void;
     case kwd::TODO_HLT =>
         const val = getdefval(ret_tp);
@@ -1574,7 +1618,7 @@ fn check_efx(f: *file, fun: *func, ctxt: *context) (void | COMP_ERR) = {
             };
         };
         return errmsg(f, "the host function is not tagged with all effects produced by this call",
-            get_efx(fun, effect, ctxt.effect)): SNTX_ERR;
+            get_efx(fun, "", ctxt.effect)): SNTX_ERR;
     } else {
         for(let tag .. ctxt.effect){
             if(tag == effect) return;
@@ -1585,30 +1629,38 @@ fn check_efx(f: *file, fun: *func, ctxt: *context) (void | COMP_ERR) = {
 };
 
 fn get_efx(fun: *func, mod: str, host: []str) str = {
-    let out = fmt::asprintf("the function {} produces these effects:", fun.name);
     let first = true;
     assert(len(fun.effect) > 0);
-    for(let efx .. fun.effect){
-        if(first){
-            out = fmt::asprintf("{} {}", out, efx);
-            first = false;
-        } else {
-            out = fmt::asprintf("{}, {}", out, efx);
-        };
-    };
-    if(len(host) > 0){
-        out = fmt::asprintf("{}\nand the host function is tagged with:", out);
-        first = true;
-        for(let efx .. host){
+    let out = "";
+    if(mod == ""){
+        out = fmt::asprintf("the function {} produces these effects:", fun.name);
+        for(let efx .. fun.effect){
             if(first){
-                out = fmt::asprintf("{} {}", out, efx);
+                out = fmt::asprintf("{} {}{}", out, CMD[cmd::YEL], efx);
                 first = false;
             } else {
                 out = fmt::asprintf("{}, {}", out, efx);
             };
         };
+        out = fmt::asprintf("{}{}", out, CMD[cmd::DEF]);
     } else {
-        out = fmt::asprintf("{}\nand the host function has no effect tags", out);
+        out = fmt::asprintf("the function {} is from the module {} and uses this name as effect tag",
+            fmtc(fun.name, cmd::YEL), fmtc(ftomod(fun.origin), cmd::YEL));
+    };
+    if(len(host) > 0){
+        out = fmt::asprintf("{}\nthe host function is tagged with:", out);
+        first = true;
+        for(let efx .. host){
+            if(first){
+                out = fmt::asprintf("{} {}{}", out, CMD[cmd::YEL], efx);
+                first = false;
+            } else {
+                out = fmt::asprintf("{}, {}", out, efx);
+            };
+        };
+        out = fmt::asprintf("{}{}", out, CMD[cmd::DEF]);
+    } else {
+        out = fmt::asprintf("{}\nthe host function has no effect tags", out);
     };
     return out;
 };
@@ -1703,5 +1755,13 @@ fn cast_err(s: prim, d: prim, oper: bool = false, num: size = 0) str = {
             return fmt::asprintf("the {} parameter takes a {}, but the given argument is a {}",
                 ordnum(num), primv[d], primv[s]);
         };
+    };
+};
+
+fn within_self(call: funcall, ctxt: *context) bool = {
+    if(ctxt.fnname is str && call.fun.name == ctxt.fnname: str){
+        return true;
+    } else {
+        return false;
     };
 };

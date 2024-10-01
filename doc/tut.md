@@ -1,5 +1,5 @@
 # disclaimer
-until the compiler is at 1.0, some of these features must be unavailable or be considered invalid syntax.
+until the compiler is at 1.0, some of these features might be unavailable or be considered invalid syntax.
 
 # syntax
 moss uses c-like (multi-lined) comment blocks with support for nested blocks.
@@ -30,7 +30,7 @@ dog = rec {             // a record definition
     breed = "just a silly boi"
 };
 ```
-global variables are evaluated at compile time and even can use function calls on its expressions as long as these functions are pure. see more on [effects section](#effects).
+global variables are evaluated at compile time and can even use function calls on its expressions as long as these functions are pure. see more on [effects section](#effects).
 
 ## numerical literals
 moss allows digit separators at any place and decimal, hexadecimal, octal and binary literals, but has no concept of decimal number notation (see more on [floating points section](#floating-points)).
@@ -114,7 +114,7 @@ third = 1:3 f32;    // approximately 0.3...
 ```
 
 ## if/else blocks and truthy and falsy values
-if/else blocks are branching statements that can either only run code but also evaluate values.
+if/else blocks are branching statements that can both just run code and be an assignable expression.
 ```rust
 x = 6 u64;
 y = 7 u64;
@@ -190,7 +190,7 @@ pub main = fn() void & fmt {
     fmt::debug("mornin' sailor!");
 };
 ```
-effects can be chained:
+effects can also be chained:
 ```rust
 use mem;
 use fmt;

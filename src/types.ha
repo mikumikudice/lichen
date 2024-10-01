@@ -304,3 +304,7 @@ const rtmod = module {
         &exit,
     ],
 };
+
+const fn_demo =
+    "pub main = fn() void {\n"
+    "};";
