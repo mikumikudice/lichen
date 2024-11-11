@@ -228,12 +228,20 @@ fn nxttk(f: *file, rev: bool = false) (tok | COMP_ERR) = {
         } else {
             // comments
             if(chr == '/'){
+                const l = f.lst;
                 // single line
                 if(f.src[f.ptr + 1] == '/'){
                     const end = strings::index(strings::sub(strsrc, f.ptr), "\n"): size;
                     f.lst = f.ptr;
                     f.ptr += end;
                     f.lin += 1;
+
+                    setptr(f);
+                    incptr(f);
+                    if(l == 0z && f.ptr == len(f.src)){
+                        fmt::fatalf("the file {} is empty\n\ntry adding:\n{}",
+                            fmtc(f.name, cmd::BLU), fmtc(fn_demo, cmd::GRN));
+                    };
                     continue;
                 // multiple lines
                 } else if(f.src[f.ptr + 1] == '*'){
@@ -261,6 +269,13 @@ fn nxttk(f: *file, rev: bool = false) (tok | COMP_ERR) = {
                         setptr(f, true);
                         return errmsg(f, "unclosed commend block found here");
                     };
+                    setptr(f);
+                    incptr(f);
+                    if(l == 0z && f.ptr == len(f.src)){
+                        fmt::fatalf("the file {} is empty\n\ntry adding:\n{}",
+                            fmtc(f.name, cmd::BLU), fmtc(fn_demo, cmd::GRN));
+                    };
+                    setptr(f, true);
                     continue;
                 };
             };

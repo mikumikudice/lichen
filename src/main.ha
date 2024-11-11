@@ -6,7 +6,7 @@ use errors;
 use strings;
 
 let silent = true;
-const version = "0.3.0";
+const version = "0.3.1";
 
 export fn main() void = {
     const abt = "mossy is the compiler for the moss programming language.\n";

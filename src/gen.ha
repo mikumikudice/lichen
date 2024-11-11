@@ -129,7 +129,7 @@ fn runc(noprint: bool, cmd: str, args: str...) void = {
 
 fn errmsg(f: *file, msg: str, tip: (str | void) = void) COMP_ERR = {
     const buff = memio::dynamic();
-
+    assert(len(f.src) > 0);
     if(f.cln == 0 && iswsp(f.src[f.lst])){
         puttk(f);
     };
