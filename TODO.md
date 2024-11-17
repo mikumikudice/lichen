@@ -1,3 +1,6 @@
 - implement unit literal `_`
 - implement arrays
-- implement member functions
+- implement dynamic types
+- implement safety checking for stack vs heap data
+- remove dependencies on mem module
+- update fmt/rt module for dynamic types

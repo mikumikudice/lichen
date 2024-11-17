@@ -11,9 +11,9 @@ pub main = fn() void & fmt {
 ```
 ## special features
 - effect system semantics.
-- simple, small and concise syntax semantics. new and yet familiar.
-- no dependencies on libc and rich (yet simple) core libraries, producing statically linked, stand-alone binary files.
-- extremely concise syntax. if it does the same thing, you write it in the same way.
+- simple, small and extremely concise syntax. if it does the same thing, you write it in the same way.
+- no dependencies on (gnu) lib-c and rich (yet simple) core libraries, producing statically linked, stand-alone binary files.
+- imperatively functional paradigm. your code does things imperatively in a functional approach.
 - rich standard library for CLI and GUI applications.
 
 ## uncommon but already known features
@@ -40,28 +40,19 @@ these are the current goals of this project:
         - [x] expressions on function call arguments
         - [ ] operators on records
         - [x] expressions within parenthesis
-        - [ ] defer
         - [x] allow functions as first class objects*
         - [ ] parallel assignment
         - [ ] range comparisons
     - [x] hex, oct and bin literals
     - [x] prime notation
     - [x] multi-line, nestable comments
+    - [ ] `for` constructor
     - [ ] type system
         - [ ] type checking
             - [x] on expressions
             - [x] on function calls
             - [ ] on record assignments
             - [x] casting for function arguments
-        - [ ] built-in functions on arrays and strings
-            - [ ] index
-            - [ ] inter
-            - [ ] map
-            - [ ] fmap
-            - [ ] reduce
-            - [ ] foldl/foldr
-            - [ ] filter
-            - [ ] sugar syntax
         - [ ] records
             - [ ] default values for record fields
             - [ ] field access of function returns
@@ -89,14 +80,21 @@ these are the current goals of this project:
     - [] libs
         - [ ] os
         - [ ] fmt
-        - [ ] mem
         - [ ] cli
         - [ ] gui
         - [ ] time
         - [ ] math
 
-- things marked with * are those who is implemented partially or are subject to change
-- things marked with ? are not yet confirmed to be added
+## supported platforms
+we plan to fully support these environments:
+
+- GNU/linux
+- openBSD/freeBSD
+- redox OS
+- haiku
+- freestanding environments (protected mode, real mode, virtual 8086 mode)
+
+moss has and will never have native support for closed source/proprietary OSes such as windows and macOS.
 
 # building moss
 moss is written in the [hare programming language](https://hare-lang.org), uses the [QBE](https://c9x.me/compile/) IR as a backend to generate the binaries, [nasm](https://nasm.us) as assembler for the language runtime and [mold](https://github.com/rui314/mold) as a linker. once all dependencies are installed, you're ready to both build the compiler and use it with no other dependencies. note that each of moss' dependencies have theirs own dependencies. once everything is set, simply run the `build.sh`. it will generate the compiler binary by the name `mossy`.
