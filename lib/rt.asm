@@ -81,36 +81,34 @@ rt.close:
     syscall
     ret
 
-; fn(handler : u32, arena : rec { u64, u64 }) str
+; fn(handler : u32, bz : u64) str
 rt.gets:
     push rdx
     push rcx
     push rsi
 
-    mov rdx, [rsi + 8]
-    sub rdx, rsi
-    sub rdx, 16
-    mov rcx, [rsi]
-    add rcx, 8
+    mov rcx, rbp
+    sub rcx, rsi
+    push rcx
+
+    mov rdx, rsi
     mov rsi, rcx
     mov rax, 0
     syscall
     
     cmp rax, 0
     jl .err
-    mov rdx, rax
-    dec rdx
+    pop rcx
+    sub rcx, 8
+    dec rax
+    mov [rcx], rax
 
+    mov rax, rcx
     pop rsi
-    mov rcx, [rsi]
-    add rcx, rdx
-    mov rax, [rsi]
-    mov [rsi], rdx
-    mov [rax], rdx
-
     pop rcx
     pop rdx
     ret
+
     .err:
     call rt.exit
 

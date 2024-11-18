@@ -2,9 +2,8 @@ use fmt;
 use rt;
 
 pub main = fn() void & fmt & rt {
-    arena = rt::arena(128);
     fmt::debug("what's your name?\n> ");
-    name = fmt::read(arena);
+    name = fmt::read(128);
 
     if not name {
         fmt::debug("please say your name!\n");
@@ -13,5 +12,4 @@ pub main = fn() void & fmt & rt {
         fmt::debug(name);
         fmt::debug("!\n");
     };
-    rt::free(arena);
 };
