@@ -51,40 +51,41 @@ global rt.absl
 rt.dummy:
     ret
 
-; fn(filepath : str, flags : u32, mode : u32) : u32
+; fn(filepath str, flags u32, mode u32) u32
 rt.open:
-    push rsi
-    push rdx
-    push rcx
     push rdi
+    push rcx
+    push rdx
+    push rsi
 
     mov rsi, rdi
     mov rdx, [rdi]
     add rsi, 8
-    mov rdi, cstr_b
-    call rt.copy
-    add rdx, rdi
-    mov rcx, 0
-    mov [rdx], cl
 
-    pop rcx
-    pop rdx
+    mov rdi, rbp
+    mov byte [rdi], 0
+    sub rdi, rdx
+    dec rdi
+    call rt.copy
+
     pop rsi
+    pop rdx
     mov rax, 2
     syscall
+    pop rcx
     pop rdi
     ret
 
-; (handle : u32) unit
+; (handle u32) unit
 rt.close:
     mov rax, 3
     syscall
     ret
 
-; fn(handler : u32, bz : u64) str
+; fn(handler u32, bz u64) str
 rt.gets:
-    push rdx
     push rcx
+    push rdx
     push rsi
 
     mov rcx, rbp
@@ -93,7 +94,7 @@ rt.gets:
 
     mov rdx, rsi
     mov rsi, rcx
-    mov rax, 0
+    xor rax, rax
     syscall
     
     cmp rax, 0
@@ -105,14 +106,14 @@ rt.gets:
 
     mov rax, rcx
     pop rsi
-    pop rcx
     pop rdx
+    pop rcx
     ret
 
     .err:
     call rt.exit
 
-; fn(handler : u32, data : str) u32
+; fn(handler u32, data str) u32
 rt.puts:
     push rdi
     push rsi
@@ -125,13 +126,21 @@ rt.puts:
     add rsi, 8
     mov rax, 1          ; system call (write)
     syscall             ; calls it
+
+    cmp rax, 0
+    jl .err
+
     pop rdx
     pop rcx
     pop rsi
     pop rdi
     ret
 
-; putb = fn(handler : u32, data : u8) : u32
+    .err:
+    mov rdi, rax
+    call rt.exit
+
+; putb = fn(handler u32, data u8) u32
 rt.putb:
     push rdi
     push rsi
@@ -152,7 +161,7 @@ rt.putb:
     pop rdi
     ret
 
-; fn(size : u64) rec { u64, u64 }
+; fn(size u64) rec { u64, u64 }
 rt.arena:
     push rdi
     push rsi
@@ -190,7 +199,7 @@ rt.arena:
     .err:
     call rt.exit
 
-; fn(ptr : rec { u64, u64 }) unit
+; fn(ptr rec { u64, u64 }) unit
 rt.free:
     push rdi
     push rdx
@@ -211,7 +220,7 @@ rt.free:
     .err:
     call rt.exit
 
-; copy = fn(dest : raw, src : raw, size : u64) : raw
+; copy = fn(dest raw, src raw, size u64) raw
 rt.copy:
     push rcx
     push rdi
@@ -239,7 +248,7 @@ rt.copy:
     pop rcx
     ret
 
-; strcpy = fn(dest : str, src : str, size : u64) : unit
+; strcpy = fn(dest str, src str, size u64) unit
 rt.strcpy:
     push rdi
     push rsi
@@ -256,7 +265,7 @@ rt.strcpy:
     xor rax, rax
     ret
 
-; strrev = fn(src : str) : str
+; strrev = fn(src str) str
 rt.strrev:
     push rbx
     push rcx
@@ -314,7 +323,7 @@ rt.strrev:
         pop rbx
         ret
 
-; sleep = fn(sec : u64, mili : u64) : unit
+; sleep = fn(sec u64, mili u64) unit
 rt.sleep:
     push rdi
     mov rax, time_t
@@ -327,35 +336,50 @@ rt.sleep:
     pop rdi
     ret
 
-; unlink = fn(filepath : str) : i32
+; unlink = fn(filepath str) i32
 rt.unlink:
+    push rdi
+    push rsi
+    push rdx
+
     mov rsi, rdi
     mov rdx, [rdi]
-    sub rdx, 8
     add rsi, 8
-    mov rdi, cstr_b
+
+    mov rdi, rbp
+    mov byte [rdi], 0
+    sub rdi, rdx
+    dec rdi
     call rt.copy
-    add rdx, rdi
-    mov rcx, 0
-    mov [rdx], cl
+
+    pop rdx
+    pop rsi
     mov rax, 57h
     syscall
-    ret
 
-; TODO
-; rename = fn(old_filepath : str, new_filepath : str) : i32
-OS.rename:
+    cmp rax, 0
+    jnz .err
+    pop rdi
+    ret
+    .err:
+    mov rdi, rax
+    call rt.exit
+
+; rename = fn(old_filepath str, new_filepath str) i32
+rt.rename:
     mov rax, 52h
     syscall
     ret
 
-; fn(code : u32) void
+; fn(code u32) void
 rt.exit:
+    call rt.absw
+    mov rdi, rax
     mov rax, 3ch
     syscall
     hlt
 
-; fn(a : str, b : str) u8
+; fn(a str, b str) u8
 rt.strcmp:
     push rdi
     push rsi
@@ -398,7 +422,7 @@ rt.strcmp:
         pop rdi
         ret
 
-; absb = fn(num : i8) : u8
+; absb = fn(num i8) u8
 rt.absb:
     push rbx
     xor rax, rax
@@ -411,7 +435,7 @@ rt.absb:
     pop rbx
     ret
 
-; absh = fn(num : i16) : u16
+; absh = fn(num i16) u16
 rt.absh:
     push rbx
     xor rax, rax
@@ -424,7 +448,7 @@ rt.absh:
     pop rbx
     ret
 
-; absw = fn(num : i32) : u32
+; absw = fn(num i32) u32
 rt.absw:
     push rbx
     xor rax, rax
@@ -437,7 +461,7 @@ rt.absw:
     pop rbx
     ret
 
-; absl = fn(num : i64) : 64
+; absl = fn(num i64) 64
 rt.absl:
     push rbx
     mov rbx, rdi

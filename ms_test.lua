@@ -13,7 +13,7 @@ if not init then os.exit(1) end
 local tdir = exec("mkdir -p " .. tmp)
 if not tdir then os.exit(1) end
 
-local tests = { "mile_0", "mile_1", "mile_2", "mile_3", "mile_4", "mile_5", "mile_6" }
+local tests = { "mile_0", "mile_1", "mile_2", "mile_3", "mile_4", "mile_5", "mile_6", "mile_7" }
 local results = {
     {},
     { "mornin' sailor!\n" },
@@ -22,6 +22,7 @@ local results = {
     { "test 1 ok\ntest 2 ok\ntest 3 ok\ntest 4 ok\n" },
     { "test ok\n" },
     { "test 1 ok\ntest 2 ok\n" },
+    {},
 }
 local fails = 0
 local failed = {}

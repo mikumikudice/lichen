@@ -177,7 +177,7 @@ const stdin = nmsp {
     pos = (0, 0),
     name = "stdin",
     value = 0: num,
-    vtype = prim::U32,
+    vtype = prim::I32,
     param = false,
     global = true,
     origin = "rt",
@@ -187,7 +187,7 @@ const stdout = nmsp {
     pos = (0, 0),
     name = "stdout",
     value = 1: num,
-    vtype = prim::U32,
+    vtype = prim::I32,
     param = false,
     global = true,
     origin = "rt",
@@ -197,7 +197,7 @@ const stderr = nmsp {
     pos = (0, 0),
     name = "stderr",
     value = 2: num,
-    vtype = prim::U32,
+    vtype = prim::I32,
     param = false,
     global = true,
     origin = "rt",
@@ -220,39 +220,27 @@ const dummy = func {
     impure = false,
     effect = ["rt"],
 };
-// fn(size : u64) rec { u64, u64 }
-const arena = func {
+// fn(filepath str, flags u32, mode u32) : u32
+const open = func {
     pos = (0, 0),
-    name = "arena",
+    name = "open",
     param = [
-        ("size", prim::U64),
+        ("filepath", prim::STRING),
+        ("flags", prim::U32),
+        ("mode", prim::U32),
     ],
-    retrn = prim::U64,
+    retrn = prim::I32,
     origin = "rt",
     public = true,
     impure = true,
     effect = ["rt"],
 };
-// fn(arena : rec { u64, u64 }) unit
-const _free = func {
+// fn(handle u32) unit
+const close = func {
     pos = (0, 0),
-    name = "free",
+    name = "close",
     param = [
-        ("arena", prim::U64),
-    ],
-    retrn = prim::U64,
-    origin = "rt",
-    public = true,
-    impure = true,
-    effect = ["rt"],
-};
-// fn(handle : u32, data : str) unit
-const puts = func {
-    pos = (0, 0),
-    name = "puts",
-    param = [
-        ("handle", prim::U32),
-        ("buffer", prim::STRING),
+        ("handle", prim::I32),
     ],
     retrn = prim::UNIT,
     origin = "rt",
@@ -260,12 +248,12 @@ const puts = func {
     impure = true,
     effect = ["rt"],
 };
-// gets = fn(u32, rec { u64, u64 }) unit
+// fn(u32, rec { u64, u64 }) unit
 const gets = func {
     pos = (0, 0),
     name = "gets",
     param = [
-        ("handle", prim::U32),
+        ("handle", prim::I32),
         ("arena" , prim::U64),
     ],
     retrn = prim::STRING,
@@ -274,11 +262,38 @@ const gets = func {
     impure = true,
     effect = ["rt"],
 };
-// exit = fn(u32) void
+// fn(handle u32, data str) unit
+const puts = func {
+    pos = (0, 0),
+    name = "puts",
+    param = [
+        ("handle", prim::I32),
+        ("buffer", prim::STRING),
+    ],
+    retrn = prim::UNIT,
+    origin = "rt",
+    public = true,
+    impure = true,
+    effect = ["rt"],
+};
+// fn(filepath str) unit
+const unlink = func {
+    pos = (0, 0),
+    name = "unlink",
+    param = [
+        ("filename", prim::STRING),
+    ],
+    retrn = prim::UNIT,
+    origin = "rt",
+    public = true,
+    impure = true,
+    effect = ["rt"],
+};
+// fn(u32) void
 const exit = func {
     pos = (0, 0),
     name = "exit",
-    param = [("code", prim::U32)],
+    param = [("code", prim::I32)],
     retrn = prim::VOID,
     origin = "rt",
     public = true,
@@ -297,10 +312,11 @@ const rtmod = module {
     ],
     funs = [
         &dummy,
-        &arena,
-        &_free,
-        &puts,
+        &open,
+        &close,
         &gets,
+        &puts,
+        &unlink,
         &exit,
     ],
 };

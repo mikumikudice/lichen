@@ -1,12 +1,12 @@
-use fmt;
+use rt;
 
-pub main = fn() void & fmt {
-    loop(0, 10);
-};
-
-loop = fn(c u64, max u64) unit & fmt {
-    fmt::debug("here!\n");
-    if c == max {
-        loop(c + 1, max)
-    }
+pub main = fn() void & rt {
+    file = rt::open("foo.txt", 64 | 2, 0o700);
+    if file > 0 {
+        rt::puts(file, "mornin' sailor!\n");
+        rt::close(file);
+        rt::unlink("foo.txt");
+    } else {
+        rt::exit(file);
+    };
 };
