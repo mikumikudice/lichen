@@ -321,6 +321,7 @@ fn nxttk(f: *file, rev: bool = false) (tok | COMP_ERR) = {
                         if(strings::hasprefix(numexp, "0o")){
                             match(strconv::stou64(strings::sub(numexp, 2), strconv::base::OCT)){
                             case let n: u64 =>
+                                incptr(f);
                                 return n: num;
                             case strconv::overflow =>
                                 return errmsg(f, "64-bit octal literal overflow");
