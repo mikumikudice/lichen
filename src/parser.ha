@@ -572,18 +572,18 @@ fn eval_body(f: *file, ctxt: *context, ret_tp: prim, dest: (str | void) = void)
                 ret_tp = exp.expr_t;
             };
             if(exp.single){
-                if(exp.is_ret){
+                if(exp.is_ret && exp.expr_t != prim::UNIT){
                     if(ctxt.branch){
                         fmt::fprintfln(&buff, "\t%{} ={} copy {}", dest,
                             get_qbe_t(exp.expr_t, 1), memio::string(&exp)!)!;
                     } else {
                         fmt::fprintfln(&buff, "\tret {}", memio::string(&exp)!)!;
                     };
-                } else {
+                } else if(exp.expr_t != prim::UNIT){
                     return errmsg(f, "meaningless statement", "to return a value, remove the semicolon");
                 };
             } else {
-                if(!exp.is_ret){
+                if(!exp.is_ret || exp.expr_t == prim::UNIT){
                     fmt::fprintln(&buff, memio::string(&exp)!)!;
                 } else {
                     fmt::fprintfln(&buff, "{}\n\tret {}",
@@ -605,18 +605,18 @@ fn eval_body(f: *file, ctxt: *context, ret_tp: prim, dest: (str | void) = void)
                 ret_tp = exp.expr_t;
             };
             if(exp.single){
-                if(exp.is_ret){
+                if(exp.is_ret && exp.expr_t != prim::UNIT){
                     if(ctxt.branch){
                         fmt::fprintfln(&buff, "\t%{} ={} copy {}", dest,
                             get_qbe_t(exp.expr_t, 1), memio::string(&exp)!)!;
                     } else {
                         fmt::fprintfln(&buff, "\tret {}", memio::string(&exp)!)!;
                     };
-                } else {
+                } else if(exp.expr_t != prim::UNIT){
                     return errmsg(f, "meaningless statement", "to return a value, remove the semicolon");
                 };
             } else {
-                if(!exp.is_ret){
+                if(!exp.is_ret || exp.expr_t == prim::UNIT){
                     fmt::fprintln(&buff, memio::string(&exp)!)!;
                 } else {
                     fmt::fprintfln(&buff, "{}\n\tret %{}.v",
@@ -645,7 +645,7 @@ fn eval_body(f: *file, ctxt: *context, ret_tp: prim, dest: (str | void) = void)
                 };
             };
             if(exp.single){
-                if(exp.is_ret){
+                if(exp.is_ret && exp.expr_t != prim::UNIT){
                     if(ctxt.branch){
                         if(need_extnd(exp.expr_t, ret_tp)){
                             fmt::fprintfln(&buff, "\t%{} =l ext{} {}", dest,
@@ -669,9 +669,11 @@ fn eval_body(f: *file, ctxt: *context, ret_tp: prim, dest: (str | void) = void)
                     if(ctxt.branch){
                         fmt::fprintfln(&buff, "\t%{} ={} copy %{}.v", dest,
                             get_qbe_t(exp.expr_t, 1), exp.exp_id)!;
-                    } else {
+                    } else if(exp.expr_t != prim::UNIT){
                         fmt::fprintfln(&buff, "{}\n\tret %{}.v",
                             memio::string(&exp)!, exp.exp_id)!;
+                    } else {
+                        fmt::fprintln(&buff, memio::string(&exp)!)!;
                     };
                 };
             };
