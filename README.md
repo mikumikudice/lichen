@@ -3,10 +3,10 @@ moss is a strongly typed, imperatively functional, AOT compiled programming lang
 ## code example
 this is a demo code for printing a hello world (in a mossy way):
 ```rust
-use fmt;
+use io;
 
-pub main = fn() void & fmt {
-    fmt::debug("mornin' sailor!");
+pub main = fn() void & io {
+    fmt::put("mornin' sailor!");
 };
 ```
 ## special features
@@ -36,17 +36,24 @@ these are the current goals of this project:
     - [ ] floats
     - [ ] expressions
         - [x] operators on primitives
-        - [ ] global reference to functions at any position
+        - [x] global reference to functions at any position
         - [x] expressions on function call arguments
         - [ ] operators on records
         - [x] expressions within parenthesis
-        - [x] allow functions as first class objects*
+        - [ ] allow functions as first class objects
+            - [ ] type notation and function as arguments
+            - [ ] aliases
+                - [x] create aliases
+                - [ ] use aliases
         - [ ] parallel assignment
         - [ ] range comparisons
     - [x] hex, oct and bin literals
     - [x] prime notation
     - [x] multi-line, nestable comments
     - [ ] `for` constructor
+        - [ ] basic iteration system
+        - [ ] reduce/fold behaviour
+            - [ ] multiple accumulators
     - [ ] type system
         - [ ] type checking
             - [x] on expressions
@@ -59,7 +66,7 @@ these are the current goals of this project:
         - [ ] unions
         - [ ] errors
             - [ ] `fail` statement
-            - [ ] error types
+            - [ ] error type
         - [ ] error assertion and short-circuit
         - [x] `todo` statement
     - [ ] control flow
@@ -68,7 +75,6 @@ these are the current goals of this project:
         - [ ] defer
     - [ ] local functions
     - [ ] default values for function arguments
-    - [ ] FFI
     - [x] effect system
 - [ ] improve helpfulness of error messages
 - [ ] code optimizations.
@@ -77,24 +83,36 @@ these are the current goals of this project:
     - [ ] tail-call elimination
 - [ ] runtime module
 - [ ] standard library
-    - [] libs
-        - [ ] os
-        - [ ] fmt
+    - [] stdlib
+        - [ ] fs
+        - [ ] io
         - [ ] cli
         - [ ] gui
         - [ ] time
         - [ ] math
 
 ## supported platforms
-we plan to fully support these environments:
+we plan to fully support these OSes/environments:
 
-- GNU/linux
-- openBSD/freeBSD
-- redox OS
-- haiku
-- freestanding environments (protected mode, real mode, virtual 8086 mode)
+- GNU/linux (lime library)
+- openBSD/freeBSD (capri library)
+- redox OS (parasect library)
+- haiku (mu library)
+- freestanding environments + protected mode/real mode (muddy)
 
+support include standard library port to the available syscalls/APIs and binary specifics.
 moss has and will never have native support for closed source/proprietary OSes such as windows and macOS.
+
+### runtime roadmap
+- [ ] lime
+    - [x] x86_64
+    - [ ] x86
+    - [ ] 64-bit risc-v
+    - [ ] 32-bit risc-v
+- [ ] capri
+- [ ] parasect
+- [ ] mu
+- [ ] muddy
 
 # building moss
 moss is written in the [hare programming language](https://hare-lang.org), uses the [QBE](https://c9x.me/compile/) IR as a backend to generate the binaries, [nasm](https://nasm.us) as assembler for the language runtime and [mold](https://github.com/rui314/mold) as a linker. once all dependencies are installed, you're ready to both build the compiler and use it with no other dependencies. note that each of moss' dependencies have theirs own dependencies. once everything is set, simply run the `build.sh`. it will generate the compiler binary by the name `mossy`.

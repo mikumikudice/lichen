@@ -1,5 +1,5 @@
 # disclaimer
-until the compiler is at 1.0, some of these features might be unavailable or be considered invalid syntax.
+until the compiler is at 1.0, some of these features might be unavailable, be considered invalid syntax, .
 
 # syntax
 moss uses c-like (multi-lined) comment blocks with support for nested blocks.
@@ -21,7 +21,7 @@ moss is a functional programming language with focus on concise syntax and gramm
 pi = 355:113 f64;       // global floating point variable
 
 pub main = fn() void {  // public function of return type void
-    x = 124 u32;        // local variable of type 124
+    x = 124 u32;        // local variable of type u32
 };
 
 dog = rec {             // a record definition
@@ -32,8 +32,27 @@ dog = rec {             // a record definition
 ```
 global variables are evaluated at compile time and can even use function calls on its expressions as long as these functions are pure. see more on [effects section](#effects).
 
+## first-class functions
+moss also support first-class functions, for instance:
+```rust
+int_map = fn(l []u32, p fn(u32) u32) []u32 {
+    for i .. l {
+        p(i)
+    }
+};
+
+mul_by_two = fn(i u32) u32 { i * 2 };
+
+predicate = mul_by_two;
+
+pub main = fn() void {
+    arr = [ 1, 2, 3, 4, 5 ] u32;
+    arr' = int_map(arr, predicate);
+};
+```
+
 ## numerical literals
-moss allows digit separators at any place and decimal, hexadecimal, octal and binary literals, but has no concept of decimal number notation (see more on [floating points section](#floating-points)).
+moss allows digit separators at any place, decimal, hexadecimal, octal and binary literals, and has no concept of decimal number notation (see more on [floating points section](#floating-points)).
 ```rust
 x = 1_000_000_000 u64;
 y = 0x_77_f3_63 u32;
@@ -120,9 +139,9 @@ x = 6 u64;
 y = 7 u64;
 
 if x * y == 42 and x > y {
-    fmt::putl("true!")!;
+    io::putl("true!")!;
 } else {
-    fmt::putl("false!")!;
+    io::putl("false!")!;
 };
 
 z = if x + y > 12 {
@@ -137,19 +156,19 @@ x = "";
 y = "hiii";
 
 if x {
-    fmt::putl("won't run")!;
+    io::putl("won't run")!;
 } else if y {
-    fmt::putl("runs")!;
+    io::putl("runs")!;
 };
 
 if _ or 0 {
-    fmt::putl("also won't run")!;
+    io::putl("also won't run")!;
 } else if 4 {
-    fmt::putl("also runs")!;
+    io::putl("also runs")!;
 };
 
 if not 0 {
-    fmt::putl("runs too!")!;
+    io::putl("runs too!")!;
 };
 ```
 also, all boolean expressions are lazily evaluated.
@@ -173,40 +192,38 @@ txt = match x {
 ```
 
 ## effects
-the root of all effects in moss -- i.e. impure code -- is implemented behind the built-in module `rt` (written in assembly). all functions that use this module must include its name as a tag. similarly, all modules that implement impure functions require the caller to add the module name as an effect tag. for instance, the `fmt` module:
+the root of all effects in moss -- i.e. impure code -- is implemented behind the built-in module `rt` (written in assembly). all functions that use this module must include its name as a tag. similarly, all modules that implement impure functions require the caller to add the module name as an effect tag. for instance, the `io` module:
 ```rust
-// fmt.ms
+// io.ms
 use rt;
 
-pub debug = fn(data str) unit & rt {
+pub put = fn(data str) unit & rt {
     rt::puts(rt::stdout, data);
 };
 ```
 ```rust
 // main.ms
-use fmt;
+use io;
 
-pub main = fn() void & fmt {
-    fmt::debug("mornin' sailor!");
+pub main = fn() void & io {
+    io::put("mornin' sailor!");
 };
 ```
 effects can also be chained:
 ```rust
-use mem;
-use fmt;
+use fs;
+use io;
 
-pub main = fn() void & fmt & mem {
-    arena = mem::arena(128);
-    fmt::debug("what's your name?\n> ");
-    name = fmt::read(arena);
+pub main = fn() void & io & fs {
+    io::put("what's your name?\n> ");
+    name = io::get(128);
 
     if not name {
-        fmt::debug("please say your name!\n");
+        io::put("please say your name!\n");
     } else {
-        fmt::debug("hello, ");
-        fmt::debug(name);
-        fmt::debug("!\n");
+        file = fs::open("out.txt", fs::RWONLY)!;
+        fs::putl(file, "hello, " + name + "!");
+        fs::close(file);
     };
-    mem::free(arena);
 };
 ```
