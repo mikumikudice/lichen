@@ -38,21 +38,21 @@ for i, t in pairs(tests) do
             if not ran then
                 failed[#failed + 1] = "exit code: " .. (sig)
                 fails = fails + 1
-            end
-
-            local log = io.open(tmp .. t .. ".log") or os.exit(1)
-            local res = log:read("a")
-            log:close()
-
-            if #results[i] == 0 and res ~= "" then
-                res = res:gsub("\n", "\\n")
-                failed[#failed + 1] = t .. "'s ouput is incorrect: \"" .. res .. "\""
-                fails = fails + 1
-            elseif #results[i] == 1 and res ~= results[i][1] then
-                res = res:gsub("\n", "\\n")
-                local expct = results[i][1]:gsub("\n", "\\n")
-                failed[#failed + 1] = t .. "'s ouput is incorrect:\n\tgot: \"" .. res .. "\"\n\texpected: \"" .. expct .. "\""
-                fails = fails + 1
+            else
+                local log = io.open(tmp .. t .. ".log") or os.exit(1)
+                local res = log:read("a")
+                log:close()
+    
+                if #results[i] == 0 and res ~= "" then
+                    res = res:gsub("\n", "\\n")
+                    failed[#failed + 1] = t .. "'s ouput is incorrect: \"" .. res .. "\""
+                    fails = fails + 1
+                elseif #results[i] == 1 and res ~= results[i][1] then
+                    res = res:gsub("\n", "\\n")
+                    local expct = results[i][1]:gsub("\n", "\\n")
+                    failed[#failed + 1] = t .. "'s ouput is incorrect:\n\tgot: \"" .. res .. "\"\n\texpected: \"" .. expct .. "\""
+                    fails = fails + 1
+                end
             end
         elseif #results[i] == 2 then
             local input = io.open(tmp .. t ..".input", "w") or os.exit(1)
@@ -62,15 +62,15 @@ for i, t in pairs(tests) do
             if not ran then
                 failed[#failed + 1] = t .. "'s exit code: " .. (sig)
                 fails = fails + 1
-            end
-
-            local log = io.open(tmp .. t .. ".log") or os.exit(1)
-            local res = log:read("a")
-            if res ~= results[i][2] then
-                res = res:gsub("\n", "\\n")
-                local expct = results[i][2]:gsub("\n", "\\n")
-                failed[#failed + 1] = t .. "'s ouput is incorrect:\n\tgot: \"" .. res .. "\"\n\texpected: \"" .. expct .. "\""
-                fails = fails + 1
+            else
+                local log = io.open(tmp .. t .. ".log") or os.exit(1)
+                local res = log:read("a")
+                if res ~= results[i][2] then
+                    res = res:gsub("\n", "\\n")
+                    local expct = results[i][2]:gsub("\n", "\\n")
+                    failed[#failed + 1] = t .. "'s ouput is incorrect:\n\tgot: \"" .. res .. "\"\n\texpected: \"" .. expct .. "\""
+                    fails = fails + 1
+                end
             end
         else
             local argl = ""
@@ -85,15 +85,15 @@ for i, t in pairs(tests) do
             if not ran then
                 failed[#failed + 1] = "exit code: " .. (sig)
                 fails = fails + 1
-            end
-
-            local log = io.open(tmp .. t .. ".log") or os.exit(1)
-            local res = log:read("a")
-            if res ~= results[i][#results[i]] then
-                res = res:gsub("\n", "\\n")
-                local expct = results[i][#results[i]]:gsub("\n", "\\n")
-                failed[#failed + 1] = t .. "'s ouput is incorrect:\n\tgot: \"" .. res .. "\"\n\texpected: \"" .. expct .. "\""
-                fails = fails + 1
+            else
+                local log = io.open(tmp .. t .. ".log") or os.exit(1)
+                local res = log:read("a")
+                if res ~= results[i][#results[i]] then
+                    res = res:gsub("\n", "\\n")
+                    local expct = results[i][#results[i]]:gsub("\n", "\\n")
+                    failed[#failed + 1] = t .. "'s ouput is incorrect:\n\tgot: \"" .. res .. "\"\n\texpected: \"" .. expct .. "\""
+                    fails = fails + 1
+                end
             end
         end
     end

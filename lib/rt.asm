@@ -12,8 +12,8 @@ segment .data
     time_t:
         dq 0
         dq 0
-segment .bss
-    cstr_b resb 2048
+    stko dq 0 ; stack offset
+    last dq 0 ; last stackframe
 
 segment .text
 global empty.str
@@ -88,8 +88,20 @@ rt.gets:
     push rdx
     push rsi
 
+    mov rcx, [last]
+    cmp rbp, rcx
+    jz .off
+    mov [stko], rsi
+    mov [last], rbp
+    jmp .fnsh
+    .off:
+    mov rcx, [stko]
+    add rcx, rsi
+    mov [stko], rcx
+    .fnsh:
+
     mov rcx, rbp
-    sub rcx, rsi
+    sub rcx, [stko]
     push rcx
 
     mov rdx, rsi
@@ -330,7 +342,7 @@ rt.sleep:
     mov [rax], rdi
     add rax, 8
     mov [rax], rsi
-    lea rdi, time_t
+    mov rdi, [time_t]
     mov eax, 23h
     syscall
     pop rdi

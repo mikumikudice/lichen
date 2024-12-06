@@ -248,13 +248,13 @@ const close = func {
     impure = true,
     effect = ["rt"],
 };
-// fn(u32, rec { u64, u64 }) unit
+// fn(u32, u64) str
 const gets = func {
     pos = (0, 0),
     name = "gets",
     param = [
         ("handle", prim::I32),
-        ("arena" , prim::U64),
+        ("buf_sz", prim::U64),
     ],
     retrn = prim::STRING,
     origin = "rt",
