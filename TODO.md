@@ -1,4 +1,10 @@
+- implement iterators
+- string concatenation
+- fix empty file with multiple comments crash
 - implement arrays
+- tagged unions
+- error type
+- first-class functions
 - implement dynamic types
 - implement safety checking for stack vs heap data
 - update fmt/rt module for dynamic types

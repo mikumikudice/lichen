@@ -68,7 +68,7 @@ fn get_t_len(vtp: prim) int = {
         prim::STRING, prim::ANY =>
         return 8;
     case =>
-        fmt::fatalf("gen_t_len: unexpected type {}", vtp: int);
+        fmt::fatalf("get_t_len: unexpected type {}", vtp: int);
     };
 };
 
@@ -238,13 +238,13 @@ fn push_var(nm: idt, f: *file, ctxt: *context, pub: bool = false)
         return self;
     case let var: *nmsp =>
         return errmsg(f, "invalid namespace re-assignment",
-            fmt::asprintf("previously defined at {}:{}:{}",
-            var.origin, var.pos.0, var.pos.1));
+            fmt::asprintf("`{}` was previously defined at {}:{}:{}",
+            var.name, var.origin, var.pos.0, var.pos.1));
 
     case let fun: *func =>
         return errmsg(f, "invalid namespace re-assignment",
-            fmt::asprintf("previously defined at {}:{}:{}",
-            fun.origin, fun.pos.0, fun.pos.1));
+            fmt::asprintf("`{}` was previously defined at {}:{}:{}",
+            fun.name, fun.origin, fun.pos.0, fun.pos.1));
     };
 };
 
@@ -266,13 +266,13 @@ fn push_fun(nm: idt, f: *file, ctxt: *context, param: [](idt, prim), retrn: prim
         return self;
     case let var: *nmsp =>
         return errmsg(f, "invalid namespace re-assignment",
-            fmt::asprintf("previously defined at {}:{}:{}",
-            var.origin, var.pos.0, var.pos.1));
+            fmt::asprintf("`{}` was previously defined at {}:{}:{}",
+            var.name, var.origin, var.pos.0, var.pos.1));
 
     case let fun: *func =>
         return errmsg(f, "invalid namespace re-assignment",
-            fmt::asprintf("previously defined at {}:{}:{}",
-            fun.origin, fun.pos.0, fun.pos.1));
+            fmt::asprintf("`{}` was previously defined at {}:{}:{}",
+            fun.name, fun.origin, fun.pos.0, fun.pos.1));
     };
 };
 
@@ -396,8 +396,11 @@ fn parse(fname: str, ctxt: *context) (memio::stream | COMP_ERR) = {
 fn eval_globdef(f: *file, ctxt: *context, nm: idt, pub: bool = false)
     (memio::stream | fun_def | COMP_ERR) = {
     const buff = memio::dynamic();
+    //fmt::println(gen_pos(f))!;
+    const dup = *f;
     let next = nxttk(f)?;
-    const oper = expct(next is opr, next, f, "type or namespace definition")?: opr;
+    const oper = expct(next is opr, next, f,
+        "expected type or namespace definition")?: opr;
     switch(oper){
     case opr::ASSIGNMT =>
         if(ahead(f, kwd::FUNCTION) is kwd){
@@ -409,12 +412,132 @@ fn eval_globdef(f: *file, ctxt: *context, nm: idt, pub: bool = false)
             eval_fundef(f, ctxt, nm, buff, pub)?;
             return fd;
         } else {
-            // TODO: comptime expressions
-            void;
+            const (val, tp) = eval_constexp(f, ctxt)?;
+            const lit = match(val){
+            case let v: u64 =>
+                yield fmt::asprint(v);
+            case let v: i64 =>
+                yield fmt::asprint(v);
+            case let v: txt =>
+                yield fmt::asprint(tostr(v));
+            case =>
+                assert(false, "unreachable");
+            };
+            let con = push_var(nm, &dup, ctxt)?;
+            con.value = val;
+            fmt::fprintfln(&buff, "data ${} = {{ {} {} }}\n",
+                nm, get_qbe_t(tp, 1), lit)!;
         };
     case => assert(false, "unreachable");
     };
     return buff;
+};
+
+fn eval_constexp(f: *file, ctxt: *context) ((expr_h, prim) | COMP_ERR) = {
+    let next = nxttk(f)?;
+    if(next is opr){
+        expct(!is_unry(next: opr), next, f,
+            "unary operators on global constants not implemented yet")?;
+        expct(!cmp_tok(next, opr::ASSIGNMT), next, f,
+            "cannot nest assignments at global scope")?;
+    };
+    let (i_v, i_t) = solve_hand(next, f, ctxt)?;
+    let con_v = final_val(i_v, f, ctxt)?: expr_h;
+    let con_t = i_t as prim;
+
+    next = nxttk(f)?;
+    for(!(next is eos)){
+        const o = expct(next is opr, next, f, "operator or end of line")?: opr;
+        expct(!cmp_tok(o, opr::LOGICNOT), next, f, "not implemented yet")?;
+        
+        next = nxttk(f)?;
+        const (n_v, n_t) = solve_hand(next, f, ctxt)?;
+        const han_v = final_val(n_v, f, ctxt)?: expr_h;
+        const han_t = n_t as prim;
+
+        expct(operable(con_t, han_t, o), o, f, "mismatch between member types",
+            cast_err(con_t, han_t, true))?;
+        con_t = cast_to(con_t, han_t, next, f)?;
+        switch(o){
+        case opr::LOGICAND =>
+            const lhd = con_v;
+            match(lhd){
+            case let u: u64 =>
+                const rhd = han_v as u64;
+                con_v = (u & rhd): expr_h;
+            case let i: i64 =>
+                const rhd = han_v as i64;
+                con_v = (i & rhd): expr_h;
+            };
+        case opr::LOGIC_OR =>
+            const lhd = con_v;
+            match(lhd){
+            case let u: u64 =>
+                const rhd = han_v as u64;
+                con_v = (u | rhd): expr_h;
+            case let i: i64 =>
+                const rhd = han_v as i64;
+                con_v = (i | rhd): expr_h;
+            };
+        case opr::BITSHFTR =>
+            const lhd = con_v;
+            match(lhd){
+            case let u: u64 =>
+                const rhd = han_v as u64;
+                con_v = (u >> rhd): expr_h;
+            case let i: i64 =>
+                const rhd = han_v as i64;
+                con_v = (i >> rhd): expr_h;
+            };
+        case opr::BITSHFTL =>
+            const lhd = con_v;
+            match(lhd){
+            case let u: u64 =>
+                const rhd = han_v as u64;
+                con_v = (u >> rhd): expr_h;
+            case let i: i64 =>
+                const rhd = han_v as i64;
+                con_v = (i >> rhd): expr_h;
+            };
+        case opr::LOGICXOR =>
+            const lhd = con_v;
+            match(lhd){
+            case let u: u64 =>
+                const rhd = han_v as u64;
+                con_v = (u ^ rhd): expr_h;
+            case let i: i64 =>
+                const rhd = han_v: i64;
+                con_v = (i & rhd): expr_h;
+            };
+        case opr::BOOL_EQL => assert(false, "TODO");
+        case opr::BOOL_DIF => assert(false, "TODO");
+        case opr::BOOL_LSS => assert(false, "TODO");
+        case opr::BOOL_GRT => assert(false, "TODO");
+        case opr::BOOL_LEQ => assert(false, "TODO");
+        case opr::BOOL_GEQ => assert(false, "TODO");
+        case opr::ARTH_PLS => assert(false, "TODO");
+        case opr::ARTH_MIN => assert(false, "TODO");
+        case opr::ARTH_MUL => assert(false, "TODO");
+        case opr::ARTH_DIV => assert(false, "TODO");
+        case opr::RATIODIV => assert(false, "TODO");
+        case opr::ARTH_REM => assert(false, "TODO");
+        case =>
+            assert(false, "unreachable");
+        };
+        next = nxttk(f)?;
+    };
+    return (con_v, con_t);
+};
+
+fn final_val(hand: expr_h, f: *file, ctxt: *context) (expr_h | COMP_ERR) = {
+    match(hand){
+    case let nm: *nmsp =>
+        return nm.value;
+    case =>
+        expct(hand is u64 || hand is i64 || hand is txt,
+            eol, f, "invalid member for global expression")?;
+        return hand;
+    };
 };
 
 fn eval_fundef(f: *file, ctxt: *context, nm: idt, buff: memio::stream, pub: bool,

@@ -13,11 +13,10 @@ if not init then os.exit(1) end
 local tdir = exec("mkdir -p " .. tmp)
 if not tdir then os.exit(1) end
 
-local tests = { "mile_0", "mile_1", "mile_2", "mile_3", "mile_4", "mile_5", "mile_6", "mile_7" }
+local tests = { "vars", "files", "console", "branching", "math", "expressions" }
 local results = {
     {},
-    { "mornin' sailor!\n" },
-    { "mornin' sailor!\n" },
+    {},
     { "mikaela\n", "what's your name?\n> hello, mikaela!\n" },
     { "test 1 ok\ntest 2 ok\ntest 3 ok\ntest 4 ok\n" },
     { "test ok\n" },
@@ -27,7 +26,7 @@ local results = {
 local fails = 0
 local failed = {}
 for i, t in pairs(tests) do
-    local cmd = "./bin/mossy " .. flags .. " ex/" .. t .. ".ms " .. tmp .. t
+    local cmd = "./bin/mossy " .. flags .. " tests/" .. t .. ".ms " .. tmp .. t
     local ok = exec(cmd)
     if not ok then
         failed[#failed + 1] = t .. " failed on compilation"

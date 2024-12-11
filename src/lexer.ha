@@ -67,10 +67,6 @@ fn cmp_tok(l: tok, r: tok) bool = {
         case let n: num =>
             if(!(r is num)) return false;
             return n: u64 == r: num: u64;
-            //match(n){
-            //case u64 => return r: num is u64 && n: u64 == r: num: u64;
-            //case i64 => return r: num is i64 && n: i64 == r: num: i64;
-            //};
         case let this: txt =>
             if(!(r is num)) return false;
             const max = len(this: []u8);
@@ -234,6 +230,7 @@ fn nxttk(f: *file, rev: bool = false) (tok | COMP_ERR) = {
                     const end = strings::index(strings::sub(strsrc, f.ptr), "\n"): size;
                     f.lst = f.ptr;
                     f.ptr += end;
+                    fmt::println(end)!;
                     f.lin += 1;
 
                     setptr(f);

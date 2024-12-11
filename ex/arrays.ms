@@ -1,16 +1,16 @@
-use fmt;
+use io;
 
-pub main = fn() void & fmt {
+pub main = fn() void & io {
     num = [ 1, 2, 3, 4, 5 ] []u32;
     two = for n .. num {
         n * 2
     };
-    sum = for a, i .. two {
+    sum = for a = 0; i .. two; a {
         a + i
     };
     if sum == 15 {
-        fmt::debug("success!\n");
+        io::put("success!\n");
     } else {
-        fmt::debug("fail!\n");
+        io::put("fail!\n");
     };
 };
