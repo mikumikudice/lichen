@@ -58,16 +58,30 @@ rt.open:
     push rdx
     push rsi
 
-    mov rsi, rdi
-    mov rdx, [rdi]
-    add rsi, 8
+    mov rcx, [last]
+    cmp rbp, rcx
+    jz .off
+    mov [stko], rsi
+    mov [last], rbp
+    jmp .fnsh
+    .off:
+    mov rcx, [stko]
+    add rcx, rsi
+    mov [stko], rcx
+    .fnsh:
 
-    mov rdi, rbp
-    mov byte [rdi], 0
-    sub rdi, rdx
-    dec rdi
+    mov rcx, rsp
+    dec rcx
+    mov [rcx], byte 0
+    sub rcx, [stko]
+
+    mov rdx, [rdi]
+    add rdi, 8
+    mov rsi, rdi
+    mov rdi, rcx
     call rt.copy
 
+    mov rdi, rcx
     pop rsi
     pop rdx
     mov rax, 2
@@ -100,7 +114,7 @@ rt.gets:
     mov [stko], rcx
     .fnsh:
 
-    mov rcx, rbp
+    mov rcx, rsp
     sub rcx, [stko]
     push rcx
 

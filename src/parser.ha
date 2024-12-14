@@ -396,7 +396,6 @@ fn parse(fname: str, ctxt: *context) (memio::stream | COMP_ERR) = {
 fn eval_globdef(f: *file, ctxt: *context, nm: idt, pub: bool = false)
     (memio::stream | fun_def | COMP_ERR) = {
     const buff = memio::dynamic();
-    //fmt::println(gen_pos(f))!;
     const dup = *f;
     let next = nxttk(f)?;
     const oper = expct(next is opr, next, f,
@@ -425,7 +424,10 @@ fn eval_globdef(f: *file, ctxt: *context, nm: idt, pub: bool = false)
             };
             let con = push_var(nm, &dup, ctxt)?;
             con.value = val;
-            fmt::fprintfln(&buff, "data ${} = {{ {} {} }}\n",
+            con.vtype = tp;
+            con.public = pub;
+            con.global = true;
+            fmt::fprintf(&buff, "data ${} = {{ {} {} }}",
                 nm, get_qbe_t(tp, 1), lit)!;
         };
     case => assert(false, "unreachable");
@@ -946,7 +948,10 @@ fn eval_exp(f: *file, ctxt: *context, tk: tok, buff: memio::stream, limit: []tok
             const (chdr, fname) = gen_fcall(call, ctxt, f);
             if(!out.is_ret){
                 out.single = false;
-                fmt::fprintf(&out, "\t{}\n", memio::string(&chdr)!)!;
+                const hstr = memio::string(&chdr)!;
+                if(len(hstr) > 0){
+                    fmt::fprintf(&out, "\t{}\n", hstr)!;
+                };
             } else {
                 out.single = false;
                 fmt::fprintf(&out, "\t{}\n\t%{}.v ={} copy {}", memio::string(&chdr)!,
@@ -970,8 +975,7 @@ fn eval_exp(f: *file, ctxt: *context, tk: tok, buff: memio::stream, limit: []tok
         let lfth =
                 match(expr.args[0]){
                 case let var: *nmsp =>
-                    yield fmt::asprintf("%{}", var.name);
-
+                    yield fmt::asprintf("{}", gen_wrp(var, f, ctxt));
                 case let n: u64 =>
                     yield fmt::asprintf("{}", n: u64);
 
@@ -982,8 +986,14 @@ fn eval_exp(f: *file, ctxt: *context, tk: tok, buff: memio::stream, limit: []tok
                     const wrp = fmt::asprintf("%{}.v", get_qbe_t(call.fun.retrn, 1));
                     const (chdr, fname) = gen_fcall(call, ctxt, f);
                     defer io::close(&chdr)!;
-                    fmt::fprintf(&out, "\t{}\n\t%{}.v ={} {}\n", memio::string(&chdr)!,
-                        wrp, get_qbe_t(call.fun.retrn, 1), fname)!;
+                    const hstr = memio::string(&chdr)!;
+                    if(len(hstr) > 0){
+                        fmt::fprintf(&out, "\t{}\n\t%{}.v ={} {}\n", hstr,
+                            wrp, get_qbe_t(call.fun.retrn, 1), fname)!;
+                    } else {
+                        fmt::fprintf(&out, "\t%{}.v ={} {}\n", wrp,
+                            get_qbe_t(call.fun.retrn, 1), fname)!;
+                    };
                     yield wrp;
                 case let sub: synthexp =>
                     yield
@@ -1004,7 +1014,7 @@ fn eval_exp(f: *file, ctxt: *context, tk: tok, buff: memio::stream, limit: []tok
             const rgth =
                 match(expr.args[hidx]){
                 case let var: *nmsp =>
-                    yield fmt::asprintf("%{}", var.name);
+                    yield fmt::asprintf("{}", gen_wrp(var, f, ctxt));
 
                 case let n: u64 =>
                     yield fmt::asprintf("{}", n: u64);
@@ -1016,8 +1026,14 @@ fn eval_exp(f: *file, ctxt: *context, tk: tok, buff: memio::stream, limit: []tok
                     const wrp = fmt::asprintf("%{}.v", get_qbe_t(call.fun.retrn));
                     const (chdr, fname) = gen_fcall(call, ctxt, f);
                     defer io::close(&chdr)!;
-                    hdr = fmt::asprintf("{}\t{}\n\t%{}.v ={} {}\n", hdr, memio::string(&chdr)!,
-                        wrp, get_qbe_t(call.fun.retrn, 1), fname);
+                    const hstr = memio::string(&chdr)!;
+                    if(len(hstr) > 0){
+                        hdr = fmt::asprintf("{}\t{}\n\t%{}.v ={} {}\n", hdr, hstr,
+                            wrp, get_qbe_t(call.fun.retrn, 1), fname);
+                    } else {
+                        hdr = fmt::asprintf("{}\t%{}.v ={} {}\n", hdr, wrp,
+                            get_qbe_t(call.fun.retrn, 1), fname);
+                    };
                     yield wrp;
                 case let sub: synthexp =>
                     yield
@@ -1090,6 +1106,7 @@ fn eval_exp(f: *file, ctxt: *context, tk: tok, buff: memio::stream, limit: []tok
 
 fn solve_hand(hand: tok, f: *file, ctxt: *context)
     ((expr_h, (prim | void)) | COMP_ERR) = {
+        const dup = *f;
     if(cmp_tok(hand, sym::OPEN_PAR)){
         const sub = eval_exp(f, ctxt, nxttk(f)?,
             memio::dynamic(), [sym::CLOSEPAR])?;
@@ -1128,7 +1145,7 @@ fn solve_hand(hand: tok, f: *file, ctxt: *context)
             hand = nxttk(f)?;
             yield op;
         };
-    const fllw = ahead(f,  [opr::MODFIELD, opr::OBJFIELD])?;
+    const fllw = ahead(f, [opr::MODFIELD, opr::OBJFIELD])?;
     if(fllw is opr){
         if(cmp_tok(fllw: opr, opr::MODFIELD)){
             nxttk(f)!;
@@ -1234,8 +1251,13 @@ fn solve_hand(hand: tok, f: *file, ctxt: *context)
                                 defer io::close(&chdr)!;
                                 const tpz = get_qbe_t(cast, 1);
 
-                                fmt::fprintf(&wrp, "\t{}\n\t%{} ={} %{}\n",
-                                    memio::string(&chdr)!, wrp.exp_id, tpz, fname)!;
+                                const hstr = memio::string(&chdr)!;
+                                if(len(hstr) > 0){
+                                    fmt::fprintf(&wrp, "\t{}\n\t%{} ={} %{}\n",
+                                        hstr, wrp.exp_id, tpz, fname)!;
+                                } else {
+                                    fmt::fprintf(&wrp, "\t%{} ={} %{}\n", wrp.exp_id, tpz, fname)!;
+                                };
                                 if(pos is opr){
                                     switch(pos as opr){
                                     case opr::ARTH_PLS => void;
@@ -1284,7 +1306,7 @@ fn solve_hand(hand: tok, f: *file, ctxt: *context)
                 };
             };
         } else if(cmp_tok(fllw: opr, opr::OBJFIELD)){
-            void;
+            void; // TODO
         };
     };
     return match(hand){
@@ -1309,6 +1331,9 @@ fn solve_hand(hand: tok, f: *file, ctxt: *context)
         match(get_nm(i, ctxt.scp)){
         case let var: *nmsp =>
             const cast = parse_cast(f, var.vtype)?;
+            if(var.global){
+                return (var.value, cast);
+            };
             if(!need_extnd(var.vtype, cast)){
                 return (var, cast);
             } else {
@@ -1331,6 +1356,7 @@ fn solve_hand(hand: tok, f: *file, ctxt: *context)
                 const call = eval_fcall(fun, f, ctxt)?;
                 const cast = parse_cast(f, call.fun.retrn)?;
                 if(!need_extnd(call.fun.retrn, cast)){
+                    const (chdr, fname) = gen_fcall(call, ctxt, f);
                     const wrp = synthexp {
                         buffer = memio::dynamic(),
                         expr_t = cast,
@@ -1341,9 +1367,11 @@ fn solve_hand(hand: tok, f: *file, ctxt: *context)
                         exp_id = fmt::asprintf("{}",
                             gen_wrp(call.fun, f, ctxt, true)),
                     };
-                    const (chdr, fname) = gen_fcall(call, ctxt, f);
                     defer io::close(&chdr)!;
-                    fmt::fprintf(&wrp.buffer, "\t{}\n", memio::string(&chdr)!)!;
+                    const hstr = memio::string(&chdr)!;
+                    if(len(hstr) > 0){
+                        fmt::fprintf(&wrp.buffer, "\t{}\n", hstr)!;
+                    };
                     return (wrp, cast);
                 } else {
                     const wrp = synthexp {
@@ -1369,7 +1397,7 @@ fn solve_hand(hand: tok, f: *file, ctxt: *context)
             expct(!ctxt.assign, eol, f,
                 "invalid use of undefined variable")?;
             // TODO: local functions
-            const nm = push_var(i, f, ctxt)?;
+            const nm = push_var(i, &dup, ctxt)?;
             return (nm, void);
         };
     case =>
@@ -1623,13 +1651,8 @@ fn gen_args(call: funcall) (memio::stream, memio::stream) = {
                     get_qbe_t(call.args[a].expr_t, 2), memio::string(&call.args[a])!)!;
                 yield wrp;
             };
-        if(a > 0){
-            fmt::fprintf(&argl, ", {} {}",
-                get_qbe_t(call.fun.param[a].1, 1), id)!;
-        } else {
-            fmt::fprintf(&argl, "{} {}",
-                get_qbe_t(call.fun.param[a].1), id)!;
-        };
+        fmt::fprintf(&argl, "{} {}, ",
+            get_qbe_t(call.fun.param[a].1, 1), id)!;
     };
     return (argl, header);
 };
@@ -1639,13 +1662,8 @@ fn gen_params(params: [](idt, prim)) memio::stream = {
     const max = len(params);
     for(let p = 0z; p < max; p += 1){
         const prm = params[p];
-        if(p > 0){
-            fmt::fprintf(&buff, ", {} %{}",
-                get_qbe_t(prm.1, 1), prm.0: str)!;
-        } else {
-            fmt::fprintf(&buff, "{} %{}",
-                get_qbe_t(prm.1, 1), prm.0: str)!;
-        };
+        fmt::fprintf(&buff, "{} %{}, ",
+            get_qbe_t(prm.1, 1), prm.0: str)!;
     };
     return buff;
 };
@@ -1667,7 +1685,7 @@ fn gen_fcall(call: funcall, ctxt: *context, f: *file) (memio::stream, str) = {
             get_qbe_t(call.fun.retrn, 1), argl)!;
     };
     if(is_obj(call.fun.retrn)){
-        void;//fmt::fprintf(&buf, "\n\t%{0} =l call $rt.movstk(l %{0})", wrp)!;
+        void; // fmt::fprintf(&buf, "\n\t%{0} =l call $rt.movstk(l %{0})", wrp)!;
     };
     return (buf, fmt::asprintf("%{}", wrp));
 };

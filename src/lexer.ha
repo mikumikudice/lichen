@@ -227,14 +227,14 @@ fn nxttk(f: *file, rev: bool = false) (tok | COMP_ERR) = {
                 const l = f.lst;
                 // single line
                 if(f.src[f.ptr + 1] == '/'){
-                    const end = strings::index(strings::sub(strsrc, f.ptr), "\n"): size;
                     f.lst = f.ptr;
-                    f.ptr += end;
-                    fmt::println(end)!;
-                    f.lin += 1;
+                    // jump to end of line
+                    for(f.src[f.ptr] != '\n' || f.ptr == len(f.src)){
+                        f.ptr += 1;
+                    };
+                    // go back to not mess with incptr after the `continue`
+                    f.ptr -= 1;
 
-                    setptr(f);
-                    incptr(f);
                     if(l == 0z && f.ptr == len(f.src)){
                         fmt::fatalf("the file {} is empty\n\ntry adding:\n{}",
                             fmtc(f.name, cmd::BLU), fmtc(fn_demo, cmd::GRN));

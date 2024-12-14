@@ -6,7 +6,7 @@ this is a demo code for printing a hello world (in a mossy way):
 use io;
 
 pub main = fn() void & io {
-    fmt::put("mornin' sailor!");
+    io::put("mornin' sailor!");
 };
 ```
 ## special features
@@ -35,6 +35,7 @@ these are the current goals of this project:
 - [ ] parser and code gen
     - [ ] floats
     - [ ] expressions
+        - [x] global variables
         - [x] operators on primitives
         - [x] global reference to functions at any position
         - [x] expressions on function call arguments
@@ -60,15 +61,22 @@ these are the current goals of this project:
             - [x] on function calls
             - [ ] on record assignments
             - [x] casting for function arguments
+        - [ ] arrays
+            - [ ] arrays of primitives
+            - [ ] auto-fill syntax
+            - [ ] arrays of objects
+        - [ ] tuples
         - [ ] records
             - [ ] default values for record fields
             - [ ] field access of function returns
-        - [ ] unions
+            - [ ] allow records to be returned by functions
+        - [ ] tagged unions
         - [ ] errors
             - [ ] `fail` statement
             - [ ] error type
         - [ ] error assertion and short-circuit
         - [x] `todo` statement
+        - [ ] dynamic types
     - [ ] control flow
         - [x] if/else
         - [ ] match

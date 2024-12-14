@@ -3,8 +3,9 @@
 - fix empty file with multiple comments crash
 - implement arrays
 - tagged unions
+- tuples
 - error type
 - first-class functions
 - implement dynamic types
 - implement safety checking for stack vs heap data
-- update fmt/rt module for dynamic types
+- update io/rt module for dynamic types
