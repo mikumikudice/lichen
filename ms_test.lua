@@ -35,7 +35,7 @@ for i, t in pairs(tests) do
         if #results[i] <= 1 then
             local ran, _, sig = exec(tmp .. t .. " > " .. tmp .. t .. ".log")
             if not ran then
-                failed[#failed + 1] = "exit code: " .. (sig)
+                failed[#failed + 1] = "test \""  .. t .. "\" exit code: " .. (sig)
                 fails = fails + 1
             else
                 local log = io.open(tmp .. t .. ".log") or os.exit(1)
@@ -59,7 +59,7 @@ for i, t in pairs(tests) do
             input:close()
             local ran, _, sig = exec("(" .. tmp .. t .. " < " .. tmp .. t .. ".input) > " .. tmp .. t .. ".log")
             if not ran then
-                failed[#failed + 1] = t .. "'s exit code: " .. (sig)
+                failed[#failed + 1] = "test \""  .. t .. "\" exit code: " .. (sig)
                 fails = fails + 1
             else
                 local log = io.open(tmp .. t .. ".log") or os.exit(1)
@@ -82,7 +82,7 @@ for i, t in pairs(tests) do
             end
             local ran, _, sig = exec("cat" .. argl .. " | " .. tmp .. t .. " > " .. tmp .. t .. ".log")
             if not ran then
-                failed[#failed + 1] = "exit code: " .. (sig)
+                failed[#failed + 1] =  "test \""  .. t .. "\" exit code: " .. (sig)
                 fails = fails + 1
             else
                 local log = io.open(tmp .. t .. ".log") or os.exit(1)
