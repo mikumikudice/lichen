@@ -50,6 +50,7 @@ pub main = fn() void {
     arr' = int_map(arr, predicate);
 };
 ```
+* see more about the `for` constructor in the [iterators section](#iterators).
 
 ## numerical literals
 moss allows digit separators at any place, decimal, hexadecimal, octal and binary literals, and has no concept of decimal number notation (see more on [floating points section](#floating-points)).
@@ -227,3 +228,44 @@ pub main = fn() void & io & fs {
     };
 };
 ```
+
+## iterators
+iterators are constructors able to iterate over arrays of items and building new objects from them. they work pretty much like an in-line recursive function. the most basic usage is the same of a normal "for each loop".
+```rust
+items = [ 2, 3, 5, 7, 11, 13 ] u32;
+for i .. items {
+    io::putfl("%d", i)!;
+};
+```
+this code iterates over all items in the `items` list and will print them. you can also map or filter lists in the same fashion:
+```rust
+list = [ 1, 2, 3, 4, 5, 6, 7, 8 ] u32;
+even = for i .. list {
+    if i % 2 == 0 {
+        i
+    }
+};
+twice = for i .. list {
+    i * 2
+};
+```
+you can also fold/reduce lists using accumulators:
+```rust
+list = [ 1, 2, 3, 4, 5 ] u32;
+sum = for a = 0; i .. list {
+    a + i
+};
+```
+in this case, the returned value must be the new value of the accumulator. you can even use multiple accumulators by returning tuples of values:
+```rust
+list = [ 1, 2, 3, 4, 5 ] u32;
+odd_sum, even_sum =
+    for o, e = 0, 0; i .. list {
+        if i % 2 == 0 {
+            (o, e + i)
+        } else {
+            (o + i, e)
+        }
+    };
+```
+* note that there's no way of doing `while true` loops with this constructor, therefore they always terminate.
