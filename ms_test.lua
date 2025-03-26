@@ -7,8 +7,11 @@ end
 local tmp = ".test/"
 local flags = "-l lib/ -vb"
 
-local init = exec("./build.sh")
+local init = exec("./install.sh")
 if not init then os.exit(1) end
+
+local haretest = exec("./hare_test.sh")
+if not haretest then os.exit(1) end
 
 local tdir = exec("mkdir -p " .. tmp)
 if not tdir then os.exit(1) end
@@ -26,7 +29,7 @@ local results = {
 local fails = 0
 local failed = {}
 for i, t in pairs(tests) do
-    local cmd = "./bin/mossy " .. flags .. " tests/" .. t .. ".ms " .. tmp .. t
+    local cmd = "mmc " .. flags .. " tests/" .. t .. ".ms " .. tmp .. t
     local ok = exec(cmd)
     if not ok then
         failed[#failed + 1] = t .. " failed on compilation"

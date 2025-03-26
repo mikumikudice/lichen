@@ -1,48 +1,53 @@
-use fs;
+use io;
 use os;
+use fs;
 use fmt;
 use memio;
-use errors;
 use strings;
 
 let silent = true;
-const version = "0.3.2";
+let just_check = false;
+const version = "0.4.0";
 
 export fn main() void = {
-    const abt = "mossy is the compiler for the moss programming language.\n";
-    const tut = "https://git.sr.ht/~mikaela-md/mossy/tree/main/doc/tut.md";
+    const abt = "mmc is the compiler for the moss programming language.\n";
+    const usg = fmt::asprintf(
+        "mmc usage:\n\n $ {} "
+        "[flags] <main file> [output file name]",
+        os::args[0])!;
+    defer free(usg);
 
-    const usg = fmt::asprintf("mossy usage:\n\n {}{}{}",
-        fmtc("$ ", cmd::YEL), fmtc(os::args[0], cmd::GRN),
-        fmtc(" [flags] <main file> [output file name]", cmd::BLU));
+    const flg =
+        "\nflags usage:\n"
+        "\n -h\t\t"
+        "-- prints this help message"
+        "\n -v\t\t"
+        "-- prints the current version of the compiler"
 
-    const allflags = strings::concat(
-        fmtc("\n -h\t\t", cmd::GRN),
-        fmtc("-- prints this help message", cmd::YEL),
+        "\n -l <lib path>\t"
+        "-- sets path for stdlib and runtime"
 
-        fmtc("\n -v\t\t", cmd::GRN),
-        fmtc("-- prints the current version of the compiler", cmd::YEL),
+        "\n -vb\t\t"
+        "-- makes the compiler print each executed command";
 
-        fmtc("\n -l ", cmd::GRN), fmtc("<lib path>\t", cmd::BLU),
-        fmtc("-- sets path for stdlib and runtime", cmd::YEL),
-
-        fmtc("\n -vb\t\t", cmd::GRN),
-        fmtc("-- makes the compiler print each executed command", cmd::YEL),
-    );
-    const flg = fmt::asprintf("\nflags usage:\n{}", allflags);
-    const hlp = fmt::asprintf("\nget help on learning how to use moss in {}",
-        fmtc(tut, cmd::GRN));
+    const hlp =
+        "\nget help on learning how to use moss in "
+        "https://git.sr.ht/~mikaela-md/mossy/tree/main/doc/tut.md";
 
     const home = os::getenv("HOME"): str;
-    let argc = len(os::args);
+
     // check if there are arguments
+    let argc = len(os::args);
     if(argc == 1){
+        // no arguments given
         fmt::printfln("{}\n{}\n{}\n{}", abt, usg, flg, hlp)!;
         return;
     } else if(argc == 2){
+        // versioning
         if(os::args[1] == "-v" || os::args[1] == "--version"){
-            fmt::printfln("moss compiler v{}", version)!;
+            fmt::printfln("mika's moss compiler v{}", version)!;
             return;
+        // help
         } else if(os::args[1] == "-h" || os::args[1] == "--help"){
             fmt::printfln("{}\n{}\n", usg, flg)!;
             return;
@@ -51,14 +56,19 @@ export fn main() void = {
     let libset = false;
     let outset = false;
     let infset = false;
-    let libpath = fmt::asprintf("{}/{}", os::getenv("HOME"): str, ".local/lib/lime/");
+
     let outfile = "";
     let srcname = "";
+    let libpath = fmt::asprintf("{}/{}",
+        os::getenv("HOME"): str, ".local/lib/mmclib/")!;
+    defer free(libpath);
+
     // parse command line arguments
     for(let a = 1z; a < argc; a += 1){
         const arg = os::args[a];
         if(strings::hasprefix(arg, "-")){
             switch(arg){
+            // libpath flag
             case "-l" =>
                 a += 1;
                 if(a < argc){
@@ -66,61 +76,74 @@ export fn main() void = {
                     libpath = os::args[a];
                     continue;
                 } else {
-                    fmt::fatalf("{}\n{}\n",
-                        fmtc("missing lib path for -l flag", cmd::RED), flg);
+                    fmt::fatalf("missing lib path for -l flag\n{}\n", flg);
                 };
+            // verbose mode
             case "-vb" =>
                 silent = false;
                 continue;
+            case "-c" =>
+                just_check = true;
+                continue;
             case =>
-                fmt::fatalf("{} {}\n{}\n",
-                    fmtc("unknown flag", cmd::RED), fmtc(arg, cmd::GRN), flg);
+                fmt::fatalf("unknown flag {}\n{}\n", arg, flg);
             };
         };
+        // input file
         if(!infset){
             infset = true;
             srcname = arg;
-        } else if(!outset){
-            outset = true;
-            outfile = arg;
+        // output file
+        } else {
+            // define only once
+            if(!outset){
+                outset = true;
+                outfile = arg;
+            } else {
+                fmt::fatalf("multiple output files given\n{}\n", usg);
+            };
         };
     };
     if(!infset){
-        fmt::fatalf("{}\n{}\n", fmtc("no input file given", cmd::RED), usg);
+        fmt::fatalf("no input file given\n");
     };
     libpath =
         if(strings::hassuffix(libpath, "/")){
             yield libpath;
         } else {
-            yield strings::concat(libpath, "/");
+            defer free(libpath);
+            yield strings::concat(libpath, "/")!;
         };
-    const (filename, filepath) = rem_path(srcname);
-    if(!outset){
-        outfile = strings::replace(filename, ".ms", "");
-    };
     if(!os::exists(libpath)){
-        fmt::fatalf("{} the given path {} does not exists",
-            fmtc("lib path error:", cmd::BOX_RED), fmtc(libpath, cmd::YEL));
+        fmt::fatalf("the given path \"{}\" does not exists", libpath);
     };
-    let glob = scope {
-        pos = (0, 0),
-        over = void,
-        vars = [],
-        funs = [],
+
+    match(compile(srcname, &memio::dynamic(), true)){
+    case let buffer: *memio::stream =>
+        defer io::close(buffer)!;
+    case let err: COMPERR =>
+        defer free(err.1);
+        defer io::close(err.1)!;
+        fmt::error(memio::string(err.1)!)!;
+        os::exit(err.0);
     };
-    defer free_scp(&glob);
-    let ctxt = context {
-        scp = &glob,
-        uses = [],
-        srcpath = filepath,
-        libpath = libpath,
-        datasec = memio::dynamic(),
-        strlits = [],
-        fnname = void,
-        branch = false,
-        nomain = false,
-        assign = false,
-        effect = [],
+    if(!outset){
+        const (base, _) = strings::cut(srcname, ".");
+        outfile = base;
     };
-    build(srcname, outfile, &ctxt)!;
+};
+
+fn error(file: (source | void), fmt: str,
+    args: fmt::field...) COMPERR = {
+    let buffer = alloc(memio::dynamic())!;
+    match(file){
+    case void =>
+        fmt::fprintfln(buffer, fmt, args...)!;
+    case let f: source =>
+        const pos = gen_pos(f);
+        defer free(pos);
+        fmt::fprintf(buffer, "{}: ", pos)!;
+        fmt::fprintfln(buffer, fmt, args...)!;
+    };
+    return (1, buffer);
 };
