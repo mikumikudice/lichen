@@ -8,7 +8,6 @@ segment .rod
         db 0
 
 segment .data
-    buffb db 0
     time_t:
         dq 0
         dq 0
@@ -90,7 +89,7 @@ rt.open:
     pop rdi
     ret
 
-; (handle u32) unit
+; fn(handle u32) unit
 rt.close:
     mov rax, 3
     syscall
@@ -166,7 +165,7 @@ rt.puts:
     mov rdi, rax
     call rt.exit
 
-; putb = fn(handler u32, data u8) u32
+; fn(handler u32, data u8) u32
 rt.putb:
     push rdi
     push rsi
@@ -246,7 +245,7 @@ rt.free:
     .err:
     call rt.exit
 
-; copy = fn(dest raw, src raw, size u64) raw
+; fn(dest raw, src raw, size u64) raw
 rt.copy:
     push rcx
     push rdi
@@ -274,7 +273,7 @@ rt.copy:
     pop rcx
     ret
 
-; strcpy = fn(dest str, src str, size u64) unit
+; fn(dest str, src str, size u64) unit
 rt.strcpy:
     push rdi
     push rsi
@@ -291,7 +290,7 @@ rt.strcpy:
     xor rax, rax
     ret
 
-; strrev = fn(src str) str
+; fn(src str) str
 rt.strrev:
     push rbx
     push rcx
@@ -349,7 +348,7 @@ rt.strrev:
         pop rbx
         ret
 
-; sleep = fn(sec u64, mili u64) unit
+; fn(sec u64, mili u64) unit
 rt.sleep:
     push rdi
     mov rax, time_t
@@ -362,7 +361,7 @@ rt.sleep:
     pop rdi
     ret
 
-; unlink = fn(filepath str) i32
+; fn(filepath str) i32
 rt.unlink:
     push rdi
     push rsi
@@ -391,7 +390,7 @@ rt.unlink:
     mov rdi, rax
     call rt.exit
 
-; rename = fn(old_filepath str, new_filepath str) i32
+; fn(old_filepath str, new_filepath str) i32
 rt.rename:
     mov rax, 52h
     syscall
@@ -448,7 +447,7 @@ rt.strcmp:
         pop rdi
         ret
 
-; absb = fn(num i8) u8
+; fn(num i8) u8
 rt.absb:
     push rbx
     xor rax, rax
@@ -461,7 +460,7 @@ rt.absb:
     pop rbx
     ret
 
-; absh = fn(num i16) u16
+; fn(num i16) u16
 rt.absh:
     push rbx
     xor rax, rax
@@ -474,7 +473,7 @@ rt.absh:
     pop rbx
     ret
 
-; absw = fn(num i32) u32
+; fn(num i32) u32
 rt.absw:
     push rbx
     xor rax, rax
@@ -487,7 +486,7 @@ rt.absw:
     pop rbx
     ret
 
-; absl = fn(num i64) 64
+; fn(num i64) 64
 rt.absl:
     push rbx
     mov rbx, rdi

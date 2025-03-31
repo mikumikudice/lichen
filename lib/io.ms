@@ -1,9 +1,7 @@
-use rt;
-
-pub get = fn(bz u64) str & rt {
-    rt::gets(rt::stdin, bz)
+pub fn get(size u64) str = do {
+    => @rt.gets(rt::stdin, bz);
 };
 
-pub put = fn(data str) unit & rt {
-    rt::puts(rt::stdout, data);
+pub fn put(data str) unit = do {
+    @rt::puts(rt::stdout, data);
 }; 

@@ -103,7 +103,7 @@ type symbol = enum {
 
 type eof = void;
 
-type token = (ident | number | keyword | primitive |
+type token = (ident | number | str | keyword | primitive |
     operator | symbol | eof);
 
 type source = struct {
@@ -111,6 +111,7 @@ type source = struct {
     lin: size,
     cln: size,
     ptr: size,
+    lst: size,
     src: []u8
 };
 

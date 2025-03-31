@@ -7,13 +7,6 @@ use memio;
 use strings;
 use strconv;
 
-// extracts a formatted version of the current
-// parser position in the file
-fn gen_pos(file: source) str = {
-    return fmt::asprintf("{}:{}:{}", file.name,
-        file.lin + 1, file.cln + 1)!;
-};
-
 // checks if character is alphanumeric
 fn is_alnum(char: u8) bool = {
     const nocase = char | 32;
@@ -41,6 +34,16 @@ fn is_whitespace(char: u8) bool = {
     assert(!is_alnum('{'));
 };
 
+// extracts a formatted version of the current
+// parser position in the file
+fn gen_pos(file: source) str = {
+    return fmt::asprintf("{}:{}:{}", file.name,
+        file.lin + 1, file.cln + 1)!;
+};
+
+// function shortcut
+fn u8tostr(a: []u8) str = strings::fromutf8(a)!;
+
 // loads the file `fname` and instantiates
 // a file parsing object
 fn load(fname: str) (source | COMPERR) = {
@@ -60,7 +63,8 @@ fn load(fname: str) (source | COMPERR) = {
     const file = source {
         name = name,
         lin = 0, cln = 0,
-        ptr = 0, src = []
+        ptr = 0, lst = 0,
+        src = []
     };
     // load every line until EOF
     for(true) match(bufio::read_line(fsrc)!){
@@ -81,9 +85,6 @@ fn load(fname: str) (source | COMPERR) = {
     return file;
 };
 
-// function shortcut
-fn u8tostr(a: []u8) str = strings::fromutf8(a)!;
-
 // returns the given token as a human-readable string
 fn strtoken(tok: token) str = {
     match(tok){
@@ -95,10 +96,12 @@ fn strtoken(tok: token) str = {
         } else {
             return fmt::asprintf("numeric literal {}", num.1)!;
         };
+    case let txt: str =>
+        return fmt::asprintf("string literal \"{}\"", txt)!;
     case let kwd: keyword =>
         return fmt::asprintf("keyword: {}", kwd_value[kwd])!;
     case let prm: primitive =>
-        return fmt::asprintf("type: {}", prm: int)!;
+        return fmt::asprintf("type: {}", prm_value[prm])!;
     case let opr: operator =>
         return fmt::asprintf("operator: {}", opr: int)!;
     case let sym: symbol =>
@@ -109,6 +112,16 @@ fn strtoken(tok: token) str = {
         };
     case eof =>
         return fmt::asprint("end of file")!;
+    };
+};
+
+fn move_cln(file: *source) void = {
+    const max = len(file.src);
+    file.cln += 1;
+    if(file.ptr < max && file.src[file.ptr] == '\n'){
+        file.lin += 1;
+        file.cln = 0;
+        file.lst = file.ptr + 1;
     };
 };
 
@@ -124,32 +137,28 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
     const max = len(file.src);
     let tokens = []: []token;
     for(file.ptr < max){
-        file.cln += 1;
-        if(file.src[file.ptr] == '\n'){
-            file.lin += 1;
-            file.cln = 0;
-        };
         // remove comments
         if(file.src[file.ptr] == '/' && file.ptr < max - 1){
             if(strings::fromutf8(file.src[file.ptr .. file.ptr + 2])! == "//"){
                 for(file.ptr < max && file.src[file.ptr] != '\n'){
                     file.ptr += 1;
+                    move_cln(&file);
                 };
             };
         };
         // keyword or identifier
         if(is_alnum(file.src[file.ptr]) || file.src[file.ptr] == '_'){
+            const start = file.ptr;
             for(file.ptr < max && is_alnum(file.src[file.ptr]) ||
                 file.src[file.ptr] == '_'){
                 file.ptr += 1;
+                move_cln(&file);
             };
-            let start = file.ptr;
             let matched = false;
             const path = u8tostr(file.src[start..file.ptr]);
 
             // check for reserved keywords
             for(let i = 0z; i < len(kwd_value); i += 1){
-                fmt::println(path, kwd_value[i])!;
                 if(kwd_value[i] == path){
                     append(tokens, i: keyword)!;
                     matched = true;
@@ -204,11 +213,23 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
                         "invalid binary literal");
                 };
             } else {
-                append(tokens, ident {
-                    name = path,
-                    lin = file.lin + 1,
-                    cln = file.cln + 1
-                })!;
+                match(strconv::stou64(path)){
+                case let n: u64 =>
+                    append(tokens, (false, n))!;
+                case strconv::overflow =>
+                    return error(file,
+                        "64-bit literal overflow");
+                case =>
+                    for(file.ptr < max && file.src[file.ptr] == '\''){
+                        file.ptr += 1;
+                        move_cln(&file);
+                    };
+                    append(tokens, ident {
+                        name = u8tostr(file.src[start..file.ptr]),
+                        lin = file.lin + 1,
+                        cln = file.cln + 1
+                    })!;
+                };
             };
         // symbol or string/character literal
         } else if(!(is_alnum(file.src[file.ptr]) || is_whitespace(file.src[file.ptr]))){
@@ -216,8 +237,107 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
             for(file.ptr < max && !(is_alnum(file.src[file.ptr]) ||
                 is_whitespace(file.src[file.ptr]))){
                 file.ptr += 1;
+                move_cln(&file);
             };
-            // TODO: strings
+            // string literal
+            if(file.src[start] == '\"'){
+                start += 1;
+                file.cln += start - file.ptr;
+                file.ptr = start;
+                let escape = false;
+                let closed = false;
+                for(file.ptr < max && !closed){
+                    switch(file.src[file.ptr]){
+                    case '\\' =>
+                        escape = !escape;
+                    case '\"' =>
+                        if(!escape){
+                            closed = true;
+                            escape = false;
+                        };
+                    case 't' =>
+                        if(escape){
+                            escape = false;
+                        };
+                    case 'b' =>
+                        if(escape){
+                            escape = false;
+                        };
+                    case 'a' =>
+                        if(escape){
+                            escape = false;
+                        };
+                    case 'r' =>
+                        if(escape){
+                            escape = false;
+                        };
+                    case 'n' =>
+                        if(escape){
+                            escape = false;
+                        };
+                    case 'f' =>
+                        if(escape){
+                            escape = false;
+                        };
+                    case '0' =>
+                        if(escape){
+                            escape = false;
+                        };
+                    case '\n' =>
+                        file.ptr += 1;
+                        move_cln(&file);    
+                        break;
+                    case =>
+                        if(escape){
+                            return error(file, "invalid escape sequence \"\\{}\"",
+                                file.src[file.ptr]: rune);
+                        };
+                    };
+                    file.ptr += 1;
+                    move_cln(&file);
+                };
+                if(!closed) return error(file, "unclosed string found here");
+                assert(!escape);
+                append(tokens, u8tostr(file.src[start..(file.ptr - 1)]))!;
+                continue;
+            // character literal
+            } else if(file.src[start] == '\''){
+                let val: u64 = 0;
+                switch(file.src[start]){
+                case '\\' =>
+                    if(start < max){
+                        switch(file.src[start + 1]){
+                        case '\'' =>
+                            val = '\'';
+                        case 't' =>
+                            val = '\t';
+                        case 'b' =>
+                            val = '\b';
+                        case 'a' =>
+                            val = '\a';
+                        case 'r' =>
+                            val = '\r';
+                        case 'n' =>
+                            val = '\n';
+                        case 'f' =>
+                            val = '\f';
+                        case '0' =>
+                            val = '\0';
+                        case =>
+                            return error(file, "invalid escape sequence");
+                        };
+                    } else {
+                        return error(file, "invalid escape sequence");
+                    };
+                case =>
+                    val = file.src[start];
+                };
+                if(start >= max || file.src[start + 1] != '\''){
+                    return error(file, "unclosed character literal found here");
+                };
+                append(tokens, (false, val): number)!;
+                continue;
+            };
             for(start < file.ptr) switch(file.src[start]){
             case ';' =>
                 append(tokens, symbol::EOL)!;
@@ -280,28 +400,28 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
                 };
                 start += 1;
             case '|' =>
-                if(start < file.ptr - 1 && file.src[start  + 1] == '|'){
+                if(start < file.ptr - 1 && file.src[start + 1] == '|'){
                     append(tokens, operator::LOR)!;
                 } else {
                     append(tokens, operator::BOR)!;
                 };
                 start += 1;
             case '&' =>
-                if(start < file.ptr - 1 && file.src[start  + 1] == '&'){
+                if(start < file.ptr - 1 && file.src[start + 1] == '&'){
                     append(tokens, operator::LAND)!;
                 } else {
                     append(tokens, operator::BAND)!;
                 };
                 start += 1;
             case ':' =>
-                if(start < file.ptr - 1 && file.src[start  + 1] == ':'){
+                if(start < file.ptr - 1 && file.src[start + 1] == ':'){
                     append(tokens, symbol::FIELD)!;
                 } else {
                     append(tokens, operator::FDIV)!;
                 };
                 start += 1;
             case '!' =>
-                if(start < file.ptr - 1 && file.src[start  + 1] == ':'){
+                if(start < file.ptr - 1 && file.src[start + 1] == ':'){
                     append(tokens, operator::NEQ)!;
                 } else {
                     append(tokens, operator::BANG)!;
@@ -328,12 +448,19 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
             case '?' =>
                 append(tokens, operator::PROP)!;
                 start += 1;
+            case '\"' =>
+                file.ptr = start;
+                break;
+            case '\'' =>
+                file.ptr = start;
+                break;
             case =>
-                return error(file, "invalid symbol");
+                return error(file, "invalid symbol \"{}\"", file.src[start]: rune);
             };
         // just whitespace
         } else {
             file.ptr += 1;
+            move_cln(&file);
         };
     };
     append(tokens, eof)!;
