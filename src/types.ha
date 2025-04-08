@@ -2,13 +2,13 @@ use memio;
 // valid syntax sequences
 //
 // program := global_def+
-// global_def := type_def | const_def | fun_def | import
+// global_def := (["pub"], type_def | const_def | fun_def) | test_block | import
 //
-// type_def := "let", ident, "=", "type", record | enum | union | type
-// record := "{",(ident, type, eol)+, "}", eol
-// enum := "{", (ident, ["=", const_val]*), "}", eol
+// type_def := "type", ident, "=", record | enum | union | type
+// record := "record", "{",(ident, type, eol)+, "}", eol
+// enum := "enum", [type], "{", (ident, ["=", const_val]*), "}", eol
 // union := type, ["|", type]+
-// type := prim | ident | "fail"
+// type := prim | ident
 // prim := u8 | u16 | u32 | u64 | i8 | i16 | i32 | i64 | str | unit | void
 //
 // ident := (A-Z | a-z | 0-9 | _)+
@@ -16,38 +16,51 @@ use memio;
 // number := (["0x" | "0o" | "0b"] (0-9)+) | char_lit
 //
 // const_def := ident, "=", const_exp
-// const_exp := const_val [binary_operator, const_val]*
+// const_exp := const_val (binary_operator, const_val)*
 // binary_operator := "+" | "-" | "*" | "/" | ":" | "%" | "<<" | ">>" | "==" |
-//      "/=" | "<" | ">" | "<=" | ">=" | "&&" | "||" | "&" | "|" | "^"
-// unary_operator := "+" | "-" | "~"
+//      "!=" | "<" | ">" | "<=" | ">=" | "&&" | "||" | "&" | "|" | "^" | ".."
+// unary_operator := "+" | "-" | "~" | "#"
 //
-// fun_def := ["pub"], "fn", ident, param_list, type, "=", [effect], scope
+// fun_def := "fn", ident, param_list, type, "=", effect, scope, eol
 // param_list := "(", (ident, type)*, ")"
 // effect := ident | "do" ("&", ident)*
-// scope := "{", expression*, "}"
+// scope := "{", expression*, ["=>", expression], "}"
 //
-// expression := ["=>"], (declaration | statement | fun_call) |
+// expression := (declaration | statement | fun_call | array_indexing) |
 //      (member (binary_operator, member)*)
-// declaration := "let", ident, "=", expression | array, eol
+// declaration := "let", ident, [type], "=", expression | array, [type], eol
 //
-// array := "[", (expression, (",", expression)*)*, "]"
+// array := "[", ((expression, (",", expression)*)*) | range, "]"
+// range := number, "..", number, [binary_operator, number]
+// array_indexing := ident, "[", expression, (",", expression)*, "]"
 //
-// statement := if_else_block | for_block | match_block
+// statement := if_else_block | for_block | match_block | test_block
 //
 // statement_declaration := ident, "=", expression
 //
 // if_else_block := if_block, [else_block]
 // if_block := "if", [statement_declaration], expression, scope
-// else_block := "else", if_block | scope
+// else_block := "else", (if_block | scope)
 //
 // for_block := "for", [statement_declaration], expression, [ident], scope
 // match_block := "match", [statement_declaration], expression, "{",
 //      (([ident], type) | "else", scope)+, "}"
 //
-// fun_call := ident | field_access | module_access, "(", (expression, [",", expression])*, ")"
-// member := ([unary_operator] number | ident) | string | field_access | module_access | "todo" | "fail"
+// test_block := "test", (expression | (string, scope))
+//
+// fun_call := ident | field_access | module_access, "(", (expression, [",", expression])*, ")", [error_handle]
+//
+// error_handle := ("!" | "?"), expression
+//
+// member := ([unary_operator] number | ident | field_access | module_access) | string | 
+// record_literal | field_assign | record_mod | "todo" | "fail"
+//
 // field_access := ident, ".", ident
 // module_access := ident, "::", ident
+//
+// record_literal := "{", field_assign, "}"
+// field_assign := ident, "=", expression
+// record_mod := "{" ident, "|", (field_assign, ("," field_assign)*), "}"
 //
 // import := ident, "=", "use", string, eol
 //
@@ -62,13 +75,15 @@ type number = (bool, u64);
 type keyword = enum {
     USE, PUB, LET, FN, TYPE,
     FOR, MATCH, IF, ELSE,
-    TODO, FAIL,
+    TODO, FAIL, DO, TEST,
+    RECORD, ENUM,
 };
 
 const kwd_value = [
     "use", "pub", "let", "fn", "type",
     "for", "match", "if", "else",
-    "todo", "fail",
+    "todo", "fail", "do", "test",
+    "record", "enum"
 ];
 
 type primitive = enum {
@@ -84,7 +99,7 @@ const prm_value = [
 ];
 
 type operator = enum {
-    MAP,
+    MAP, RANGE, LENGTH, 
     LEQ, GEQ, ASG, EQL, NEQ,
     SHL, SHR, LST, GTT, DEF,
     LOR, LAND, BOR, BAND,

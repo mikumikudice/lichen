@@ -345,9 +345,6 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
             case ',' =>
                 append(tokens, symbol::COMMA)!;
                 start += 1;
-            case '.' =>
-                append(tokens, symbol::DOT)!;
-                start += 1;
             case '(' =>
                 append(tokens, symbol::LFT_PAR)!;
                 start += 1;
@@ -365,6 +362,16 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
                 start += 1;
             case ']' =>
                 append(tokens, symbol::RGT_SQUARE)!;
+                start += 1;
+            case '#' =>
+                append(tokens, operator::LENGTH)!;
+                start += 1;
+            case '.' =>
+                if(start < file.ptr - 1 && file.src[start  + 1] == '.'){
+                    append(tokens, operator::RANGE)!;
+                } else {
+                    append(tokens, symbol::DOT)!;
+                };
                 start += 1;
             case '=' =>
                 if(start < file.ptr - 1 && file.src[start  + 1] == '='){
@@ -421,7 +428,7 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
                 };
                 start += 1;
             case '!' =>
-                if(start < file.ptr - 1 && file.src[start + 1] == ':'){
+                if(start < file.ptr - 1 && file.src[start + 1] == '='){
                     append(tokens, operator::NEQ)!;
                 } else {
                     append(tokens, operator::BANG)!;
