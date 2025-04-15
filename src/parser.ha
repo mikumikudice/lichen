@@ -79,14 +79,14 @@ fn load(fname: str) (source | COMPERR) = {
     if(len(file.src) == 0 ||
     (len(file.src) == 1 && file.src[0] == '\n')){
         return error(void,
-            "the file \"{}\" is empty\n\ntry adding:\n\n{}",
+            "%Rthe file \"{}\" is empty%d\n\ntry adding:\n\n{}",
             fname, fn_demo);
     };
     return file;
 };
 
 // returns the given token as a human-readable string
-fn strtoken(tok: token) str = {
+fn strtoken(tok: tkval) str = {
     match(tok){
     case let idt: ident =>
         return fmt::asprintf("identifier \"{}\"", idt.name)!;
@@ -115,6 +115,7 @@ fn strtoken(tok: token) str = {
     };
 };
 
+// move virtual column and adjust line count accordingly
 fn move_cln(file: *source) void = {
     const max = len(file.src);
     file.cln += 1;
@@ -122,6 +123,44 @@ fn move_cln(file: *source) void = {
         file.lin += 1;
         file.cln = 0;
         file.lst = file.ptr + 1;
+    };
+};
+
+// compare two tokens
+fn comp_tk(lft: tkval, rgt: tkval) bool = {
+    match(lft){
+    case let idt: ident =>
+        if(rgt is ident){
+            const r = rgt as ident;
+            return r.name == idt.name;
+        } else {
+            return false;
+        };
+    case let num: number =>
+        if(rgt is number){
+            const r = rgt as number;
+            return num.0 == r.0 && num.1 == r.1;
+        } else {
+            return false;
+        };
+    case let txt: str =>
+        return rgt is str && txt == rgt as str;
+    case let kwd: keyword =>
+        return rgt is keyword && kwd == rgt as keyword;
+    case let prm: primitive =>
+        return rgt is primitive && prm == rgt as primitive;
+    case let opr: operator =>
+        return rgt is operator && opr == rgt as operator;
+    case let sym: symbol =>
+        return rgt is symbol && sym == rgt as symbol;
+    };
+};
+
+fn new_tk(file: source, val: tkval) token = {
+    return token {
+        lin = file.lin,
+        cln = file.cln,
+        val = val,
     };
 };
 
@@ -134,7 +173,7 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
     defer free(file.src);
 
     // tokenize
-    const max = len(file.src);
+    let max = len(file.src);
     let tokens = []: []token;
     for(file.ptr < max){
         // remove comments
@@ -160,7 +199,7 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
             // check for reserved keywords
             for(let i = 0z; i < len(kwd_value); i += 1){
                 if(kwd_value[i] == path){
-                    append(tokens, i: keyword)!;
+                    append(tokens, new_tk(file, i: keyword))!;
                     matched = true;
                     break;
                 };
@@ -169,7 +208,7 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
             // check for primitive types
             for(let i = 0z; i < len(prm_value); i += 1){
                 if(prm_value[i] == path){
-                    append(tokens, i: primitive)!;
+                    append(tokens, new_tk(file, i: primitive))!;
                     matched = true;
                     break;
                 };
@@ -180,7 +219,7 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
                 match(strconv::stou64(strings::sub(path, 2),
                 strconv::base::HEX)){
                 case let n: u64 =>
-                    append(tokens, (false, n))!;
+                    append(tokens, new_tk(file, (false, n)))!;
                 case strconv::overflow =>
                     return error(file,
                         "64-bit hexadecimal literal overflow");
@@ -192,7 +231,7 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
                 match(strconv::stou64(strings::sub(path, 2),
                 strconv::base::OCT)){
                 case let n: u64 =>
-                    append(tokens, (false, n))!;
+                    append(tokens, new_tk(file, (false, n)))!;
                 case strconv::overflow =>
                     return error(file,
                         "64-bit octal literal overflow");
@@ -204,7 +243,7 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
                 match(strconv::stou64(strings::sub(path, 2),
                 strconv::base::BIN)){
                 case let n: u64 =>
-                    append(tokens, (false, n))!;
+                    append(tokens, new_tk(file, (false, n)))!;
                 case strconv::overflow =>
                     return error(file,
                         "64-bit binary literal overflow");
@@ -215,7 +254,7 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
             } else {
                 match(strconv::stou64(path)){
                 case let n: u64 =>
-                    append(tokens, (false, n))!;
+                    append(tokens, new_tk(file, (false, n)))!;
                 case strconv::overflow =>
                     return error(file,
                         "64-bit literal overflow");
@@ -224,11 +263,10 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
                         file.ptr += 1;
                         move_cln(&file);
                     };
-                    append(tokens, ident {
+                    append(tokens, new_tk(file, ident {
                         name = u8tostr(file.src[start..file.ptr]),
-                        lin = file.lin + 1,
-                        cln = file.cln + 1
-                    })!;
+                        itpe = primitive::ANY
+                    }))!;
                 };
             };
         // symbol or string/character literal
@@ -298,7 +336,8 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
                 };
                 if(!closed) return error(file, "unclosed string found here");
                 assert(!escape);
-                append(tokens, u8tostr(file.src[start..(file.ptr - 1)]))!;
+                append(tokens, new_tk(file,
+                    u8tostr(file.src[start..(file.ptr - 1)])))!;
                 continue;
             // character literal
             } else if(file.src[start] == '\''){
@@ -335,125 +374,125 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
                 if(start >= max || file.src[start + 1] != '\''){
                     return error(file, "unclosed character literal found here");
                 };
-                append(tokens, (false, val): number)!;
+                append(tokens, new_tk(file, (false, val): number))!;
                 continue;
             };
             for(start < file.ptr) switch(file.src[start]){
             case ';' =>
-                append(tokens, symbol::EOL)!;
+                append(tokens, new_tk(file, symbol::EOL))!;
                 start += 1;
             case ',' =>
-                append(tokens, symbol::COMMA)!;
+                append(tokens, new_tk(file, symbol::COMMA))!;
                 start += 1;
             case '(' =>
-                append(tokens, symbol::LFT_PAR)!;
+                append(tokens, new_tk(file, symbol::LFT_PAR))!;
                 start += 1;
             case ')' =>
-                append(tokens, symbol::RGT_PAR)!;
+                append(tokens, new_tk(file, symbol::RGT_PAR))!;
                 start += 1;
             case '{' =>
-                append(tokens, symbol::LFT_CURLY)!;
+                append(tokens, new_tk(file, symbol::LFT_CURLY))!;
                 start += 1;
             case '}' =>
-                append(tokens, symbol::RGT_CURLY)!;
+                append(tokens, new_tk(file, symbol::RGT_CURLY))!;
                 start += 1;
             case '[' =>
-                append(tokens, symbol::LFT_SQUARE)!;
+                append(tokens, new_tk(file, symbol::LFT_SQUARE))!;
                 start += 1;
             case ']' =>
-                append(tokens, symbol::RGT_SQUARE)!;
+                append(tokens, new_tk(file, symbol::RGT_SQUARE))!;
                 start += 1;
             case '#' =>
-                append(tokens, operator::LENGTH)!;
+                append(tokens, new_tk(file, operator::LENGTH))!;
                 start += 1;
             case '.' =>
                 if(start < file.ptr - 1 && file.src[start  + 1] == '.'){
-                    append(tokens, operator::RANGE)!;
+                    append(tokens, new_tk(file, operator::RANGE))!;
                 } else {
-                    append(tokens, symbol::DOT)!;
+                    append(tokens, new_tk(file, symbol::DOT))!;
                 };
                 start += 1;
             case '=' =>
                 if(start < file.ptr - 1 && file.src[start  + 1] == '='){
-                    append(tokens, operator::EQL)!;
+                    append(tokens, new_tk(file, operator::EQL))!;
                 } else {
-                    append(tokens, operator::ASG)!;
+                    append(tokens, new_tk(file, operator::ASG))!;
                 };
                 start += 1;
             case '<' =>
                 if(start < file.ptr - 1){
                     if(file.src[start  + 1] == '='){
-                        append(tokens, operator::LEQ)!;
+                        append(tokens, new_tk(file, operator::LEQ))!;
                     } else if(file.src[start  + 1] == '>'){
-                        append(tokens, operator::SHL)!;
+                        append(tokens, new_tk(file, operator::SHL))!;
                     } else {
-                        append(tokens, operator::LST)!;
+                        append(tokens, new_tk(file, operator::LST))!;
                     };
                 } else {
-                    append(tokens, operator::LST)!;
+                    append(tokens, new_tk(file, operator::LST))!;
                 };
                 start += 1;
             case '>' =>
                 if(start < file.ptr - 1){
                     if(file.src[start  + 1] == '='){
-                        append(tokens, operator::GEQ)!;
+                        append(tokens, new_tk(file, operator::GEQ))!;
                     } else if(file.src[start  + 1] == '>'){
-                        append(tokens, operator::SHR)!;
+                        append(tokens, new_tk(file, operator::SHR))!;
                     } else {
-                        append(tokens, operator::GTT)!;
+                        append(tokens, new_tk(file, operator::GTT))!;
                     };
                 } else {
-                    append(tokens, operator::GTT)!;
+                    append(tokens, new_tk(file, operator::GTT))!;
                 };
                 start += 1;
             case '|' =>
                 if(start < file.ptr - 1 && file.src[start + 1] == '|'){
-                    append(tokens, operator::LOR)!;
+                    append(tokens, new_tk(file, operator::LOR))!;
                 } else {
-                    append(tokens, operator::BOR)!;
+                    append(tokens, new_tk(file, operator::BOR))!;
                 };
                 start += 1;
             case '&' =>
                 if(start < file.ptr - 1 && file.src[start + 1] == '&'){
-                    append(tokens, operator::LAND)!;
+                    append(tokens, new_tk(file, operator::LAND))!;
                 } else {
-                    append(tokens, operator::BAND)!;
+                    append(tokens, new_tk(file, operator::BAND))!;
                 };
                 start += 1;
             case ':' =>
                 if(start < file.ptr - 1 && file.src[start + 1] == ':'){
-                    append(tokens, symbol::FIELD)!;
+                    append(tokens, new_tk(file, symbol::FIELD))!;
                 } else {
-                    append(tokens, operator::FDIV)!;
+                    append(tokens, new_tk(file, operator::FDIV))!;
                 };
                 start += 1;
             case '!' =>
                 if(start < file.ptr - 1 && file.src[start + 1] == '='){
-                    append(tokens, operator::NEQ)!;
+                    append(tokens, new_tk(file, operator::NEQ))!;
                 } else {
-                    append(tokens, operator::BANG)!;
+                    append(tokens, new_tk(file, operator::BANG))!;
                 };
                 start += 1;
             case '~' =>
-                append(tokens, operator::NOT)!;
+                append(tokens, new_tk(file, operator::NOT))!;
                 start += 1;
             case '+' =>
-                append(tokens, operator::PLS)!;
+                append(tokens, new_tk(file, operator::PLS))!;
                 start += 1;
             case '-' =>
-                append(tokens, operator::MIN)!;
+                append(tokens, new_tk(file, operator::MIN))!;
                 start += 1;
             case '*' =>
-                append(tokens, operator::MUL)!;
+                append(tokens, new_tk(file, operator::MUL))!;
                 start += 1;
             case '/' =>
-                append(tokens, operator::IDIV)!;
+                append(tokens, new_tk(file, operator::IDIV))!;
                 start += 1;
             case '%' =>
-                append(tokens, operator::MOD)!;
+                append(tokens, new_tk(file, operator::MOD))!;
                 start += 1;
             case '?' =>
-                append(tokens, operator::PROP)!;
+                append(tokens, new_tk(file, operator::PROP))!;
                 start += 1;
             case '\"' =>
                 file.ptr = start;
@@ -470,9 +509,36 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
             move_cln(&file);
         };
     };
-    append(tokens, eof)!;
-    for(let tok .. tokens){
-        fmt::println(strtoken(tok))!;
+    append(tokens, new_tk(file, eof))!;
+    defer free(tokens);
+    max = len(tokens);
+    let node = alloc(ast {
+        kind = tk_type::EOF,
+        path = tokens[(max - 1)..(max - 1)],
+        next = null,
+        last = null,
+    })!;
+    const head = node;
+    for(let t = 0z; t < max; t += 1){
+        match(tokens[t].val){
+        case let idt: ident =>
+            // const global definition
+            if(comp_tk(tokens[t + 1].val, operator::ASG)){
+                const end = eval_c_exp(tokens, &node, t + 2)?;
+            };
+        case let kwd: keyword => void;
+        case let sym: symbol => void;
+        case => continue;
+        };
+    };
+    defer for(let n = head: nullable *ast; !(n is null)){
+        defer free(n);
+        fmt::println(strtoken(n.))
+        n = (n: *ast).next;
     };
     return buffer;
+};
+
+fn eval_c_exp(tokens: []token, node: **ast, at: size) (size | COMPERR) = {
+    return 0z;
 };

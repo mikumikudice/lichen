@@ -159,6 +159,8 @@ fn color(fmt: str, args: fmt::field...) void = {
             switch(path[c + 1]){
             case 'd' =>
                 fmt::fprintf(&buffer, "\x1b[0m")!;
+            case 'l' =>
+                fmt::fprintf(&buffer, "\x1b[0;30m")!;
             case 'r' =>
                 fmt::fprintf(&buffer, "\x1b[0;31m")!;
             case 'g' =>
@@ -167,10 +169,28 @@ fn color(fmt: str, args: fmt::field...) void = {
                 fmt::fprintf(&buffer, "\x1b[0;33m")!;
             case 'b' =>
                 fmt::fprintf(&buffer, "\x1b[0;34m")!;
-            case 'B' =>
+            case 'p' =>
+                fmt::fprintf(&buffer, "\x1b[0;35m")!;
+            case 'c' =>
+                fmt::fprintf(&buffer, "\x1b[0;36m")!;
+            case 'w' =>
+                fmt::fprintf(&buffer, "\x1b[0;37m")!;
+            case 'K' =>
                 fmt::fprintf(&buffer, "\x1b[0;40m")!;
             case 'R' =>
                 fmt::fprintf(&buffer, "\x1b[0;41m")!;
+            case 'G' =>
+                fmt::fprintf(&buffer, "\x1b[0;42m")!;
+            case 'Y' =>
+                fmt::fprintf(&buffer, "\x1b[0;43m")!;
+            case 'B' =>
+                fmt::fprintf(&buffer, "\x1b[0;44m")!;
+            case 'P' =>
+                fmt::fprintf(&buffer, "\x1b[0;45m")!;
+            case 'C' =>
+                fmt::fprintf(&buffer, "\x1b[0;46m")!;
+            case 'W' =>
+                fmt::fprintf(&buffer, "\x1b[0;47m")!;
             case =>
                 fmt::fatalf("invalid escape color {}", path[c + 1]: rune);
             };

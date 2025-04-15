@@ -28,11 +28,13 @@ use memio;
 //
 // expression := (declaration | statement | fun_call | array_indexing) |
 //      (member (binary_operator, member)*)
-// declaration := "let", ident, [type], "=", expression | array, [type], eol
+// declaration := "let", ident+, [type], "=", expression | array | tuple, [type], eol
 //
 // array := "[", ((expression, (",", expression)*)*) | range, "]"
 // range := number, "..", number, [binary_operator, number]
 // array_indexing := ident, "[", expression, (",", expression)*, "]"
+//
+// tuple := "(", member+, ")"
 //
 // statement := if_else_block | for_block | match_block | test_block
 //
@@ -53,7 +55,7 @@ use memio;
 // error_handle := ("!" | "?"), expression
 //
 // member := ([unary_operator] number | ident | field_access | module_access) | string | 
-// record_literal | field_assign | record_mod | "todo" | "fail"
+// record_literal | field_assign | record_mod | tuple | "todo" | "fail"
 //
 // field_access := ident, ".", ident
 // module_access := ident, "::", ident
@@ -66,8 +68,7 @@ use memio;
 //
 type ident = struct {
     name: str,
-    lin: size,
-    cln: size
+    itpe: primitive,
 };
 
 type number = (bool, u64);
@@ -89,7 +90,7 @@ const kwd_value = [
 type primitive = enum {
     U8, U16, U32, U64,
     I8, I16, I32, I64,
-    STR, UNIT, VOID,
+    STR, UNIT, VOID, ANY,
 };
 
 const prm_value = [
@@ -118,8 +119,14 @@ type symbol = enum {
 
 type eof = void;
 
-type token = (ident | number | str | keyword | primitive |
+type tkval = (ident | number | str | keyword | primitive |
     operator | symbol | eof);
+
+type token = struct {
+    lin: size,
+    cln: size,
+    val: tkval,
+};
 
 type source = struct {
     name: str,
@@ -130,9 +137,26 @@ type source = struct {
     src: []u8
 };
 
+type tk_type = enum {
+    TYPE_DEF, RECORD, ENUM, UNION,
+    CONST_VAL, CONST_DEF, CONST_EXP,
+    FUN_DEF, SCOPE, EXPR, DECL,
+    ARRAY, RANGE, INDEXING,
+    TUPLE, STATEMENT, STT_DECL,
+    FUN_CALL, FIELD_ACCESS, MODULE_ACCESS,
+    RECORD_LIT, IMPORT, EOF,
+};
+
+type ast = struct {
+    kind: tk_type,
+    path: []token,
+    next: nullable *ast,
+    last: nullable *ast,
+};
+
 type COMPERR = !(int, *memio::stream);
 
 const fn_demo =
-    "pub fn main() void = {\n"
-    "\t// your code goes here!\n"
-    "};\n";
+    "%ppub fn %cmain%y() %bvoid %d= %y{%d\n"
+    "    %g// your code goes here!%d\n"
+    "%y}%d;";
