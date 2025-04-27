@@ -1,8 +1,10 @@
 // parsing test for basic type checking
-// declaration parsing and codegen
+// and (global) declaration parsing.
 
-pub fn main() void = {
+w u32 = +1;
+
+pub fn main() void = do {
     let x u32 = 6;
-    let y u32 = 7;
-    let z = x * y;
+    let y u32 = x + w;
+    let z = (x * y) u64;
 };

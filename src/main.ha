@@ -10,32 +10,32 @@ let just_check = false;
 const version = "0.4.0";
 
 export fn main() void = {
-    const abt = "mmc is the compiler for the moss programming language.";
+    const abt = "%gmmc is the compiler for the moss programming language.%d";
     const usg = fmt::asprintf(
-        "mmc usage:\n\n %y$ %g{} "
+        "%gmmc usage:\n\n %y$ {} "
         "%b[flags] <main file> [output file name]%d",
         os::args[0])!;
     defer free(usg);
 
     const flg =
-        "\nflags usage:\n"
+        "\n%gflags usage:%d\n"
         "\n %g-h\t\t"
-        "%y-- prints this help message"
+        "%y-- prints this help message%d"
         "\n %g-v\t\t"
-        "%y-- prints the current version of the compiler"
+        "%y-- prints the current version of the compiler%d"
 
         "\n %g-l %b<lib path>\t"
-        "%y-- sets path for stdlib and runtime"
+        "%y-- sets path for stdlib and runtime%d"
 
         "\n %g-c\t\t"
-        "%y-- only checks for compile errors and generates no output files"
+        "%y-- only checks for compile errors and generates no output files%d"
 
         "\n %g-vb\t\t"
-        "%y-- makes the compiler print each executed command";
+        "%y-- makes the compiler print each executed command%d";
 
     const hlp =
-        "\nget help on learning how to use moss in "
-        "%ghttps://git.sr.ht/~mikaela-md/mossy/tree/main/doc/tut.md";
+        "\n%gget help on learning how to use moss in "
+        "%bhttps://git.sr.ht/~mikaela-md/mossy/tree/main/doc/tut.md%d";
 
     const home = os::getenv("HOME"): str;
 
@@ -79,7 +79,8 @@ export fn main() void = {
                 a += 1;
                 if(a < argc){
                     libset = true;
-                    libpath = os::args[a];
+                    free(libpath);
+                    libpath = strings::dup(os::args[a])!;
                     continue;
                 } else {
                     color("%rmissing lib path for -l flag");
@@ -120,8 +121,9 @@ export fn main() void = {
         if(strings::hassuffix(libpath, "/")){
             yield libpath;
         } else {
-            defer free(libpath);
-            yield strings::concat(libpath, "/")!;
+            const new = strings::concat(libpath, "/")!;
+            free(libpath);
+            yield new;
         };
     if(!os::exists(libpath)){
         color_error("%rthe given path %y\"{}\"%r does not exists", libpath);
@@ -208,13 +210,13 @@ fn color_error(fmt: str, args: fmt::field...) never = {
     os::exit(1);
 };
 
-fn error(file: (source | void), fmt: str,
+fn error(file: (context | void), fmt: str,
     args: fmt::field...) COMPERR = {
     let buffer = alloc(memio::dynamic())!;
     match(file){
     case void =>
         fmt::fprintfln(buffer, fmt, args...)!;
-    case let f: source =>
+    case let f: context =>
         const pos = gen_pos(f);
         defer free(pos);
         fmt::fprintf(buffer, "%R{}:%r ", pos)!;
@@ -227,12 +229,12 @@ fn error(file: (source | void), fmt: str,
         const line = fmt::asprint(f.lin + 1)!;
         defer free(line);
 
-        fmt::fprintfln(buffer, "%b{} %d{}", line,
+        fmt::fprintfln(buffer, "\n%b{} %d{}", line,
             u8tostr(f.src[f.lst..index]))!;
         for(let c = 0z; c < len(line) + 1; c += 1){
             fmt::fprint(buffer, " ")!;
         };
-        const arrow = strings::lpad("^", '~', f.cln)!;
+        const arrow = strings::lpad("^", '~', f.cln + 1)!;
         defer free(arrow);
         fmt::fprintfln(buffer, "%r{}", arrow)!;
     };

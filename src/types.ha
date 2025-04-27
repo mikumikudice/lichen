@@ -12,23 +12,25 @@ use memio;
 // prim := u8 | u16 | u32 | u64 | i8 | i16 | i32 | i64 | str | unit | void
 //
 // ident := (A-Z | a-z | 0-9 | _)+
-// const_val := ([unary_operator] number) | string
+// const_val := number | string
 // number := (["0x" | "0o" | "0b"] (0-9)+) | char_lit
 //
-// const_def := ident, "=", const_exp
-// const_exp := const_val (binary_operator, const_val)*
+// const_def := ident, type, "=", const_exp
+// const_exp := [unary_operator], const_val, (binary_operator, const_val)*
 // binary_operator := "+" | "-" | "*" | "/" | ":" | "%" | "<<" | ">>" | "==" |
 //      "!=" | "<" | ">" | "<=" | ">=" | "&&" | "||" | "&" | "|" | "^" | ".."
+//
 // unary_operator := "+" | "-" | "~" | "#"
 //
 // fun_def := "fn", ident, param_list, type, "=", effect, scope, eol
 // param_list := "(", (ident, type)*, ")"
 // effect := ident | "do" ("&", ident)*
-// scope := "{", expression*, ["=>", expression], "}"
+// scope := "{", (expression, eol)*, ["=>", expression, eol], "}"
 //
-// expression := (declaration | statement | fun_call | array_indexing) |
-//      (member (binary_operator, member)*)
-// declaration := "let", ident+, [type], "=", expression | array | tuple, [type], eol
+// expression := declaration | statement | ([unary_operator],
+//      member, (binary_operator, member)*), [type]
+//
+// declaration := "let", ident+, [type], "=", expression, eol
 //
 // array := "[", ((expression, (",", expression)*)*) | range, "]"
 // range := number, "..", number, [binary_operator, number]
@@ -50,14 +52,13 @@ use memio;
 //
 // test_block := "test", (expression | (string, scope))
 //
-// fun_call := ident | field_access | module_access, "(", (expression, [",", expression])*, ")", [error_handle]
-//
 // error_handle := ("!" | "?"), expression
 //
-// member := ([unary_operator] number | ident | field_access | module_access) | string | 
-// record_literal | field_assign | record_mod | tuple | "todo" | "fail"
+// member := ("(", expression, ")") | number | ident | string | fun_call | array_indexing | field_access |
+//      module_access | record_literal | field_assign | record_mod | tuple | "todo" | "fail" | member, [type]
 //
-// field_access := ident, ".", ident
+// fun_call := ident | field_access | module_access, "(", (expression, [",", expression])*, ")", [error_handle]
+// field_access := expression, ".", ident
 // module_access := ident, "::", ident
 //
 // record_literal := "{", field_assign, "}"
@@ -68,7 +69,7 @@ use memio;
 //
 type ident = struct {
     name: str,
-    itpe: primitive,
+    itype: primitive,
 };
 
 type number = (bool, u64);
@@ -90,13 +91,17 @@ const kwd_value = [
 type primitive = enum {
     U8, U16, U32, U64,
     I8, I16, I32, I64,
-    STR, UNIT, VOID, ANY,
+    F32, F64,
+    STR, UNIT, VOID,
+    ANY, NUMBER, RATIO,
 };
 
 const prm_value = [
     "u8", "u16", "u32", "u64",
     "i8", "i16", "i32", "i64",
+    "f32", "f64",
     "str", "unit", "void",
+    "", "", ""
 ];
 
 type operator = enum {
@@ -106,7 +111,7 @@ type operator = enum {
     LOR, LAND, BOR, BAND,
     NOT, PLS, MIN, MUL,
     IDIV, FDIV, MOD,
-    PROP, BANG,
+    PROP, BANG, RAW,
 };
 
 type symbol = enum {
@@ -125,31 +130,69 @@ type tkval = (ident | number | str | keyword | primitive |
 type token = struct {
     lin: size,
     cln: size,
+    lst: size,
     val: tkval,
 };
+type scope = struct {
+    vars: []*ast,
+    upper: (void | *scope),
+};
 
-type source = struct {
+type context = struct {
     name: str,
     lin: size,
     cln: size,
     ptr: size,
     lst: size,
-    src: []u8
+    src: []u8,
+    glob: scope,
+    scp: (void | *scope),
 };
 
-type tk_type = enum {
+type path_t = enum {
     TYPE_DEF, RECORD, ENUM, UNION,
     CONST_VAL, CONST_DEF, CONST_EXP,
-    FUN_DEF, SCOPE, EXPR, DECL,
+    FUN_DEF, PARAM_LIST, SCOPE, EXPR, DECL,
     ARRAY, RANGE, INDEXING,
     TUPLE, STATEMENT, STT_DECL,
     FUN_CALL, FIELD_ACCESS, MODULE_ACCESS,
     RECORD_LIT, IMPORT, EOF,
 };
 
+type var_meta = struct {
+    lin: size,
+    cln: size,
+    name: ident,
+};
+
+type fn_meta = struct {
+    lin: size,
+    cln: size,
+    name: ident,
+    params: nullable *ast,
+    fn_type: primitive,
+    effects: []tkval,
+};
+
+type param_meta = struct {
+    lin: []size,
+    cln: []size,
+    name: []ident,
+    tpe: []primitive,
+};
+
+type expr_meta = struct {
+    rets: bool,
+    tpe: primitive,
+};
+
+type node_meta = (var_meta | fn_meta | param_meta | expr_meta);
+
 type ast = struct {
-    kind: tk_type,
+    kind: path_t,
     path: []token,
+    meta: (void | node_meta),
+    inner: nullable *ast,
     next: nullable *ast,
     last: nullable *ast,
 };

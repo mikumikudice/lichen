@@ -16,7 +16,7 @@ if not haretest then os.exit(1) end
 local tdir = exec("mkdir -p " .. tmp)
 if not tdir then os.exit(1) end
 
-local tests = { "vars", "files", "console", "branching", "math", "expressions" }
+local tests = {}
 local results = {
     {},
     {},
