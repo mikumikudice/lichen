@@ -318,7 +318,7 @@ at bottom level of the language runtime, there lies the OS syscalls implemented 
 ```rust
 // io.ms
 pub fn print(txt str) !unit = do {
-    let out i32 = @rt.write(@rt.stdout, txt);
+    let out i32 = @rt_write(@rt_stdout, txt);
     => if out < 0 {
         => fail;
     };
@@ -329,7 +329,7 @@ pub fn println(txt str) !unit = do {
 };
 
 pub fn scan(len str) !str = do {
-    let res i32 | str = @rt.read(@rt.stdin, len);
+    let res i32 | str = @rt_read(@rt_stdin, len);
     => match res {
     i32 => fail;
     out str => out;
