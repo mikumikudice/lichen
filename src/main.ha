@@ -4,10 +4,14 @@ use fs;
 use fmt;
 use memio;
 use strings;
+use os::exec;
+use unix::signal;
 
 let silent = true;
 let just_check = false;
 const version = "0.4.0";
+
+const temp = ".tmp/";
 
 export fn main() void = {
     const abt = "%gmmc is the compiler for the moss programming language.%d";
@@ -24,14 +28,17 @@ export fn main() void = {
         "\n %g-v\t\t"
         "%y-- prints the current version of the compiler%d"
 
-        "\n %g-l %b<lib path>\t"
+        "\n %g-l\t%b<path>\t"
+        "%y-- includes an object file or library in the linking list%d"
+
+        "\n %g-stb\t%b<path>\t"
         "%y-- sets path for stdlib and runtime%d"
 
         "\n %g-c\t\t"
         "%y-- only checks for compile errors and generates no output files%d"
 
         "\n %g-vb\t\t"
-        "%y-- makes the compiler print each executed command%d";
+        "%y-- prompts each substep. if %g-c%y is also set, dumps qbe IR%d";
 
     const hlp =
         "\n%gget help on learning how to use moss in "
@@ -39,18 +46,19 @@ export fn main() void = {
 
     const home = os::getenv("HOME"): str;
 
+    const also_link = []: []str;
+    defer free(also_link);
+
     // check if there are arguments
-    let argc = len(os::args);
+    const argc = len(os::args);
     if(argc == 1){
         // no arguments given
-        const pat = fmt::asprintf("{}\n{}\n{}\n{}", abt, usg, flg, hlp)!;
-        defer free(pat);
-        color(pat);
+        color("{}\n{}\n{}\n{}", abt, usg, flg, hlp);
         return;
     } else if(argc == 2){
         // versioning
         if(os::args[1] == "-v" || os::args[1] == "--version"){
-            fmt::printfln("mika's moss compiler v{}", version)!;
+            color("%gmika's moss compiler %yv{}%d", version);
             return;
         // help
         } else if(os::args[1] == "-h" || os::args[1] == "--help"){
@@ -65,8 +73,8 @@ export fn main() void = {
 
     let outfile = "";
     let srcname = "";
-    let libpath = fmt::asprintf("{}/{}",
-        os::getenv("HOME"): str, ".local/lib/mmclib/")!;
+    let libpath = strings::concat(os::getenv("HOME"): str,
+        "/.local/lib/mmclib/")!;
     defer free(libpath);
 
     // parse command line arguments
@@ -74,8 +82,8 @@ export fn main() void = {
         const arg = os::args[a];
         if(strings::hasprefix(arg, "-")){
             switch(arg){
-            // libpath flag
-            case "-l" =>
+            // std libpath flag
+            case "-std" =>
                 a += 1;
                 if(a < argc){
                     libset = true;
@@ -83,7 +91,16 @@ export fn main() void = {
                     libpath = strings::dup(os::args[a])!;
                     continue;
                 } else {
-                    color("%rmissing lib path for -l flag");
+                    color("%rmissing lib path for -std flag");
+                    color_error(flg);
+                };
+            case "-l" =>
+                a += 1;
+                if(a < argc){
+                    append(also_link, strings::dup(os::args[a])!)!;
+                    continue;
+                } else {
+                    color("%rmissing object file for -l flag");
                     color_error(flg);
                 };
             // verbose mode
@@ -117,6 +134,9 @@ export fn main() void = {
     if(!infset){
         color_error("%rno input file given");
     };
+    if(!outset){
+        outfile = strings::rcut(srcname, ".ms").0;
+    };
     libpath =
         if(strings::hassuffix(libpath, "/")){
             yield libpath;
@@ -128,19 +148,130 @@ export fn main() void = {
     if(!os::exists(libpath)){
         color_error("%rthe given path %y\"{}\"%r does not exists", libpath);
     };
+    match(compile(srcname, libpath, alloc(memio::dynamic())!, true)){
+    case let obj: comp_obj =>
+        defer free_module(obj);
+        if(just_check){
+            if(!silent) fmt::println(memio::string(obj.buffer)!)!;
+            return;
+        };
+        run_cmd(silent, "mkdir", "-p", temp);
 
-    match(compile(srcname, &memio::dynamic(), true)){
-    case let buffer: *memio::stream =>
-        defer io::close(buffer)!;
+        const mold_args = []: []str;
+        defer free(mold_args);
+        defer for(let obj ..& mold_args) free(obj);
+
+        append(mold_args, strings::dup("-o")!)!;
+        append(mold_args, strings::dup(outfile)!)!;
+
+        append(mold_args, also_link...)!;
+
+        append(mold_args, gen_obj(outfile, memio::string(obj.buffer)!, temp))!;
+
+        let skip = []: []str;
+        defer free(skip);
+        match(gen_mods(obj.ctxt, &mold_args, &skip)){
+        case let err: COMPERR =>
+            defer free(err.1);
+            defer io::close(err.1)!;
+            color(memio::string(err.1)!);
+            os::exit(err.0);
+        case void => void;
+        };
+        const rt_out = strings::concat(temp, "rt.o")!;
+        const rt_src = strings::concat(libpath, "rt.asm")!;
+        defer free(rt_src);
+
+        run_cmd(silent, "nasm", "-felf64", "-o", rt_out, rt_src);
+        append(mold_args, rt_out)!;
+
+        run_cmd(silent, "mold", mold_args...);
     case let err: COMPERR =>
         defer free(err.1);
         defer io::close(err.1)!;
         color(memio::string(err.1)!);
         os::exit(err.0);
     };
-    if(!outset){
-        const (base, _) = strings::cut(srcname, ".");
-        outfile = base;
+};
+
+fn gen_mods(ctxt: *context, args: *[]str, skip: *[]str) (void | COMPERR) = {
+    for(let mod ..& ctxt.modules){
+        if(finds(*skip, mod.1.ctxt.name) is void){
+            append(skip, mod.1.ctxt.name)!;
+            const outfile = strings::rcut(mod.1.ctxt.name, ".ms").0;
+
+            gen_file(mod.1.ctxt, mod.1.tokens, mod.1.buffer, mod.1.ast_head)?;
+            append(args, gen_obj(outfile, memio::string(mod.1.buffer)!, temp))!;
+
+            gen_mods(mod.1.ctxt, args, skip)?;
+        };
+    };
+};
+
+// receives a output file name and generates the corresponding
+// object file. the returned string is the object file name
+fn gen_obj(dest: str, code: str, temp: str) str = {
+    const objf =
+        if(strings::index(dest, "/") is size){
+            const (_, r) = strings::rcut(dest, "/");
+            yield r;
+        } else {
+            yield dest;
+        };
+    const qbe_out = fmt::asprintf("{}{}.ssa", temp, objf)!;
+    defer free(qbe_out);
+    const bin_src = fmt::asprintf("{}{}.asm", temp, objf)!;
+    defer free(bin_src);
+    const bin_out = fmt::asprintf("{}{}.o", temp, objf)!;
+
+    const file =
+        match(os::create(qbe_out, fs::mode::USER_RWX)){
+        case let f: io::file => yield f;
+        case let e: fs::error =>
+            color_error("%Robject dispatch error:%r {}",
+                fs::strerror(e));
+        };
+    io::write(file, strings::toutf8(code))!;
+    io::close(file)!;
+
+    run_cmd(silent, "qbe", "-o", bin_src, qbe_out);
+    run_cmd(silent, "as" , "-o", bin_out, bin_src);
+    return bin_out;
+};
+
+fn run_cmd(noprint: bool, cmd: str, args: str...) void = {
+    if(!noprint){
+        const argf = memio::dynamic();
+        defer io::close(&argf)!;
+        for(let a .. args){
+            fmt::fprintf(&argf, " {}", a)!;
+        };
+        color("%gcmd:%d {}{}", cmd, memio::string(&argf)!);
+    };
+    const exe =
+        match(exec::cmd(cmd, args...)){
+        case let c: exec::command =>
+            yield c;
+        case let e: exec::error =>
+            if(e is exec::nocmd){
+                if(cmd == "mold"){
+                    color("%ymold not found. using ld%d");
+                    run_cmd(noprint, "ld", args...);
+                } else {
+                    color_error("%Rmissing dependency:%b {}%d", cmd);
+                };
+            };
+            color_error("%r{} failed%d", cmd);
+        };
+    match(exec::fork()!){
+    case void =>
+        exec::exec(&exe);
+    case let proc: exec::process =>
+        const stat = exec::wait(&proc)!;
+        free(exe.argv);
+        free(exe.files);
+        strings::freeall(exe.env);
+        if(stat.status != 0) color_error("%r{} failed%d", cmd);
     };
 };
 
@@ -210,13 +341,13 @@ fn color_error(fmt: str, args: fmt::field...) never = {
     os::exit(1);
 };
 
-fn error(file: (context | void), fmt: str,
+fn error(file: (*context | void), fmt: str,
     args: fmt::field...) COMPERR = {
     let buffer = alloc(memio::dynamic())!;
     match(file){
     case void =>
         fmt::fprintfln(buffer, fmt, args...)!;
-    case let f: context =>
+    case let f: *context =>
         const pos = gen_pos(f);
         defer free(pos);
         fmt::fprintf(buffer, "%R{}:%r ", pos)!;

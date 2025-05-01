@@ -12,8 +12,9 @@ use memio;
 // prim := u8 | u16 | u32 | u64 | i8 | i16 | i32 | i64 | str | unit | void
 //
 // ident := (A-Z | a-z | 0-9 | _)+
-// const_val := number | string
+// const_val := number | string | FFI_literal
 // number := (["0x" | "0o" | "0b"] (0-9)+) | char_lit
+// FFI_literal := "$", ident
 //
 // const_def := ident, type, "=", const_exp
 // const_exp := [unary_operator], const_val, (binary_operator, const_val)*
@@ -22,7 +23,7 @@ use memio;
 //
 // unary_operator := "+" | "-" | "~" | "#"
 //
-// fun_def := "fn", ident, param_list, type, "=", effect, scope, eol
+// fun_def := "fn", ident, param_list, type, "=", effect, (scope | FFI_literal), eol
 // param_list := "(", (ident, type)*, ")"
 // effect := ident | "do" ("&", ident)*
 // scope := "{", (expression, eol)*, ["=>", expression, eol], "}"
@@ -68,13 +69,13 @@ use memio;
 // import := ident, "=", "use", string, eol
 //
 type ident = struct {
-    name: str,
+    pub: bool,
+    glob: bool,
+    id: str,
     itype: primitive,
 };
 
-type number = (bool, u64);
-
-type keyword = enum {
+type keyword = enum u8 {
     USE, PUB, LET, FN, TYPE,
     FOR, MATCH, IF, ELSE,
     TODO, FAIL, DO, TEST,
@@ -88,7 +89,7 @@ const kwd_value = [
     "record", "enum"
 ];
 
-type primitive = enum {
+type primitive = enum u8 {
     U8, U16, U32, U64,
     I8, I16, I32, I64,
     F32, F64,
@@ -104,18 +105,39 @@ const prm_value = [
     "", "", ""
 ];
 
-type operator = enum {
-    MAP, RANGE, LENGTH, 
+const opr_value = [
+    "leq", "geq", "assignment", "eq",
+    "neq", "shl", "shr", "lt", "gt",
+    "logic or", "logic and",
+    "boolean or", "boolean and",
+    "not", "plus", "minus", "multiply",
+    "integer division", "ratio",
+    "modulo", "bubble error",
+    "bang", "heap-alloc", "raw access",
+    "map", "range", "length"
+];
+
+type operator = enum u8 {
     LEQ, GEQ, ASG, EQL, NEQ,
-    SHL, SHR, LST, GTT, DEF,
+    SHL, SHR, LST, GTT,
     LOR, LAND, BOR, BAND,
     NOT, PLS, MIN, MUL,
     IDIV, FDIV, MOD,
-    PROP, BANG, RAW,
+    PROP, BANG, HEAP,
+    MAP, RANGE, LENGTH,
 };
 
-type symbol = enum {
-    EOL,
+const sym_value = [
+    "end of line", "FFI linking",
+    "comma", "record field access",
+    "module field access",
+    "open parenthesis", "close parenthesis",
+    "scope definition", "end of scope",
+    "indexing", "end of indexing",
+];
+
+type symbol = enum u8 {
+    EOL, FFI,
     COMMA, DOT, FIELD,
     LFT_PAR, RGT_PAR,
     LFT_CURLY, RGT_CURLY,
@@ -124,7 +146,7 @@ type symbol = enum {
 
 type eof = void;
 
-type tkval = (ident | number | str | keyword | primitive |
+type tkval = (ident | size | str | keyword | primitive |
     operator | symbol | eof);
 
 type token = struct {
@@ -136,10 +158,12 @@ type token = struct {
 type scope = struct {
     vars: []*ast,
     upper: (void | *scope),
+    effects: []tkval,
 };
 
 type context = struct {
     name: str,
+    libpath: str,
     lin: size,
     cln: size,
     ptr: size,
@@ -147,13 +171,23 @@ type context = struct {
     src: []u8,
     glob: scope,
     scp: (void | *scope),
+    literals: []str,
+    fun_defs: []*ast,
+    modules: [](token, comp_obj),
 };
 
-type path_t = enum {
+type comp_obj = struct {
+    tokens: []token,
+    buffer: *memio::stream,
+    ast_head: nullable *ast,
+    ctxt: *context,
+};
+
+type path_t = enum u8 {
     TYPE_DEF, RECORD, ENUM, UNION,
     CONST_VAL, CONST_DEF, CONST_EXP,
     FUN_DEF, PARAM_LIST, SCOPE, EXPR, DECL,
-    ARRAY, RANGE, INDEXING,
+    MEMBER, OPERATOR, ARRAY, RANGE, INDEXING,
     TUPLE, STATEMENT, STT_DECL,
     FUN_CALL, FIELD_ACCESS, MODULE_ACCESS,
     RECORD_LIT, IMPORT, EOF,
@@ -162,31 +196,46 @@ type path_t = enum {
 type var_meta = struct {
     lin: size,
     cln: size,
+    ffi: (void | str),
+    mod: (void | str),
+    glob: bool,
     name: ident,
 };
 
 type fn_meta = struct {
     lin: size,
     cln: size,
+    ffi: (void | str),
+    mod: (void | str),
+    used: bool,
     name: ident,
+    origin: (void | str),
     params: nullable *ast,
     fn_type: primitive,
     effects: []tkval,
+    scope_begin: size,
+};
+
+type funcall_meta = struct {
+    fun: *ast,
+    args: []*ast,
 };
 
 type param_meta = struct {
-    lin: []size,
-    cln: []size,
-    name: []ident,
-    tpe: []primitive,
+    names: []ident,
+    pos: []token,
+    at: []size,
 };
 
 type expr_meta = struct {
     rets: bool,
     tpe: primitive,
+    scp: (void | *scope),
+    members: []*ast,
 };
 
-type node_meta = (var_meta | fn_meta | param_meta | expr_meta);
+type node_meta = (*var_meta | *fn_meta | *param_meta |
+    *expr_meta | *funcall_meta | primitive);
 
 type ast = struct {
     kind: path_t,

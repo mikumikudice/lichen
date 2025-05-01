@@ -1,4 +1,7 @@
 segment .rod
+    rt_stdin dd 0
+    rt_stdout dd 1
+    rt_stderr dd 2
     empty.str:
         dq 8
         db 0
@@ -8,6 +11,7 @@ segment .rod
         db 0
 
 segment .data
+    buffb db 0
     time_t:
         dq 0
         dq 0
@@ -15,43 +19,47 @@ segment .data
     last dq 0 ; last stackframe
 
 segment .text
+global rt_stdin
+global rt_stdout
+global rt_stderr
+
 global empty.str
 global empty.arr
 
-global rt.dummy
+global rt_dummy
 
-global rt.gets
-global rt.puts
-global rt.open
-global rt.close
-global rt.putb
+global rt_gets
+global rt_puts
+global rt_open
+global rt_close
+global rt_putb
 
-global rt.arena
-global rt.free
-global rt.copy
-global rt.strlset
-global rt.strcpy
-global rt.strrev
-global rt.memset
+global rt_arena
+global rt_free
+global rt_copy
+global rt_strlset
+global rt_strcpy
+global rt_strrev
+global rt_memset
 
-global rt.sleep
-global rt.unlink
-global rt.exit
+global rt_sleep
+global rt_unlink
+global rt_exit
 
-global rt.indxb
-global rt.mvtob
-global rt.strcmp
-global rt.absb
-global rt.absh
-global rt.absw
-global rt.absl
+global rt_indxb
+global rt_mvtob
+global rt_strcmp
+global rt_absb
+global rt_absh
+global rt_absw
+global rt_absl
 
 ; fn(...) unit
-rt.dummy:
+rt_dummy:
     ret
 
 ; fn(filepath str, flags u32, mode u32) u32
-rt.open:
+rt_open:
     push rdi
     push rcx
     push rdx
@@ -78,7 +86,7 @@ rt.open:
     add rdi, 8
     mov rsi, rdi
     mov rdi, rcx
-    call rt.copy
+    call rt_copy
 
     mov rdi, rcx
     pop rsi
@@ -90,13 +98,13 @@ rt.open:
     ret
 
 ; fn(handle u32) unit
-rt.close:
+rt_close:
     mov rax, 3
     syscall
     ret
 
 ; fn(handler u32, bz u64) str
-rt.gets:
+rt_gets:
     push rcx
     push rdx
     push rsi
@@ -136,10 +144,10 @@ rt.gets:
     ret
 
     .err:
-    call rt.exit
+    call rt_exit
 
 ; fn(handler u32, data str) u32
-rt.puts:
+rt_puts:
     push rdi
     push rsi
     push rcx
@@ -163,10 +171,10 @@ rt.puts:
 
     .err:
     mov rdi, rax
-    call rt.exit
+    call rt_exit
 
 ; fn(handler u32, data u8) u32
-rt.putb:
+rt_putb:
     push rdi
     push rsi
     push rcx
@@ -187,7 +195,7 @@ rt.putb:
     ret
 
 ; fn(size u64) rec { u64, u64 }
-rt.arena:
+rt_arena:
     push rdi
     push rsi
     push rdx
@@ -222,10 +230,10 @@ rt.arena:
     pop rdi
     ret
     .err:
-    call rt.exit
+    call rt_exit
 
 ; fn(ptr rec { u64, u64 }) unit
-rt.free:
+rt_free:
     push rdi
     push rdx
     push rsi
@@ -243,10 +251,10 @@ rt.free:
     pop rdi
     ret
     .err:
-    call rt.exit
+    call rt_exit
 
 ; fn(dest raw, src raw, size u64) raw
-rt.copy:
+rt_copy:
     push rcx
     push rdi
     push rsi
@@ -274,14 +282,14 @@ rt.copy:
     ret
 
 ; fn(dest str, src str, size u64) unit
-rt.strcpy:
+rt_strcpy:
     push rdi
     push rsi
     push rdx
 
     add rdi, 8
     add rsi, 8
-    call rt.copy
+    call rt_copy
 
     pop rdx
     pop rsi
@@ -291,7 +299,7 @@ rt.strcpy:
     ret
 
 ; fn(src str) str
-rt.strrev:
+rt_strrev:
     push rbx
     push rcx
     push rdi
@@ -349,7 +357,7 @@ rt.strrev:
         ret
 
 ; fn(sec u64, mili u64) unit
-rt.sleep:
+rt_sleep:
     push rdi
     mov rax, time_t
     mov [rax], rdi
@@ -362,7 +370,7 @@ rt.sleep:
     ret
 
 ; fn(filepath str) i32
-rt.unlink:
+rt_unlink:
     push rdi
     push rsi
     push rdx
@@ -375,7 +383,7 @@ rt.unlink:
     mov byte [rdi], 0
     sub rdi, rdx
     dec rdi
-    call rt.copy
+    call rt_copy
 
     pop rdx
     pop rsi
@@ -388,24 +396,24 @@ rt.unlink:
     ret
     .err:
     mov rdi, rax
-    call rt.exit
+    call rt_exit
 
 ; fn(old_filepath str, new_filepath str) i32
-rt.rename:
+rt_rename:
     mov rax, 52h
     syscall
     ret
 
 ; fn(code u32) void
-rt.exit:
-    call rt.absw
+rt_exit:
+    call rt_absw
     mov rdi, rax
     mov rax, 3ch
     syscall
     hlt
 
 ; fn(a str, b str) u8
-rt.strcmp:
+rt_strcmp:
     push rdi
     push rsi
     push rbx
@@ -448,7 +456,7 @@ rt.strcmp:
         ret
 
 ; fn(num i8) u8
-rt.absb:
+rt_absb:
     push rbx
     xor rax, rax
     xor rbx, rbx
@@ -461,7 +469,7 @@ rt.absb:
     ret
 
 ; fn(num i16) u16
-rt.absh:
+rt_absh:
     push rbx
     xor rax, rax
     xor rbx, rbx
@@ -474,7 +482,7 @@ rt.absh:
     ret
 
 ; fn(num i32) u32
-rt.absw:
+rt_absw:
     push rbx
     xor rax, rax
     xor rbx, rbx
@@ -487,7 +495,7 @@ rt.absw:
     ret
 
 ; fn(num i64) 64
-rt.absl:
+rt_absl:
     push rbx
     mov rbx, rdi
     mov rax, rdi

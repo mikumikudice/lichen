@@ -7,22 +7,6 @@ use memio;
 use strings;
 use strconv;
 
-// test units
-@test fn test_alnum() void = {
-    assert(is_alnum('a'));
-    assert(is_alnum('z'));
-    assert(is_alnum('A'));
-    assert(is_alnum('Z'));
-    assert(is_alnum('g'));
-    assert(is_alnum('G'));
-    assert(is_alnum('0'));
-    assert(is_alnum('9'));
-    assert(is_alnum('7'));
-    assert(!is_alnum('_'));
-    assert(!is_alnum('.'));
-    assert(!is_alnum('{'));
-};
-
 // checks if character is alphanumeric
 fn is_alnum(char: u8) bool = {
     const nocase = char | 32;
@@ -36,7 +20,7 @@ fn is_whitespace(char: u8) bool = {
 
 // extracts a formatted version of the current
 // parser position in the file
-fn gen_pos(ctxt: context) str = {
+fn gen_pos(ctxt: *context) str = {
     return fmt::asprintf("{}:{}:{}", ctxt.name,
         ctxt.lin + 1, ctxt.cln + 1)!;
 };
@@ -46,7 +30,7 @@ fn u8tostr(a: []u8) str = strings::fromutf8(a)!;
 
 // loads the file `fname` and instantiates
 // a file parsing object
-fn load(fname: str) (context | COMPERR) = {
+fn load(fname: str, libpath: str) (context | COMPERR) = {
     // open file or rise an error
     const fsrc = match(os::open(fname)){
     case let f: io::file => yield f;
@@ -61,11 +45,16 @@ fn load(fname: str) (context | COMPERR) = {
     if(name == "") name = fname;
 
     const file = context {
-        name = name,
+        name = fname,
+        libpath = libpath,
         lin = 0, cln = 0,
         ptr = 0, lst = 0,
         src = [], scp = void,
+        literals = [],
+        fun_defs = [],
+        modules = [],
         glob = scope {
+            effects = [],
             vars = [],
             upper = void,
         },
@@ -83,7 +72,7 @@ fn load(fname: str) (context | COMPERR) = {
     if(len(file.src) == 0 ||
     (len(file.src) == 1 && file.src[0] == '\n')){
         return error(void,
-            "%Rthe file \"{}\" is empty%d\n\ntry adding:\n\n{}",
+            "%rthe file \"{}\" is empty%d\n\n%gtry adding:\n\n{}",
             fname, fn_demo);
     };
     return file;
@@ -93,13 +82,9 @@ fn load(fname: str) (context | COMPERR) = {
 fn strtoken(tok: tkval) str = {
     match(tok){
     case let idt: ident =>
-        return fmt::asprintf("identifier \"{}\"", idt.name)!;
-    case let num: number =>
-        if(num.0){
-            return fmt::asprintf("numeric literal -{}", num.1)!;
-        } else {
-            return fmt::asprintf("numeric literal {}", num.1)!;
-        };
+        return fmt::asprintf("identifier \"{}\"", idt.id)!;
+    case let num: size =>
+        return fmt::asprintf("numeric literal {}", num)!;
     case let txt: str =>
         return fmt::asprintf("string literal \"{}\"", txt)!;
     case let kwd: keyword =>
@@ -107,22 +92,20 @@ fn strtoken(tok: tkval) str = {
     case let prm: primitive =>
         switch(prm){
         case primitive::NUMBER =>
-            return "number literal";
+            return strings::dup("number literal")!;
         case primitive::RATIO =>
-            return "ratio literal";
+            return strings::dup("ratio literal")!;
+        case primitive::ANY =>
+            return strings::dup("untyped")!;
         case =>
             return fmt::asprintf("primitive type \"{}\"", prm_value[prm])!;
         };
     case let opr: operator =>
-        return fmt::asprintf("\"{}\" operator", opr: int)!;
+        return fmt::asprintf("\"{}\" operator", opr_value[opr: int])!;
     case let sym: symbol =>
-        if(sym == symbol::EOL){
-            return fmt::asprint("end of line")!;
-        } else {
-            return fmt::asprintf("symbol \"{}\"", sym: int)!;
-        };
+        return strings::dup(sym_value[sym])!;
     case eof =>
-        return fmt::asprint("end of file")!;
+        return strings::dup("end of file")!;
     };
 };
 
@@ -132,14 +115,14 @@ fn comp_tk(lft: tkval, rgt: tkval) bool = {
     case let idt: ident =>
         if(rgt is ident){
             const r = rgt as ident;
-            return r.name == idt.name;
+            return r.id == idt.id;
         } else {
             return false;
         };
-    case let num: number =>
-        if(rgt is number){
-            const r = rgt as number;
-            return num.0 == r.0 && num.1 == r.1;
+    case let num: size =>
+        if(rgt is size){
+            const r = rgt as size;
+            return num == r;
         } else {
             return false;
         };
@@ -158,7 +141,7 @@ fn comp_tk(lft: tkval, rgt: tkval) bool = {
     };
 };
 
-fn new_tk(ctxt: context, val: tkval) token = {
+fn new_tk(ctxt: *context, val: tkval) token = {
     assert(ctxt.lst != len(ctxt.src));
     return token {
         lin = ctxt.lin,
@@ -198,7 +181,7 @@ fn is_binary(opr: operator) bool = {
 };
 
 // pulls next token from token array and asserts for buffer overflow/eof
-fn next_tk(ctxt: context, tokens: []token, at: size, msg: str)
+fn next_tk(ctxt: *context, tokens: []token, at: size, msg: str)
     (token | COMPERR) = {
     if(at == len(tokens)){
         const tk = tokens[at - 1];
@@ -211,24 +194,24 @@ fn next_tk(ctxt: context, tokens: []token, at: size, msg: str)
 };
 
 // calls next_tk and asserts if said token is equal to `val`
-fn pop_assert(ctxt: context, tokens: []token, at: size, val: tkval, msg: str)
+fn pop_assert(ctxt: *context, tokens: []token, at: size, val: tkval, msg: str)
     (size | COMPERR) = {
     const tk = next_tk(ctxt, tokens, at, msg)?;
     if(!comp_tk(tk.val, val)){
-        move_ptr(&ctxt, tk);
+        move_ptr(ctxt, tk);
         return error(ctxt, msg, strtoken(tk.val));
     };
     return at + 1;
 };
 
-let count = 0z;
+let count: size = 0;
 
 // allocates a new empty ast node
 fn new_node(tokens: []token, at: size) *ast = {
     count += 1;
     return alloc(ast {
         kind = path_t::EOF,
-        path = tokens[at..at],
+        path = tokens[at..(at + 1)],
         meta = void,
         inner = null,
         next = null,
@@ -249,72 +232,221 @@ fn push_node(this: nullable *ast, new: *ast) nullable *ast = {
 
 // frees the given node and all inner nodes, if any
 fn free_nodes(_node: nullable *ast) void = {
+    assert(count > 0);
     count -= 1;
     const node = _node as *ast;
     match(node.meta){
-    case void => void;
-    case let exp: expr_meta => void;
-    case let var: var_meta => void;
-    case let fun: fn_meta =>
-        if(len(fun.effects) > 0)
-            free(fun.effects);
+    case void =>
+        void;
+    case primitive =>
+        void;
+    case let meta: *var_meta =>
+        free(meta);
+
+    case let exp: *expr_meta =>
+        defer free(exp);
+        for(let m ..& exp.members){
+            free_nodes(m);
+        };
+        free(exp.members);
+
+    case let fun: *fn_meta =>
+        defer free(fun);
+        free(fun.effects);
         free_nodes(fun.params);
-    case let param: param_meta =>
-        free(param.lin);
-        free(param.cln);
-        free(param.name);
-        free(param.tpe);
+        if(fun.mod is str) free(fun.mod as str);
+
+    case let param: *param_meta =>
+        defer free(param);
+        free(param.names);
+        free(param.pos);
+        free(param.at);
+
+    case let fncall: *funcall_meta =>
+        defer free(fncall);
+        for(let arg ..& fncall.args){
+            free_nodes(arg);
+        };
+        free(fncall.args);
     };
-    if(!(node.inner is null)){
+    if(node.inner is *ast){
         free_nodes(node.inner);
     };
-    if(!(node.next is null)) free_nodes(node.next);
+    if(node.next is *ast){
+        free_nodes(node.next);
+    };
     free(node);
 };
 
 fn get_var(scp: *scope, var: ident) (*ast | void) = {
     for(let var_def ..& scp.vars){
-        const meta = var_def.meta as var_meta;
-        if(meta.name.name == var.name) return var_def;
+        const meta = var_def.meta as *var_meta;
+        if(meta.name.id == var.id) return var_def;
     };
     if(scp.upper is *scope)
         return get_var(scp.upper as *scope, var);
 };
 
-fn push_var(ctxt: context, var_def: *ast) (void | COMPERR) = {
-    const meta = var_def.meta as var_meta;
+fn push_var(ctxt: *context, var_def: *ast) (void | COMPERR) = {
+    const meta = var_def.meta as *var_meta;
+    if(meta.name.itype == primitive::VOID){
+        if(meta.name.glob && !meta.name.pub){
+            move_ptr(ctxt, var_def.path[1]);
+        } else {
+            move_ptr(ctxt, var_def.path[2]);
+        };
+        return error(ctxt, "variables cannot be of type %g{}%d",
+            strtoken(primitive::VOID));
+    };
     match(get_var(ctxt.scp as *scope, meta.name)){
     case void =>
         const scp = ctxt.scp as *scope;
         append(scp.vars, var_def)!;
     case let dup: *ast =>
-        const o_meta = dup.meta as var_meta;
+        move_ptr(ctxt, dup.path[0]);
+        const dup_pos = gen_pos(ctxt);
+        move_ptr(ctxt, var_def.path[0]);
         return error(ctxt, "duplicate definition of variable %b{}%r. "
-            "previously defined at {}:{}:{}", meta.name.name,
-            ctxt.name, o_meta.lin, o_meta.cln);
+            "previously defined at {}", meta.name.id, dup_pos);
+    };
+};
+
+fn get_fun(ctxt: *context, name: ident) (*ast | void) = {
+    for(let fun ..& ctxt.fun_defs){
+        const meta = fun.meta as *fn_meta;
+        if(meta.name.id == name.id) return fun;
+    };
+};
+
+fn get_mod_fun(ctxt: *context, mod: token, name: ident) (*ast | COMPERR) = {
+    move_ptr(ctxt, mod);
+    const modname = mod.val as ident;
+    for(let m ..& ctxt.modules){
+        if((m.0.val as ident).id  == modname.id)
+        for(let fun ..& m.1.ctxt.fun_defs){
+            const meta = fun.meta as *fn_meta;
+            if(meta.name.id == name.id){
+                meta.used = true;
+                meta.origin = modname.id;
+                meta.mod = fmt::asprintf("{}.{}",
+                    modname.id, meta.name.id)!;
+                return fun;
+            };
+        };
+        return error(ctxt,
+            "the module %b{} (bound to %g{}%b)%r has no %y{}%r function",
+            m.1.ctxt.name, modname.id, name.id);
+    };
+    return error(ctxt, "module bind %b{}%r not found", modname.id);
+};
+
+fn push_fun(ctxt: *context, fn_def: *ast) (void | COMPERR) = {
+    const meta = fn_def.meta as *fn_meta;
+    match(get_fun(ctxt, meta.name)){
+    case void =>
+        append(ctxt.fun_defs, fn_def)!;
+    case let dup: *ast =>
+        move_ptr(ctxt, fn_def.path[0]);
+        const dup_pos = gen_pos(ctxt);
+        move_ptr(ctxt, fn_def.path[0]);
+        return error(ctxt, "duplicate definition of function %b{}%r. "
+            "previously defined at {}", meta.name.id, dup_pos);
+    };
+};
+
+fn push_str(ctxt: *context, lit: str) size = {
+    match(finds(ctxt.literals, lit)){
+    case let id: size => return id;
+    case void =>
+        append(ctxt.literals, lit)!;
+        return len(ctxt.literals) - 1;
+    };
+};
+
+fn push_module(ctxt: *context, bind: token, module: comp_obj) (void | COMPERR) = {
+    const val = (bind.val as ident).id;
+    for(let mod .. ctxt.modules){
+        if((mod.0.val as ident).id == val){
+            move_ptr(ctxt, mod.0);
+            const pos = gen_pos(ctxt);
+            move_ptr(ctxt, bind);
+            return error(ctxt,
+                "another module is using the binding %g{}%b\nlast use at %g{}%f",
+                val, pos);
+        };
+    };
+    append(ctxt.modules, (bind, module))!;
+};
+
+fn free_module(obj: comp_obj) void = {
+    io::close(obj.buffer)!;
+    free(obj.buffer);
+    free(obj.tokens);
+
+    free_nodes(obj.ast_head);
+    for(let mod .. obj.ctxt.modules) free_module(mod.1);
+    free(obj.ctxt.modules);
+
+    free(obj.ctxt.literals);
+    free(obj.ctxt.glob.vars);
+    free(obj.ctxt.fun_defs);
+    free(obj.ctxt.name);
+    free(obj.ctxt.src);
+    free(obj.ctxt);
+};
+
+fn qbe_t(tpe: primitive, nosubt: bool = false) str = {
+    switch(tpe){
+    case primitive::U8, primitive::I8 =>
+        if(nosubt) return "w";
+        return "b";
+    case primitive::U16, primitive::I16 =>
+        if(nosubt) return "w";
+        return "h";
+    case primitive::U32, primitive::I32 =>
+        return "w";
+    case primitive::U64, primitive::I64, primitive::STR,
+        primitive::UNIT =>
+        return "l";
+    case =>
+        assert(false);
+        color_error("%Runreachable:%r unknown type %y{}%d", tpe: int);
     };
 };
 
 // compiles down a given file to its QBE IR equivalent as a memio stream
 // returns a COMPERR if any compilation error occurs.
-fn compile(filename: str, buffer: *memio::stream, main: bool = false)
-    (*memio::stream | COMPERR) = {
+fn compile(filename: str, libpath: str, buffer: *memio::stream,
+    main: bool = false) (comp_obj | COMPERR) = {
+    filename = strings::dup(filename)!;
     // load source file
-    const ctxt = load(filename)?;
-    defer free(ctxt.src);
-    defer if(len(ctxt.glob.vars) > 0) free(ctxt.glob.vars);
+    const _ctxt =
+        match(load(filename, libpath)){
+        case let c: context => yield c;
+        case let e: COMPERR =>
+            yield if(!main){
+                const file = strings::concat(libpath, filename)!;
+                free(filename);
+                filename = file;
+                yield load(filename, libpath)?;
+            } else {
+                return e;
+            };
+        };
+    const ctxt = alloc(_ctxt)!;
     ctxt.scp = &ctxt.glob;
 
     // tokenize
     let max = len(ctxt.src);
     let tokens = []: []token;
+
     for(ctxt.ptr < max){
         // remove comments
         if(ctxt.src[ctxt.ptr] == '/' && ctxt.ptr < max - 1){
             if(strings::fromutf8(ctxt.src[ctxt.ptr .. ctxt.ptr + 2])! == "//"){
                 for(ctxt.ptr < max && ctxt.src[ctxt.ptr] != '\n'){
                     ctxt.ptr += 1;
-                    move_cln(&ctxt);
+                    move_cln(ctxt);
                 };
             };
         };
@@ -324,7 +456,7 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
             for(ctxt.ptr < max && is_alnum(ctxt.src[ctxt.ptr]) ||
                 ctxt.src[ctxt.ptr] == '_'){
                 ctxt.ptr += 1;
-                move_cln(&ctxt);
+                move_cln(ctxt);
             };
             let matched = false;
             const path = u8tostr(ctxt.src[start..ctxt.ptr]);
@@ -356,7 +488,7 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
                 match(strconv::stou64(strings::sub(check, 2),
                 strconv::base::HEX)){
                 case let n: u64 =>
-                    append(tokens, new_tk(ctxt, (false, n)))!;
+                    append(tokens, new_tk(ctxt, n: size))!;
                 case strconv::overflow =>
                     return error(ctxt,
                         "64-bit hexadecimal literal overflow");
@@ -368,7 +500,7 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
                 match(strconv::stou64(strings::sub(check, 2),
                 strconv::base::OCT)){
                 case let n: u64 =>
-                    append(tokens, new_tk(ctxt, (false, n)))!;
+                    append(tokens, new_tk(ctxt, n: size))!;
                 case strconv::overflow =>
                     return error(ctxt,
                         "64-bit octal literal overflow");
@@ -380,7 +512,7 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
                 match(strconv::stou64(strings::sub(check, 2),
                 strconv::base::BIN)){
                 case let n: u64 =>
-                    append(tokens, new_tk(ctxt, (false, n)))!;
+                    append(tokens, new_tk(ctxt, n: size))!;
                 case strconv::overflow =>
                     return error(ctxt,
                         "64-bit binary literal overflow");
@@ -391,22 +523,24 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
             } else {
                 match(strconv::stou64(check)){
                 case let n: u64 =>
-                    append(tokens, new_tk(ctxt, (false, n)))!;
+                    append(tokens, new_tk(ctxt, n: size))!;
                 case strconv::overflow =>
                     return error(ctxt,
                         "64-bit literal overflow");
                 case =>
                     for(ctxt.ptr < max && ctxt.src[ctxt.ptr] == '\''){
                         ctxt.ptr += 1;
-                        move_cln(&ctxt);
+                        move_cln(ctxt);
                     };
                     append(tokens, new_tk(ctxt, ident {
-                        name = path,
+                        pub = false,
+                        glob = false,
+                        id = path,
                         itype = primitive::ANY
                     }))!;
                 };
             };
-        // symbol or string/character literal
+        // symbol, operator or string/character literal
         } else if(!(is_alnum(ctxt.src[ctxt.ptr]) || is_whitespace(ctxt.src[ctxt.ptr]))){
             let start = ctxt.ptr;
             let end = start;
@@ -418,6 +552,8 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
             if(ctxt.src[start] == '\"'){
                 start += 1;
                 ctxt.ptr = start;
+                const dup = ctxt;
+
                 let escape = false;
                 let closed = false;
                 for(ctxt.ptr < max && !closed){
@@ -459,20 +595,21 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
                         };
                     case '\n' =>
                         ctxt.ptr += 1;
-                        move_cln(&ctxt);
+                        move_cln(ctxt);
                         break;
                     case =>
                         if(escape){
-                            return error(ctxt, "invalid escape sequence \"\\{}\"",
+                            dup.cln = start;
+                            return error(dup, "invalid escape sequence \"\\{}\"",
                                 ctxt.src[ctxt.ptr]: rune);
                         };
                     };
                     ctxt.ptr += 1;
-                    move_cln(&ctxt);
+                    move_cln(ctxt);
                 };
-                if(!closed) return error(ctxt, "unclosed string found here");
+                if(!closed) return error(dup, "unclosed string found here");
                 assert(!escape);
-                append(tokens, new_tk(ctxt,
+                append(tokens, new_tk(dup,
                     u8tostr(ctxt.src[start..(ctxt.ptr - 1)])))!;
                 continue;
             // character literal
@@ -510,215 +647,233 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
                 if(start >= max || ctxt.src[start + 1] != '\''){
                     return error(ctxt, "unclosed character literal found here");
                 };
-                append(tokens, new_tk(ctxt, (false, val): number))!;
+                append(tokens, new_tk(ctxt, val: size))!;
                 continue;
             };
             for(start < end) switch(ctxt.src[start]){
             case ';' =>
                 append(tokens, new_tk(ctxt, symbol::EOL))!;
-                ctxt.ptr += 1;
-                move_cln(&ctxt);
                 start += 1;
+                ctxt.ptr += 1;
+                move_cln(ctxt);
             case ',' =>
                 append(tokens, new_tk(ctxt, symbol::COMMA))!;
-                ctxt.ptr += 1;
-                move_cln(&ctxt);
                 start += 1;
+                ctxt.ptr += 1;
+                move_cln(ctxt);
             case '(' =>
                 append(tokens, new_tk(ctxt, symbol::LFT_PAR))!;
-                ctxt.ptr += 1;
-                move_cln(&ctxt);
                 start += 1;
+                ctxt.ptr += 1;
+                move_cln(ctxt);
             case ')' =>
                 append(tokens, new_tk(ctxt, symbol::RGT_PAR))!;
-                ctxt.ptr += 1;
-                move_cln(&ctxt);
                 start += 1;
+                ctxt.ptr += 1;
+                move_cln(ctxt);
             case '{' =>
                 append(tokens, new_tk(ctxt, symbol::LFT_CURLY))!;
-                ctxt.ptr += 1;
-                move_cln(&ctxt);
                 start += 1;
+                ctxt.ptr += 1;
+                move_cln(ctxt);
             case '}' =>
                 append(tokens, new_tk(ctxt, symbol::RGT_CURLY))!;
-                ctxt.ptr += 1;
-                move_cln(&ctxt);
                 start += 1;
+                ctxt.ptr += 1;
+                move_cln(ctxt);
             case '[' =>
                 append(tokens, new_tk(ctxt, symbol::LFT_SQUARE))!;
-                ctxt.ptr += 1;
-                move_cln(&ctxt);
                 start += 1;
+                ctxt.ptr += 1;
+                move_cln(ctxt);
             case ']' =>
                 append(tokens, new_tk(ctxt, symbol::RGT_SQUARE))!;
-                ctxt.ptr += 1;
-                move_cln(&ctxt);
                 start += 1;
+                ctxt.ptr += 1;
+                move_cln(ctxt);
             case '#' =>
                 append(tokens, new_tk(ctxt, operator::LENGTH))!;
-                ctxt.ptr += 1;
-                move_cln(&ctxt);
                 start += 1;
+                ctxt.ptr += 1;
+                move_cln(ctxt);
             case '@' =>
-                append(tokens, new_tk(ctxt, operator::RAW))!;
-                ctxt.ptr += 1;
-                move_cln(&ctxt);
+                append(tokens, new_tk(ctxt, operator::HEAP))!;
                 start += 1;
+                ctxt.ptr += 1;
+                move_cln(ctxt);
+            case '$' =>
+                append(tokens, new_tk(ctxt, symbol::FFI))!;
+                start += 1;
+                ctxt.ptr += 1;
+                move_cln(ctxt);
             case '.' =>
-                if(start < ctxt.ptr - 1 && ctxt.src[start + 1] == '.'){
+                if(start < end - 1 && ctxt.src[start + 1] == '.'){
                     append(tokens, new_tk(ctxt, operator::RANGE))!;
-                    ctxt.ptr += 2;
-                    move_cln(&ctxt, 2);
                     start += 2;
+                    ctxt.ptr += 2;
+                    move_cln(ctxt, 2);
                 } else {
                     append(tokens, new_tk(ctxt, symbol::DOT))!;
-                    ctxt.ptr += 1;
-                    move_cln(&ctxt);
                     start += 1;
+                    ctxt.ptr += 1;
+                    move_cln(ctxt);
                 };
             case '=' =>
-                if(start < ctxt.ptr - 1 && ctxt.src[start + 1] == '='){
+                if(start < end - 1 && ctxt.src[start + 1] == '='){
                     append(tokens, new_tk(ctxt, operator::EQL))!;
-                    ctxt.ptr += 2;
-                    move_cln(&ctxt, 2);
                     start += 2;
+                    ctxt.ptr += 2;
+                    move_cln(ctxt, 2);
+                } else if(start < end - 1 && ctxt.src[start + 1] == '>'){
+                    append(tokens, new_tk(ctxt, operator::MAP))!;
+                    start += 2;
+                    ctxt.ptr += 2;
+                    move_cln(ctxt, 2);
                 } else {
                     append(tokens, new_tk(ctxt, operator::ASG))!;
-                    ctxt.ptr += 1;
-                    move_cln(&ctxt);
                     start += 1;
+                    ctxt.ptr += 1;
+                    move_cln(ctxt);
                 };
             case '<' =>
-                if(start < ctxt.ptr - 1){
+                if(start < end - 1){
                     if(ctxt.src[start + 1] == '='){
                         append(tokens, new_tk(ctxt, operator::LEQ))!;
-                        ctxt.ptr += 2;
-                        move_cln(&ctxt, 2);
                         start += 2;
+                        ctxt.ptr += 2;
+                        move_cln(ctxt, 2);
                     } else if(ctxt.src[start + 1] == '>'){
                         append(tokens, new_tk(ctxt, operator::SHL))!;
-                        ctxt.ptr += 2;
-                        move_cln(&ctxt, 2);
                         start += 2;
+                        ctxt.ptr += 2;
+                        move_cln(ctxt, 2);
                     } else {
                         append(tokens, new_tk(ctxt, operator::LST))!;
-                        ctxt.ptr += 1;
-                        move_cln(&ctxt);
                         start += 1;
+                        ctxt.ptr += 1;
+                        move_cln(ctxt);
                     };
                 } else {
                     append(tokens, new_tk(ctxt, operator::LST))!;
-                    ctxt.ptr += 1;
-                    move_cln(&ctxt);
                     start += 1;
+                    ctxt.ptr += 1;
+                    move_cln(ctxt);
                 };
             case '>' =>
-                if(start < ctxt.ptr - 1){
+                if(start < end - 1){
                     if(ctxt.src[start + 1] == '='){
                         append(tokens, new_tk(ctxt, operator::GEQ))!;
+                        start += 2;
                         ctxt.ptr += 2;
-                        move_cln(&ctxt, 2);
-                        start += 1;
+                        move_cln(ctxt, 2);
                     } else if(ctxt.src[start + 1] == '>'){
                         append(tokens, new_tk(ctxt, operator::SHR))!;
-                        ctxt.ptr += 2;
-                        move_cln(&ctxt, 2);
                         start += 2;
+                        ctxt.ptr += 2;
+                        move_cln(ctxt, 2);
                     } else {
                         append(tokens, new_tk(ctxt, operator::GTT))!;
-                        ctxt.ptr += 1;
-                        move_cln(&ctxt);
                         start += 1;
+                        ctxt.ptr += 1;
+                        move_cln(ctxt);
                     };
                 } else {
                     append(tokens, new_tk(ctxt, operator::GTT))!;
-                    ctxt.ptr += 1;
-                    move_cln(&ctxt);
                     start += 1;
+                    ctxt.ptr += 1;
+                    move_cln(ctxt);
                 };
             case '|' =>
-                if(start < ctxt.ptr - 1 && ctxt.src[start + 1] == '|'){
+                if(start < end - 1 && ctxt.src[start + 1] == '|'){
                     append(tokens, new_tk(ctxt, operator::LOR))!;
-                    ctxt.ptr += 2;
-                    move_cln(&ctxt, 2);
                     start += 2;
+                    ctxt.ptr += 2;
+                    move_cln(ctxt, 2);
                 } else {
                     append(tokens, new_tk(ctxt, operator::BOR))!;
-                    ctxt.ptr += 1;
-                    move_cln(&ctxt);
                     start += 1;
+                    ctxt.ptr += 1;
+                    move_cln(ctxt);
                 };
             case '&' =>
-                if(start < ctxt.ptr - 1 && ctxt.src[start + 1] == '&'){
+                if(start < end - 1 && ctxt.src[start + 1] == '&'){
                     append(tokens, new_tk(ctxt, operator::LAND))!;
-                    ctxt.ptr += 2;
-                    move_cln(&ctxt, 2);
                     start += 2;
+                    ctxt.ptr += 2;
+                    move_cln(ctxt, 2);
                 } else {
                     append(tokens, new_tk(ctxt, operator::BAND))!;
-                    ctxt.ptr += 1;
-                    move_cln(&ctxt);
                     start += 1;
+                    ctxt.ptr += 1;
+                    move_cln(ctxt);
                 };
             case ':' =>
-                if(start < ctxt.ptr - 1 && ctxt.src[start + 1] == ':'){
+                if(start < end - 1 && ctxt.src[start + 1] == ':'){
                     append(tokens, new_tk(ctxt, symbol::FIELD))!;
-                    ctxt.ptr += 2;
-                    move_cln(&ctxt, 2);
                     start += 2;
+                    ctxt.ptr += 2;
+                    move_cln(ctxt, 2);
                 } else {
                     append(tokens, new_tk(ctxt, operator::FDIV))!;
-                    ctxt.ptr += 1;
-                    move_cln(&ctxt);
                     start += 1;
+                    ctxt.ptr += 1;
+                    move_cln(ctxt);
                 };
             case '!' =>
-                if(start < ctxt.ptr - 1 && ctxt.src[start + 1] == '='){
+                if(start < end - 1 && ctxt.src[start + 1] == '='){
                     append(tokens, new_tk(ctxt, operator::NEQ))!;
-                    ctxt.ptr += 2;
-                    move_cln(&ctxt, 2);
                     start += 2;
+                    ctxt.ptr += 2;
+                    move_cln(ctxt, 2);
                 } else {
                     append(tokens, new_tk(ctxt, operator::BANG))!;
-                    ctxt.ptr += 1;
-                    move_cln(&ctxt);
                     start += 1;
+                    ctxt.ptr += 1;
+                    move_cln(ctxt);
                 };
             case '~' =>
                 append(tokens, new_tk(ctxt, operator::NOT))!;
-                ctxt.ptr += 1;
-                move_cln(&ctxt);
                 start += 1;
+                ctxt.ptr += 1;
+                move_cln(ctxt);
             case '+' =>
                 append(tokens, new_tk(ctxt, operator::PLS))!;
-                ctxt.ptr += 1;
-                move_cln(&ctxt);
                 start += 1;
+                ctxt.ptr += 1;
+                move_cln(ctxt);
             case '-' =>
                 append(tokens, new_tk(ctxt, operator::MIN))!;
-                ctxt.ptr += 1;
-                move_cln(&ctxt);
                 start += 1;
+                ctxt.ptr += 1;
+                move_cln(ctxt);
             case '*' =>
                 append(tokens, new_tk(ctxt, operator::MUL))!;
-                ctxt.ptr += 1;
-                move_cln(&ctxt);
                 start += 1;
+                ctxt.ptr += 1;
+                move_cln(ctxt);
             case '/' =>
-                append(tokens, new_tk(ctxt, operator::IDIV))!;
-                ctxt.ptr += 1;
-                move_cln(&ctxt);
-                start += 1;
+                if(start < end - 1 && ctxt.src[start + 1] == '/'){
+                    for(start < max && ctxt.src[start] != '\n'){
+                        start += 1;
+                        ctxt.ptr += 1;
+                        move_cln(ctxt);
+                    };
+                } else {
+                    append(tokens, new_tk(ctxt, operator::IDIV))!;
+                    move_cln(ctxt);
+                    ctxt.ptr += 1;
+                    start += 1;
+                };
             case '%' =>
                 append(tokens, new_tk(ctxt, operator::MOD))!;
-                ctxt.ptr += 1;
-                move_cln(&ctxt);
                 start += 1;
+                ctxt.ptr += 1;
+                move_cln(ctxt);
             case '?' =>
                 append(tokens, new_tk(ctxt, operator::PROP))!;
-                ctxt.ptr += 1;
-                move_cln(&ctxt);
                 start += 1;
+                ctxt.ptr += 1;
+                move_cln(ctxt);
             case '\"' =>
                 ctxt.ptr = start;
                 break;
@@ -731,34 +886,44 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
         // just whitespace
         } else {
             ctxt.ptr += 1;
-            move_cln(&ctxt);
+            move_cln(ctxt);
         };
     };
     append(tokens, new_tk(ctxt, eof))!;
-    defer free(tokens);
 
     max = len(tokens);
+    if(max == 1){
+        return error(ctxt, "the file \"{}\" is empty", ctxt.name);
+    };
     let node: nullable *ast = null;
-    const head = node;
-    for(let t = 0z; t < max; t += 1){
+    const head: nullable *ast = null;
+
+    for(let t = 0z; t < max){
         match(tokens[t].val){
         case let idt: ident =>
             // const global definition
             const (cdef, end) = eval_c_def(ctxt, tokens, t)?;
-            push_var(ctxt, cdef)?;
+            switch(cdef.kind){
+            case path_t::CONST_DEF =>
+                push_var(ctxt, cdef)?;
+            case path_t::IMPORT =>
+                void;
+            case =>
+                assert(false, "unreachable");
+            };
             t = end;
             node = push_node(node, cdef);
             if(head is null) head = node;
         case let kwd: keyword =>
-            const (pub, val): (size, tkval) =
+            const (pub, i, val): (bool, size, tkval) =
                 if(kwd == keyword::PUB){
                     const v = t;
                     t += 1;
                     const k = next_tk(ctxt, tokens, t,
                         "global %bdefinition continuation%r, but got %y{}%d")?;
-                    yield (v, k.val); 
+                    yield (true, v, k.val); 
                 } else {
-                    yield (t, kwd);
+                    yield (false, t, kwd);
                 };
             if(val is keyword){
                 switch(val as keyword){
@@ -767,69 +932,648 @@ fn compile(filename: str, buffer: *memio::stream, main: bool = false)
                     assert(false, "TODO: type_def");
                 // function definition
                 case keyword::FN =>
-                    const (fun, end) = eval_fun_def(ctxt, tokens, t)?;
+                    const (fun, end) = eval_fun_def(ctxt, tokens, t, pub)?;
+                    push_fun(ctxt, fun)?;
                     t = end;
                     node = push_node(node, fun);
                     if(head is null) head = node;
                 case =>
-                    move_ptr(&ctxt, tokens[t]);
+                    move_ptr(ctxt, tokens[t]);
                     return error(ctxt, "invalid global expression");
                 };
             } else {
-                const (cdef, end) = eval_c_def(ctxt, tokens, t)?;
-                t = end;
-                cdef.path = tokens[pub..t];
+                const (cdef, end) = eval_c_def(ctxt, tokens, t, pub)?;
+                if(cdef.kind == path_t::CONST_DEF){
+                    push_var(ctxt, cdef)?;
+                    t = end;
+                    cdef.path = tokens[i..t];
+                } else {
+                    assert(cdef.kind == path_t::IMPORT);
+                    if(pub){
+                        move_ptr(ctxt, tokens[t]);
+                        return error(ctxt, "an %guse statement%r cannot be public%d");
+                    };
+                    t = end;
+                };
                 node = push_node(node, cdef);
                 if(head is null) head = node;
             };
-        case let sym: symbol => void;
-        case => continue;
+        case eof => break;
+        case =>
+            move_ptr(ctxt, tokens[t]);
+            return error(ctxt, "unexpected %y{}%d", strtoken(tokens[t].val));
         };
     };
-    // free ast
-    free_nodes(head);
-    return buffer;
+    fmt::fprintfln(buffer, "# code generated by mmc v{}\ndbgfile \"{}\"\n",
+        version, filename)!;
+
+    match(get_fun(ctxt, ident { id = "main", ... })){
+    case let fun: *ast =>
+        if(!main){
+            move_ptr(ctxt, fun.path[0]);
+            return error(ctxt, "modules %yshall not implement a main function%d");
+        };
+        const meta = fun.meta as *fn_meta;
+        if(!meta.name.pub){
+            move_ptr(ctxt, fun.path[1]);
+            return error(ctxt, "main must be a public function");
+        };
+        if(meta.fn_type != primitive::VOID){
+            move_ptr(ctxt, fun.path[1]);
+            return error(ctxt, "main must be of void type");
+        };
+        const params = (meta.params as *ast).meta as *param_meta;
+        if(len(params.names) > 0){
+            move_ptr(ctxt, fun.path[1]);
+            return error(ctxt, "main must recieve no arguments");
+        };
+        gen_file(ctxt, tokens, buffer, head)?;
+    case void =>
+        if(main){
+            if(max > 2){
+                move_ptr(ctxt, tokens[max - 2]);
+            };
+            return error(ctxt, "no main function was defined");
+        };
+    };
+    return comp_obj {
+        tokens = tokens,
+        buffer = buffer,
+        ast_head = head,
+        ctxt = ctxt,
+    };
+};
+
+fn gen_file(ctxt: *context, tokens: []token, buffer: *memio::stream,
+    head: nullable *ast) (void | COMPERR) = {
+    for(let node = head; node != null){
+        const this = node as *ast;
+        switch(this.kind){
+        case path_t::CONST_DEF =>
+            if(check_for_FFI(ctxt, this.inner as *ast)?){
+                node = this.next;
+                continue;
+            };
+            const meta = this.meta as *var_meta;
+            if(meta.name.pub){
+                fmt::fprintf(buffer, "export ")!;
+            };
+            fmt::fprintf(buffer, "data ${} = {{ ", meta.name.id)!;
+
+            assert(!untyped(meta.name.itype));
+            const tpe = meta.name.itype;
+            if(is_subtype(tpe, primitive::STR)){
+                const inner = this.inner as *ast;
+                let length = 0z;
+                let slices = []: []str;
+                defer free(slices);
+                const max = len(inner.path);
+                for(let i = 0z; i < max; i += 1){
+                    length += true_size(inner.path[i].val as str);
+                    append(slices, inner.path[i].val as str)!;
+                    if(i + 1 < max){
+                        if(!comp_tk(inner.path[i + 1].val, operator::PLS)){
+                            move_ptr(ctxt, inner.path[i + 1]);
+                            return error(ctxt, "invalid string operator");
+                        };
+                        i += 1;
+                    };
+                };
+                fmt::fprintf(buffer, "l {}", length)!;
+                for(let slc .. slices){
+                    fmt::fprintf(buffer, ", b \"{}\"", slc)!;
+                };
+                fmt::fprintln(buffer, " }")!;
+            } else if(is_subtype(tpe, primitive::NUMBER)){
+                const inner = this.inner as *ast;
+                let (acc, ini): (size, size) =
+                    match(inner.path[0].val){
+                    case let n: size => yield (n, 1z);
+                    case let o: operator =>
+                        yield (inner.path[1].val as size, 2z);
+                    };
+                const max = len(inner.path);
+                for(let i = ini; i < max; i += 2){
+                    const num = inner.path[i + 1].val as size;
+                    switch(inner.path[i].val as operator){
+                    case operator::PLS =>
+                        acc += num;
+                    case operator::MIN =>
+                        acc -= num;
+                    case operator::MUL =>
+                        acc *= num;
+                    case operator::IDIV =>
+                        acc /= num;
+                    case operator::FDIV =>
+                        move_ptr(ctxt, inner.path[i]);
+                        return error(ctxt, "invalid float division between integers");
+                    case =>
+                        assert(false, "TODO");
+                    };
+                };
+                fmt::fprintfln(buffer, "{} {} }}", qbe_t(tpe), acc)!;
+            } else {
+                assert(false, "TODO");
+            };
+        case path_t::FUN_DEF =>
+            const meta = this.meta as *fn_meta;
+            if(meta.used && meta.ffi is void){
+                gen_fun(ctxt, tokens, buffer, this)?;
+            };
+        case => void;
+        };
+        node = this.next;
+    };
+    const lit_c = len(ctxt.literals);
+    for(let lit = 0z; lit < lit_c; lit += 1){
+        fmt::fprintfln(buffer, "data $lit.{} = {{ l {}, b \"{}\" }}", 
+            lit, true_size(ctxt.literals[lit]), ctxt.literals[lit])!;
+    };
+};
+
+fn check_for_FFI(ctxt: *context, node: *ast) (bool | COMPERR) = {
+    if(!comp_tk(node.path[0].val, symbol::FFI)){
+        return false;
+    };
+    if(len(node.path) > 2){
+        move_ptr(ctxt, node.path[2]);
+        return error(ctxt, "cannot operate on FFI symbols");
+    };
+    return true;
+};
+
+fn gen_fun(ctxt: *context, tokens: []token, buffer: *memio::stream,
+    this: *ast) (void | COMPERR) = {
+    const meta = this.meta as *fn_meta;
+    const local_scp = scope {
+        vars = [],
+        upper = &ctxt.glob,
+        effects = meta.effects,
+    };
+    defer free(local_scp.vars);
+
+    const param_l = (meta.params as *ast).meta as *param_meta;
+    const p_max = len(param_l.names);
+    
+    const params = []: []*ast;
+    defer free(params);
+    defer for(let var ..& params) free_nodes(var);
+
+    for(let p = 0z; p < p_max; p += 1){
+        const pdef = new_node(tokens, param_l.at[p]);
+        pdef.kind = path_t::DECL;
+        pdef.meta = alloc(var_meta {
+            lin = param_l.pos[p].lin,
+            cln = param_l.pos[p].cln,
+            ffi = void,
+            mod = void,
+            glob = false,
+            name = param_l.names[p],
+        })!;
+        append(local_scp.vars, pdef)!;
+        append(params, pdef)!;
+    };
+    ctxt.scp = &local_scp;
+    const (body, _) = eval_scope(ctxt, tokens, meta.scope_begin, meta.fn_type)?;
+    const scp_tpe = (body.meta as *expr_meta).tpe;
+
+    if(!is_subtype(scp_tpe, meta.fn_type)){
+        move_ptr(ctxt, body.path[len(body.path) - 1]);
+        return error(ctxt, "mismatch between %bfunction return type (%g{}%b)%r "
+            "and %bscope evaluation type (%g{}%b)%d",
+            strtoken(meta.fn_type), strtoken(scp_tpe));
+    };
+    ctxt.scp = &ctxt.glob;
+    this.inner = body;
+
+    if(meta.name.pub){
+        fmt::fprintf(buffer, "export ")!;
+    };
+    fmt::fprintf(buffer, "function ")!;
+    if(meta.fn_type == primitive::VOID ||
+        meta.fn_type == primitive::UNIT){
+        fmt::fprintf(buffer, "${}(", fix_global(meta))!;
+    } else {
+        fmt::fprintf(buffer, "{} ${}(", qbe_t(meta.fn_type),
+            fix_global(meta))!;
+    };
+    for(let p = 0z; p < p_max; p += 1){
+        fmt::fprintf(buffer, "{} %{}, ", qbe_t(param_l.names[p].itype),
+            param_l.names[p].id)!;
+    };
+    fmt::fprint(buffer, "){\n@start")!;
+    gen_scope(ctxt, buffer, body)?;
+
+    const end = len(this.path) - 2;
+    if(meta.fn_type == primitive::VOID){
+        fmt::fprintln(buffer, "\n\tcall $rt_exit(w 0)\n\thlt\n}")!;
+    } else if(meta.fn_type == primitive::UNIT){
+        fmt::fprintln(buffer, "\n\tret\n}")!;
+    } else {
+        fmt::fprintln(buffer, "}")!;
+    };
+};
+
+fn gen_scope(ctxt: *context, buffer: *memio::stream, node: nullable *ast) (void | COMPERR) = {
+    const node = node as *ast;
+    const scp_meta = node.meta as *expr_meta;
+    const list = scp_meta.members;
+    const scp = scp_meta.scp as *scope;
+    
+    const safe = ctxt.scp;
+    ctxt.scp = scp;
+    for(let this ..& list){
+        switch(this.kind){
+        case path_t::DECL =>
+            const meta = this.meta as *var_meta;
+            fmt::fprintfln(buffer, "\n\tdbgloc {}, {}",
+                this.path[0].lin + 1, this.path[0].cln + 1)!;
+
+            gen_exp(ctxt, buffer, this.inner as *ast, meta.name.id, meta.name.itype);
+        case path_t::EXPR =>
+            const meta = this.meta as *expr_meta;
+            const dest = fmt::asprintf("exp.{}", qbe_t(meta.tpe))!;
+            defer free(dest);
+
+            fmt::fprintfln(buffer, "\n\tdbgloc {}, {}",
+                this.path[0].lin + 1, this.path[0].cln + 1)!;
+
+            gen_exp(ctxt, buffer, this, dest, meta.tpe);
+        case path_t::FUN_CALL =>
+            fmt::fprintfln(buffer, "\n\tdbgloc {}, {}",
+                this.path[0].lin + 1, this.path[0].cln + 1)!;
+            gen_funcall(ctxt, buffer, this);
+        case =>
+            assert(false, fmt::asprintf("TODO: {}", this.kind: int)!);
+        };
+    };
+    ctxt.scp = safe;
+};
+
+fn gen_exp(ctxt: *context, buffer: *memio::stream, exp: *ast,
+    dest: str, exp_type: primitive) void = {
+    const exp_t = qbe_t(exp_type, true);
+    // TODO: exp.mea is *var_meta
+    const exp_meta = exp.meta as *expr_meta;
+    const members = exp_meta.members;
+
+    let begin = 1z;
+    switch(members[0].kind){
+    case path_t::OPERATOR =>
+        const temp = memio::dynamic();
+        defer io::close(&temp)!;
+
+        fmt::fprintf(&temp, "\t%{} ={} ", dest, exp_t)!;
+        begin = 2z;
+        switch(members[0].path[0].val as operator){
+        case operator::PLS =>
+            gen_member(ctxt, buffer, &temp, members[0], exp_type);
+            fmt::fprintln(buffer, memio::string(&temp)!)!;
+        case operator::MIN =>
+            fmt::fprint(&temp, "neg ")!;
+            gen_member(ctxt, buffer, &temp, members[0], exp_type);
+            fmt::fprintln(buffer, memio::string(&temp)!)!;
+        case operator::NOT =>
+            fmt::fprint(&temp, "xor ")!;
+            gen_member(ctxt, buffer, &temp, members[0], exp_type);
+            fmt::fprintfln(buffer, "{}, 18446744073709551615",
+                memio::string(&temp)!)!;
+        case operator::MAP =>
+            assert(false, "TODO");
+        case operator::BANG =>
+            assert(false, "TODO");
+        case =>
+            assert(false, "unreachable");
+        };
+    case path_t::MEMBER =>
+        const temp = memio::dynamic();
+        defer io::close(&temp)!;
+
+        fmt::fprintf(&temp, "\t%{} ={} ", dest, exp_t)!;
+        gen_member(ctxt, buffer, &temp, members[0], exp_type);
+        fmt::fprintln(buffer, memio::string(&temp)!)!;
+    case path_t::EXPR =>
+        const meta = members[0].meta as *expr_meta;
+        const sub_t = meta.tpe;
+        const wrap = fmt::asprintf("exp.{}", qbe_t(sub_t))!;
+        defer free(wrap);
+        gen_exp(ctxt, buffer, members[0], wrap, sub_t);
+
+        fmt::fprintf(buffer, "\t%{} ={} ", dest, exp_t)!;
+        if(sub_t == exp_type){
+            fmt::fprintfln(buffer, "copy %{}", wrap)!;
+        } else if(is_subtype(sub_t, primitive::U64)){
+            const new = fmt::asprintf("%{}.{}", dest, qbe_t(sub_t))!;
+            defer free(new);
+
+            fmt::fprintfln(buffer, "\t{} ={} extu{} %{}",
+                new, exp_t, qbe_t(sub_t, true), wrap)!;
+        } else {
+            const new = fmt::asprintf("%{}.{}", dest, qbe_t(sub_t))!;
+            defer free(new);
+
+            fmt::fprintfln(buffer, "\t{} ={} exts{} %{}",
+                new, exp_t, qbe_t(sub_t, true), wrap)!;
+        };
+    case path_t::FUN_CALL =>
+        gen_funcall(ctxt, buffer, members[0], dest);
+        fmt::fprintln(buffer)!;
+    case =>
+        assert(false, "unreachable");
+    };
+    const max = len(members);
+    if(is_subtype(exp_type, primitive::STR)){
+        for(let i = begin; i < max; i += 2){
+            assert(false, "TODO");
+        };
+    } else if(is_subtype(exp_type, primitive::NUMBER)){
+        for(let i = begin; i < max; i += 2)
+        switch(members[i].path[0].val as operator){
+        case operator::PLS, operator::MIN, operator::MUL, operator::IDIV =>
+            const memb: str =
+                match(members[i + 1].path[0].val){
+                case let idt: ident =>
+                    const var_def = get_var(ctxt.scp as *scope, idt) as *ast;
+                    const var = (var_def.meta as *var_meta).name;
+                    if(var.glob){
+                        if(is_subtype(var.itype, primitive::U64)){
+                            fmt::fprintfln(buffer, "\t%{0} ={2} loadu{1} ${0}",
+                                var.id, qbe_t(var.itype, true), qbe_t(var.itype))!;
+                        } else {
+                            fmt::fprintfln(buffer, "\t%{0} ={2} loads{1} ${0}",
+                                var.id, qbe_t(var.itype, true), qbe_t(var.itype))!;
+                        };
+                    };
+                    yield
+                    if(var.itype == exp_type){
+                        yield fmt::asprintf("%{}", var.id)!;
+                    } else if(is_subtype(var.itype, primitive::U64)){
+                        const wrap = fmt::asprintf("%{}.{}", var.id, exp_t)!;
+                        fmt::fprintfln(buffer, "\t{} ={} extu{} %{}",
+                            wrap, exp_t, qbe_t(var.itype, true), var.id)!;
+                        yield wrap;
+                    } else {
+                        const wrap = fmt::asprintf("%{}.{}", var.id, exp_t)!;
+                        fmt::fprintfln(buffer, "\t{} ={} exts{} %{}",
+                            wrap, exp_t, qbe_t(var.itype, true), var.id)!;
+                        yield wrap;
+                    };
+                case let num: size =>
+                    yield fmt::asprint(num)!;
+                case =>
+                    assert(false);
+                    yield "";
+                };
+            defer free(memb);
+            const inst =
+                switch(members[i].path[0].val as operator){
+                case operator::PLS => yield "add";
+                case operator::MIN => yield "sub";
+                case operator::MUL => yield "mul";
+                case operator::IDIV =>
+                    yield if(is_subtype(exp_type, primitive::U64)){
+                        yield "udiv";
+                    } else {
+                        yield "div";
+                    };
+                case =>
+                    assert(false);
+                    yield "";
+                };
+            fmt::fprintfln(buffer, "\t%{0} ={1} {2} %{0}, {3}",
+                dest, exp_t, inst, memb)!;
+        case =>
+            assert(false, "TODO");
+        };
+    } else if(is_subtype(exp_type, primitive::RATIO)){
+        assert(false, "TODO");
+    };
+    if(exp_meta.rets){
+        fmt::fprintfln(buffer, "\tret %{}", dest)!;
+    };
+};
+
+fn gen_funcall(ctxt: *context, buffer: *memio::stream,
+    this: *ast, dest: (void | str) = void) void = {
+    const meta = this.meta as *funcall_meta;
+    const temp = memio::dynamic();
+    defer io::close(&temp)!;
+
+    const fun = meta.fun;
+    const f_meta = fun.meta as *fn_meta;
+    const tpe = f_meta.fn_type;
+    const exp_t = qbe_t(tpe);
+    const p_meta = (f_meta.params as *ast).meta as *param_meta;
+    match(dest){
+    case let wrap: str =>
+        if(tpe != primitive::UNIT){
+            fmt::fprintf(&temp, "\t%{} ={} call ${}(",
+                wrap, exp_t, fix_global(f_meta))!;
+        } else {
+            fmt::fprintf(&temp, "\tcall ${}(",
+                fix_global(f_meta))!;    
+        };
+    case void =>
+        fmt::fprintf(&temp, "\tcall ${}(",
+            fix_global(f_meta))!;
+    };
+    const max = len(p_meta.names);
+    assert(len(meta.args) == max);
+    for(let a = 0z; a < max; a += 1){
+        const arg = meta.args[a];
+        const arg_t = qbe_t(p_meta.names[a].itype);
+        match(arg.meta){
+        case let expr: *expr_meta =>
+            const wrap = fmt::asprintf("arg.{}.{}", arg_t, a)!;
+            defer free(wrap);
+
+            gen_exp(ctxt, buffer, arg, wrap, p_meta.names[a].itype);
+            fmt::fprintf(&temp, "{} %{}, ", arg_t, wrap)!;
+        case let prim: primitive =>
+            match(arg.path[0].val){
+            case let num: size => 
+                fmt::fprintf(&temp, "{} {}, ", arg_t, num)!;
+            case let txt: str =>
+                fmt::fprintf(&temp, "{} $lit.{}, ", arg_t,
+                    push_str(ctxt, txt))!;
+            case let idt: ident =>
+                fmt::fprintf(&temp, "{} %{}, ", arg_t, idt.id)!;
+            case =>
+                assert(false, "unreachable");
+            };
+        };
+    };
+    fmt::fprintf(buffer, "{})", memio::string(&temp)!)!;
+};
+
+fn gen_member(ctxt: *context, header: *memio::stream,
+    buffer: *memio::stream, member: *ast, tpe: primitive) void = {
+    match(member.path[0].val){
+    case let idt: ident =>
+        const var = get_var(ctxt.scp as *scope, idt) as *ast;
+        const meta = var.meta as *var_meta;
+        const name =
+            match(meta.ffi){
+            case let id: str => yield id;
+            case void => yield idt.id;
+            };
+        if(is_subtype(meta.name.itype, primitive::NUMBER)){
+            if(meta.glob){
+                if(is_subtype(meta.name.itype, primitive::U64)){
+                    fmt::fprintfln(header, "\t%{0} ={1} loadu{1} ${0}",
+                        name, qbe_t(meta.name.itype, true))!;
+                } else {
+                    fmt::fprintfln(header, "\t%{0} ={1} loads{1} ${0}",
+                        name, qbe_t(meta.name.itype, true))!;
+                };
+            };
+            if(meta.name.itype == tpe){
+                fmt::fprintf(buffer, "copy %{}", name)!;
+            } else if(is_subtype(meta.name.itype, primitive::U64)){
+                fmt::fprintf(buffer, "extu{} %{}",
+                    qbe_t(meta.name.itype, true), name)!;
+            } else {
+                fmt::fprintf(buffer, "exts{} %{}",
+                    qbe_t(meta.name.itype, true), name)!;
+            };
+        } else if(meta.name.itype == primitive::STR){
+            if(meta.glob){
+                fmt::fprintf(buffer, "copy ${}", name)!;
+            } else {
+                fmt::fprintf(buffer, "copy %{}", name)!;
+            };
+        };
+    case let num: size =>
+        fmt::fprintf(buffer, "copy {}", num)!;
+    case let txt: str =>
+        fmt::fprintf(buffer, "copy $lit.{}", push_str(ctxt, txt))!;
+    case =>
+        assert(false, "unreachable");
+    };
 };
 
 // evaluates a constant definition. assumes `at` is pointing to the expression's namespace
-fn eval_c_def(ctxt: context, tokens: []token, at: size) ((*ast, size) | COMPERR) = {
+fn eval_c_def(ctxt: *context, tokens: []token, at: size, pub: bool = false)
+    ((*ast, size) | COMPERR) = {
     const max = len(tokens);
     const begin = at;
     let end = at;
     const name = tokens[end].val as ident;
 
     end += 1;
-    const tpe = next_tk(ctxt, tokens, end,
+    let tk = next_tk(ctxt, tokens, end,
         "expected %btype notation%r, but got %y{}%d")?;
+    const tpe = tk;
 
+    if(comp_tk(tk.val, operator::ASG)){
+        tk = next_tk(ctxt, tokens, end + 1,
+            "expected %buse statement%r, but got %y{}%d")?;
+        if(comp_tk(tk.val, keyword::USE)){
+            return eval_use(ctxt, tokens, begin);
+        };
+    };
     if(!(tpe.val is primitive)){
-        move_ptr(&ctxt, tpe);
+        move_ptr(ctxt, tpe);
         return error(ctxt,
             "expected %bvalid type notation%r, but got %y{}%d",
             strtoken(tpe.val));
     };
     end += 1;
+    name.pub = pub;
+    name.glob = true;
     name.itype = tpe.val as primitive;
 
-    const node = new_node(tokens, begin);
-    node.kind = path_t::CONST_DEF;
-    node.meta = var_meta {
-        lin = tokens[begin].lin,
-        cln = tokens[begin].cln,
-        name = name,
-    };
     // assignment operator
     end = pop_assert(ctxt, tokens, end, operator::ASG,
         "expected %bconstant definition assignment%r, but got %y{}%d")?;
-    const (val, _end) = eval_c_exp(ctxt, tokens, end)?;
-    end = _end;
+
+    tk = next_tk(ctxt, tokens, end,
+        "expected %bconstant expression%r or "
+        "%buse statement%r, but got %y{}%d")?;
+
+    const (val, _end) = eval_c_exp(ctxt, tokens, end, name.itype)?;
+    end = pop_assert(ctxt, tokens, _end, symbol::EOL,
+        "expectend %bend of line%r, but got %y{}%d")?;
+
+    const ffi: (void | str) =
+        if(comp_tk(val.path[0].val, symbol::FFI)){
+            yield (val.path[1].val as ident).id;
+        };
+    const node = new_node(tokens, begin);
+    node.kind = path_t::CONST_DEF;
+    node.meta = alloc(var_meta {
+        lin = tokens[begin].lin,
+        cln = tokens[begin].cln,
+        ffi = ffi,
+        mod = void,
+        glob = true,
+        name = name,
+    })!;
     node.inner = val;
     node.path = tokens[begin..end];
     return (node, end);
 };
 
+fn eval_use(ctxt: *context, tokens: []token, at: size) ((*ast, size) | COMPERR) = {
+    const begin = at;
+    let end = at;
+    let tk = next_tk(ctxt, tokens, begin,
+        "expected %bmodule binding%r, but got %y{}%d")?;
+    if(!(tk.val is ident)){
+        move_ptr(ctxt, tk);
+        return error(ctxt,
+            "expected %bmodule binding%r, but got %y{}%d",
+            strtoken(tk.val));
+    };
+    const bind = tk;
+    if(get_var(ctxt.scp as *scope, bind.val as ident) is *ast){
+        const name = bind.val as ident;
+        move_ptr(ctxt, bind);
+        return error(ctxt, "namespace %g{}%r already in use", name.id);
+    };
+    if(get_fun(ctxt, bind.val as ident) is *ast){
+        const name = bind.val as ident;
+        move_ptr(ctxt, bind);
+        return error(ctxt, "namespace %g{}%r already in use", name.id);
+    };
+    end = pop_assert(ctxt, tokens, end + 1, operator::ASG,
+        "expected %bmodule binding assignment%r, but got %y{}%d")?;
+    end = pop_assert(ctxt, tokens, end, keyword::USE,
+        "expected %bkeyword \"use\"%r, but got %y{}%d")?;
+
+    tk = next_tk(ctxt, tokens, end,
+        "expected %bmodule path%r, but got %y{}%d")?;
+    if(!(tk.val is str)){
+        move_ptr(ctxt, tk);
+        return error(ctxt,
+            "expected %bmodule path%r, but got %y{}%d",
+            strtoken(tk.val));
+    };
+    end = pop_assert(ctxt, tokens, end + 1, symbol::EOL,
+        "expected %bend of line%r, but got %y{}%d")?;
+
+    const path = tk.val as str;
+    const stdpath = strings::concat(ctxt.libpath, path)!;
+    defer free(stdpath);
+    const file =
+        if(os::exists(stdpath)){
+            yield stdpath;
+        } else {
+            yield path;
+        };
+    const module = compile(file, ctxt.libpath,
+        alloc(memio::dynamic())!)?;
+    push_module(ctxt, bind, module)?;
+    const node = new_node(tokens, begin);
+    node.kind = path_t::IMPORT;
+    node.path = tokens[begin..end];
+
+    return (node, end);
+};
+
 // evaluates a constant expression
-fn eval_c_exp(ctxt: context, tokens: []token, at: size) ((*ast, size) | COMPERR) = {
+fn eval_c_exp(ctxt: *context, tokens: []token, at: size, hint: primitive)
+    ((*ast, size) | COMPERR) = {
     const max = len(tokens);
     const begin = at;
     let end = at;
@@ -843,21 +1587,21 @@ fn eval_c_exp(ctxt: context, tokens: []token, at: size) ((*ast, size) | COMPERR)
         const oper = tk.val as operator;
         end += 1;
         if(!is_unary(oper)){
-            move_ptr(&ctxt, tk);
+            move_ptr(ctxt, tk);
             return error(ctxt, "invalid use of operator");
         };
         tk = next_tk(ctxt, tokens, end,
             "expected %bcontant value%r, but got %y{}%d")?;
         end += 1;
         if(oper == operator::LENGTH && !(tk.val is str || tk.val is ident)){
-            move_ptr(&ctxt, tk);
+            move_ptr(ctxt, tk);
             return error(ctxt, "invalid argument for length operator");
         } else if(oper != operator::LENGTH){
             if(tk.val is ident){
-                move_ptr(&ctxt, tk);
+                move_ptr(ctxt, tk);
                 return error(ctxt, "cannot evaluate this at compile time");
-            } else if(!(tk.val is number)){
-                move_ptr(&ctxt, tk);
+            } else if(!(tk.val is size)){
+                move_ptr(ctxt, tk);
                 return error(ctxt, "invalid compile time constant value");
             };
         };
@@ -865,21 +1609,21 @@ fn eval_c_exp(ctxt: context, tokens: []token, at: size) ((*ast, size) | COMPERR)
             "expected %bcontant value%r, but got %y{}%d")?;
     };
     for(!comp_tk(tk.val, symbol::EOL) && end < max){
-        end = eval_c_val(ctxt, tokens, end)?;
+        end = eval_c_val(ctxt, tokens, end, hint)?;
         tk = next_tk(ctxt, tokens, end,
             "expected %boperator%r or %bend of line%r, but got %y{}%d")?;
         if(comp_tk(tk.val, symbol::EOL)) break;
 
         if(!(tk.val is operator)){
-            move_ptr(&ctxt, tk);
+            move_ptr(ctxt, tk);
             return error(ctxt, "expected %boperator%r or %bend of line%r, but got %y{}%d",
                 strtoken(tk.val));
         } else if(!is_binary(tk.val as operator)){
-            move_ptr(&ctxt, tk);
+            move_ptr(ctxt, tk);
             return error(ctxt, "invalid %bbinary operator%d");
         };
         end += 1;
-        end = eval_c_val(ctxt, tokens, end)?;
+        end = eval_c_val(ctxt, tokens, end, hint)?;
         tk = next_tk(ctxt, tokens, end,
             "expected %bcontant value%r, but got %y{}%d")?;
     };
@@ -888,24 +1632,49 @@ fn eval_c_exp(ctxt: context, tokens: []token, at: size) ((*ast, size) | COMPERR)
 };
 
 // evaluates a constant value
-fn eval_c_val(ctxt: context, tokens: []token, at: size) (size | COMPERR) = {
+fn eval_c_val(ctxt: *context, tokens: []token, at: size, hint: primitive)
+    (size | COMPERR) = {
     let tk = tokens[at];
     match(tk.val){
-    case number =>
+    case size =>
+        if(!is_subtype(primitive::NUMBER, hint)){
+            move_ptr(ctxt, tk);
+            return error(ctxt,
+                "mismatch of %bdeclaration type%r ({}) and "
+                "%bexpression member type%r ({})%d",
+                strtoken(hint), strtoken(primitive::NUMBER));
+        };
         return at + 1;
     case str =>
+        if(!is_subtype(primitive::STR, hint)){
+            move_ptr(ctxt, tk);
+            return error(ctxt,
+                "mismatch of %bdeclaration type%r (%g{}%r) and "
+                "%bexpression member type%r (%g{}%r)%d",
+                strtoken(hint), strtoken(primitive::STR));
+        };
         return at + 1;
+    case let sym: symbol =>
+        if(sym == symbol::FFI){
+            tk = next_tk(ctxt, tokens, at + 1,
+                "expected %blink symbol%r, but got %y{}%d")?;
+            return at + 2;
+        } else {
+            move_ptr(ctxt, tk);
+            return error(ctxt, "unexpected %y{}%r found here", strtoken(sym));
+        };
     case let idt: ident =>
-        move_ptr(&ctxt, tk);
+        move_ptr(ctxt, tk);
         return error(ctxt, "cannot evaluate {} at compile time", strtoken(idt));
     case =>
-        move_ptr(&ctxt, tk);
+        move_ptr(ctxt, tk);
         return error(ctxt, "invalid constant value ({})", strtoken(tk.val));
     };
 };
 
 // evaluates a function definition
-fn eval_fun_def(ctxt: context, tokens: []token, at: size) ((*ast, size) | COMPERR) = {
+fn eval_fun_def(ctxt: *context, tokens: []token, at: size, pub: bool = false)
+    ((*ast, size) | COMPERR) = {
     const max = len(tokens);
     const begin = at;
     let end = at;
@@ -918,11 +1687,12 @@ fn eval_fun_def(ctxt: context, tokens: []token, at: size) ((*ast, size) | COMPER
     tk = next_tk(ctxt, tokens, end,
         "expected %bvalid function name%d, but got %r{}%d")?;
     if(!((tk.val) is ident)){
-        move_ptr(&ctxt, tk);
+        move_ptr(ctxt, tk);
         return error(ctxt, "expected %bvalid function name%r, but got %y{}%d",
             strtoken(tk.val));
     };
     const name = tk.val as ident;
+    name.pub = pub;
     const (param, _end) = eval_param_l(ctxt, tokens, end + 1)?;
     end = _end;
 
@@ -930,7 +1700,7 @@ fn eval_fun_def(ctxt: context, tokens: []token, at: size) ((*ast, size) | COMPER
     tk = next_tk(ctxt, tokens, end,
         "expected %bvalid function type notation%r, but got %y{}%d")?;
     if(!((tk.val) is primitive)){ // TODO: agregate types (i.e. "|| is ident")
-        move_ptr(&ctxt, tk);
+        move_ptr(ctxt, tk);
         return error(ctxt, "expected %bvalid function type%r, but got %y{}%d",
             strtoken(tk.val));
     };
@@ -941,10 +1711,41 @@ fn eval_fun_def(ctxt: context, tokens: []token, at: size) ((*ast, size) | COMPER
     end = pop_assert(ctxt, tokens, end, operator::ASG,
         "expected %bfunction body assignment%r, but got %y{}%d")?;
 
-    tk = next_tk(ctxt, tokens, end,
-        "expected %beffect tag%r or %bscope definition%r, but got %y{}%d")?;
+    const (efx, ffi, _end) = eval_efx(ctxt, tokens, end)?;
+    end = _end;
+    const s_begin = end;
+    if(ffi is void){
+        end = skip_scope(ctxt, tokens, end)?;
+    };
+    end = pop_assert(ctxt, tokens, end, symbol::EOL,
+        "expected %bend of line%r, but got %y{}%d")?;
 
+    const node = new_node(tokens, begin);
+    node.kind = path_t::FUN_DEF;
+    node.meta = alloc(fn_meta {
+        lin = tokens[begin].lin,
+        cln = tokens[begin].cln,
+        ffi = ffi,
+        mod = void,
+        used = pub || ffi is str,
+        name = name,
+        origin = void,
+        params = param,
+        fn_type = tpe,
+        effects = efx,
+        scope_begin = s_begin,
+    })!;
+    node.path = tokens[begin..end];
+    return (node, end);
+};
+
+fn eval_efx(ctxt: *context, tokens: []token, at: size)
+    (([]tkval, (void | str), size) | COMPERR) = {
+    let end = at;
     let efx = []: []tkval;
+    let ffi: (void | str) = void;
+    let tk = next_tk(ctxt, tokens, end,
+        "expected %beffect tag%r or %bscope definition%r, but got %y{}%d")?;
     if(tk.val is ident || comp_tk(tk.val, keyword::DO)){
         append(efx, tk.val)!;
         end += 1;
@@ -952,156 +1753,221 @@ fn eval_fun_def(ctxt: context, tokens: []token, at: size) ((*ast, size) | COMPER
             "expected %beffect tag list continuation%r or "
             "%bscope definition%r, but got %y{}%d")?;
 
-        if(!comp_tk(tk.val, symbol::LFT_CURLY)){
+        if(comp_tk(tk.val, symbol::FFI)){
             end += 1;
+            tk = next_tk(ctxt, tokens, end,
+                "expected %blink symbol%r but got %y{}%d")?;
+            if(!(tk.val is ident)){
+                move_ptr(ctxt, tk);
+                return error(ctxt, "expected %blink symbol%r but got %y{}%d",
+                    strtoken(tk.val));
+            };
+            end += 1;
+            ffi = (tk.val as ident).id;
+        } else if(!comp_tk(tk.val, symbol::LFT_CURLY)){
+            if(!comp_tk(tk.val, operator::BAND)){
+                move_ptr(ctxt, tk);
+                return error(ctxt,
+                "expected %beffect tag list continuation%r or "
+                "%bscope definition%r, but got %y{}%d",
+                strtoken(tk.val));
+            };
         };
-        for(comp_tk(tk.val, operator::BAND)){
+        for(ffi is void && comp_tk(tk.val, operator::BAND)){
+            if(comp_tk(efx[0], keyword::DO)){
+                move_ptr(ctxt, tk);
+                return error(ctxt,
+                    "the %bdo%r effect tag shall be fallowed by no additional tags");
+            };
             tk = next_tk(ctxt, tokens, end,
                 "expected %beffect tag list continuation%r or "
                 "%bscope definition%r, but got %y{}%d")?;
             end += 1;
             if(!(tk.val is ident || comp_tk(tk.val, keyword::DO))){
-                move_ptr(&ctxt, tk);
+                move_ptr(ctxt, tk);
                 return error(ctxt,
                     "expected %beffect tag list continuation%r or "
                     "%bscope definition%r, but got %y{}%d",
                     strtoken(tk.val));
+            };
+            for(let tag .. efx){
+                if(comp_tk(tk.val, tag)){
+                    move_ptr(ctxt, tk);
+                    return error(ctxt, "duplicated effect tag");
+                };
             };
             append(efx, tk.val)!;
             tk = next_tk(ctxt, tokens, end,
                 "expected %beffect tag list continuation%r or "
                 "%bscope definition%r, but got %y{}%d")?;
             if(!comp_tk(tk.val, symbol::LFT_CURLY)){
+                if(!comp_tk(tk.val, operator::BAND)){
+                    move_ptr(ctxt, tk);
+                    return error(ctxt,
+                        "expected %beffect tag list continuation%r or "
+                        "%bscope definition%r, but got %y{}%d",
+                        strtoken(tk.val));
+                };
                 end += 1;
             };
         };
     };
-    const (body, _end) = eval_scope(ctxt, tokens, end)?;
-    end = _end;
-    end = pop_assert(ctxt, tokens, end, symbol::RGT_CURLY,
-        "expected %bend of scope%r, but got %y{}%d")?;
-    end = pop_assert(ctxt, tokens, end, symbol::EOL,
-        "expected %bend of line%r, but got %y{}%d")?;
+    return (efx, ffi, end);
+};
 
-    const node = new_node(tokens, begin);
-    node.kind = path_t::FUN_DEF;
-    node.meta = fn_meta {
-        lin = tokens[begin].lin,
-        cln = tokens[begin].cln,
-        name = name,
-        params = param,
-        fn_type = tpe,
-        effects = efx,
+fn validate_efx(ctxt: *context, called: *fn_meta, caller: []tkval)
+    (void | COMPERR) = {
+    if(len(caller) > 0 && comp_tk(caller[0], keyword::DO)){
+        return;
     };
-    node.inner = body;
-    node.path = tokens[begin..end];
-    return (node, end);
+    match(called.origin){
+    case let mod: str =>
+        for(let lr_tag .. caller){
+            if(mod == (lr_tag as ident).id) return;
+        };
+        return error(ctxt,
+            "this function %b{}%r is from the module "
+            "%g{}%r, but the caller function doesn't "
+            "implement this effect tag",
+            called.name.id, mod);
+    case void =>
+        for(let ld_tag .. called.effects){
+            let found = false;
+            for(let lr_tag .. caller){
+                if(comp_tk(ld_tag, lr_tag)){
+                    found = true;
+                    break;
+                };
+            };
+            if(!found){
+                return error(ctxt,
+                    "this function %b{}%r implements "
+                    "the effect %g{}%r, but the caller "
+                    "function doesn't", called.name.id,
+                    (ld_tag as ident).id);
+            };
+        };
+    };
 };
 
 // evaluates a param list
-fn eval_param_l(ctxt: context, tokens: []token, at: size) ((*ast, size) | COMPERR) = {
+fn eval_param_l(ctxt: *context, tokens: []token, at: size) ((*ast, size) | COMPERR) = {
     const begin = pop_assert(ctxt, tokens, at, symbol::LFT_PAR,
         "expected %bvalid parameter list%r, but got %y{}%d")?;
     let end = begin;
     let tk = tokens[end];
     let meta = param_meta { ... };
+    let idx = 0z;
     for(!comp_tk(tk.val, symbol::RGT_PAR)){
-        tk = next_tk(ctxt, tokens, end + 1,
+        tk = next_tk(ctxt, tokens, end,
             "expected %bvalid parameter name%r or %bend of list%r, but got %y{}%d")?;
         if(!(tk.val is ident)){
-            move_ptr(&ctxt, tk);
+            move_ptr(ctxt, tk);
             return error(ctxt, "expected %bvalid parameter name%r "
                 "or %bend of list%r, but got %y{}%d",
                 strtoken(tk.val));
         };
+        append(meta.at, end)!;
+        append(meta.pos, tk)!;
+        append(meta.names, tk.val as ident)!;
+        
         end += 1;
-        append(meta.lin, tk.lin)!;
-        append(meta.cln, tk.cln)!;
-        append(meta.name, tk.val as ident)!;
-
-        tk = next_tk(ctxt, tokens, end + 1,
+        tk = next_tk(ctxt, tokens, end,
             "expected %bvalid parameter type%r, but got %y{}%d")?;
         if(!(tk.val is primitive)){ // TODO: composite types
-            move_ptr(&ctxt, tk);
+            move_ptr(ctxt, tk);
             return error(ctxt, "expected %bvalid parameter type%r, but got %y{}%d",
                 strtoken(tk.val));
         };
         end += 1;
-        append(meta.tpe, tk.val as primitive)!;
-
+        meta.names[idx].itype = tk.val as primitive;
+        idx += 1;
         tk = next_tk(ctxt, tokens, end,
             "expected %bparameter list continuation%r or %bend of list%r, but got %y{}%d")?;
+        if(comp_tk(tk.val, symbol::COMMA)){
+            end += 1;
+            tk = next_tk(ctxt, tokens, end,
+            "expected %bparameter list continuation%r or %bend of list%r, but got %y{}%d")?;
+        };
     };
     end += 1;
     const node = new_node(tokens, begin);
     node.kind = path_t::PARAM_LIST;
     node.path = tokens[begin..end];
-    node.meta = meta;
+    node.meta = alloc(meta)!;
     return (node, end);
 };
 
+fn skip_scope(ctxt: *context, tokens: []token, at: size) (size | COMPERR) = {
+    const max = len(tokens);
+    let end = pop_assert(ctxt, tokens, at, symbol::LFT_CURLY,
+        "expected %bvalid scope definition%r, but got %y{}%d")?;
+    for(end < max; end += 1){
+        if(comp_tk(tokens[end].val, symbol::LFT_CURLY)){
+            end = skip_scope(ctxt, tokens, end)?;
+        } else if(comp_tk(tokens[end].val, symbol::RGT_CURLY)){
+            return end + 1;
+        };
+    };
+    move_ptr(ctxt, tokens[end - 1]);
+    return error(ctxt, "expected %bend of scope%r, but got %y{}%d",
+        strtoken(eof));
+};
+
 // evaluates a scope
-fn eval_scope(ctxt: context, tokens: []token, at: size) ((*ast, size) | COMPERR) = {
+// remember to set the scope field of context before calling this
+fn eval_scope(ctxt: *context, tokens: []token, at: size, hint: primitive = primitive::ANY)
+    ((*ast, size) | COMPERR) = {
     const begin = at;
     let end = pop_assert(ctxt, tokens, at, symbol::LFT_CURLY,
         "expected %bvalid scope definition%r, but got %y{}%d")?;
 
     const node = new_node(tokens, begin);
     node.kind = path_t::SCOPE;
-    node.inner = null;
     const meta = expr_meta {
         rets = false,
-        tpe = primitive::ANY,
+        tpe = hint,
+        members = [],
+        scp = ctxt.scp,
     };
-    let body: nullable *ast = null;
-
-    const upper_scp = ctxt.scp;
-    const local_scp = scope {
-        vars = [],
-        upper = upper_scp,
-    };
-    defer if(len(local_scp.vars) > 0) free(local_scp.vars);
-    ctxt.scp = &local_scp;
-
+    let tpe = primitive::ANY;
     let tk = next_tk(ctxt, tokens, end,
         "expected %bvalid expression%r, but got %y{}%d")?;
     for(!comp_tk(tk.val, symbol::RGT_CURLY)){
         match(tk.val){
         case let oper: operator =>
             if(oper == operator::MAP){
-                const (exp, _end) = eval_expression(ctxt, tokens, end + 1)?;
+                const (exp, _end) = eval_expression(ctxt, tokens, end + 1, hint)?;
                 end = _end;
-                body = push_node(body, exp);
-                if(node.inner is null) node.inner = body;
-                match(exp.meta){
-                case let e_meta: expr_meta =>
-                    if(!e_meta.rets){
-                        move_ptr(&ctxt, tk);
-                        return error(ctxt, "root expression %greturns a value%r, "
-                            "but the inner one %gdoes not%d");
-                    };
-                case var_meta =>
-                    push_var(ctxt, exp)?;
-                };
                 meta.rets = true;
-                meta.tpe = push_type(ctxt, meta.tpe, (exp.meta as expr_meta).tpe, tk)?;
+                append(meta.members, exp)!;
+                match(exp.meta){
+                case let e_meta: *expr_meta =>
+                    e_meta.rets = true;
+                    tpe = push_type(ctxt, tpe, e_meta.tpe, tk)?;
+                case let v_meta: *var_meta =>
+                    tpe = push_type(ctxt, tpe, v_meta.name.itype, tk)?;
+                };
             } else {
+                move_ptr(ctxt, tk);
                 return error(ctxt, "expected %bvalid expression%r, but got %y{}%d",
                     strtoken(oper));
             };
         case =>
             const (exp, _end) = eval_expression(ctxt, tokens, end)?;
             end = _end;
-            body = push_node(body, exp);
-            if(node.inner is null) node.inner = body;
+            append(meta.members, exp)!;
             match(exp.meta){
             // parsed expression is being returned
-            case let e_meta: expr_meta =>
-                move_ptr(&ctxt, tk);
-                return error(ctxt, "inner expression %greturns a value%r, "
-                    "but the root %gdoes not%d");
-            case var_meta =>
+            case let e_meta: *expr_meta =>
+                if(e_meta.rets){
+                    move_ptr(ctxt, tk);
+                    return error(ctxt, "inner expression %greturns a value%r, "
+                        "but the root %gdoes not%d");
+                };
+            case *var_meta =>
                 push_var(ctxt, exp)?;
+            case *funcall_meta => void;
             };
         };
         end = pop_assert(ctxt, tokens, end, symbol::EOL,
@@ -1109,33 +1975,33 @@ fn eval_scope(ctxt: context, tokens: []token, at: size) ((*ast, size) | COMPERR)
         tk = next_tk(ctxt, tokens, end,
             "expected %bvalid expression%r, but got %y{}%d")?;
     };
-    node.meta = meta;
-    node.path = tokens[begin..end];
+    end = pop_assert(ctxt, tokens, end, symbol::RGT_CURLY,
+        "expected %bend of scope%r, but got %y{}%d")?;
 
-    ctxt.scp = upper_scp;
+    if(tpe == primitive::ANY) tpe = primitive::UNIT;
+    if(!is_subtype(tpe, meta.tpe)){
+        move_ptr(ctxt, tk);
+        return error(ctxt,
+            "mismatch between %bfunction type %g({}%b)%r "
+            "and %bscope evaluation type %g({}%b)%r",
+            strtoken(meta.tpe), strtoken(tpe));
+    };
+
+    node.meta = alloc(meta)!;
+    node.path = tokens[begin..end];
     return (node, end);
 };
 
-fn eval_expression(ctxt: context, tokens: []token, at: size, hint: primitive = primitive::ANY)
+fn eval_expression(ctxt: *context, tokens: []token, at: size, hint: primitive = primitive::ANY)
     ((*ast, size) | COMPERR) = {
     let tk = tokens[at];
     match(tk.val){
     case let kwd: keyword =>
         switch(kwd){
         case keyword::LET =>
-            const (exp, end) = eval_decl(ctxt, tokens, at)?;
-            tk = next_tk(ctxt, tokens, end, "expected %btype casting%r or "
-                "%bend of line%r, but got %y{}%d")?;
-            if(tk.val is primitive){
-                const meta = &(exp.meta as var_meta);
-                meta.name.itype = push_type(ctxt,
-                    meta.name.itype, tk.val as primitive, tk)?;
-                return (exp, end + 1);
-            } else {
-                return (exp, end);
-            };
+            return eval_decl(ctxt, tokens, at)?;
         case =>
-            move_ptr(&ctxt, tk);
+            move_ptr(ctxt, tk);
             return error(ctxt, "TODO: statements");
         };
     case =>
@@ -1144,7 +2010,7 @@ fn eval_expression(ctxt: context, tokens: []token, at: size, hint: primitive = p
 };
 
 // evaluates a namespace declaration
-fn eval_decl(ctxt: context, tokens: []token, at: size) ((*ast, size) | COMPERR) = {
+fn eval_decl(ctxt: *context, tokens: []token, at: size) ((*ast, size) | COMPERR) = {
     const begin = at;
     let end = at;
     assert(comp_tk(tokens[at].val, keyword::LET));
@@ -1153,7 +2019,7 @@ fn eval_decl(ctxt: context, tokens: []token, at: size) ((*ast, size) | COMPERR) 
         "but got %y{}%d")?;
     end += 1;
     if(!(tk.val is ident)){
-        move_ptr(&ctxt, tk);
+        move_ptr(ctxt, tk);
         return error(ctxt, "expected %bdeclarations's namespace%r, but got %y{}%d",
             strtoken(tk.val));
     };
@@ -1173,48 +2039,59 @@ fn eval_decl(ctxt: context, tokens: []token, at: size) ((*ast, size) | COMPERR) 
         const (exp, _end) = eval_expression(ctxt, tokens, end, prim)?;
         end = _end;
         node.inner = exp;
-
-        if(exp.meta is expr_meta){
-            const meta = exp.meta as expr_meta;
+        match(exp.meta){
+        case let meta: *expr_meta =>
             if(meta.rets){
                 assert(comp_tk(tokens[eq + 1].val, operator::MAP));
-                move_ptr(&ctxt, tokens[eq + 1]);
-                return error(ctxt, "cannot return a value from the right side of an assigntment");
+                move_ptr(ctxt, tokens[eq + 1]);
+                return error(ctxt,
+                    "cannot return a value from the right side of an assigntment");
             };
-            name.itype = push_type(ctxt, prim, meta.tpe, tokens[eq])?;
+            name.itype = push_type(ctxt, meta.tpe, prim, tokens[eq])?;
+        case let meta: *var_meta =>
+            name.itype = push_type(ctxt, meta.name.itype, prim, tokens[eq])?;
         };
     case let ctpe: ident =>
         assert(false, "TODO: composite types");
     case let oper: operator =>
         if(oper != operator::ASG){
-            move_ptr(&ctxt, tk);
+            move_ptr(ctxt, tk);
             return error(ctxt, "expected %value bassignment%r, but got %y{}%d");
         };
         const eq = end;
         const (exp, _end) = eval_expression(ctxt, tokens, end + 1)?;
         end = _end;
         node.inner = exp;
-
-        if(exp.meta is expr_meta){
-            const meta = exp.meta as expr_meta;
+        match(exp.meta){
+        case let meta: *expr_meta =>
             if(meta.rets){
                 assert(comp_tk(tokens[eq + 1].val, operator::MAP));
-                move_ptr(&ctxt, tokens[eq + 1]);
+                move_ptr(ctxt, tokens[eq + 1]);
                 return error(ctxt, "cannot return a value from the right side of an assigntment");
             };
-            name.itype = push_type(ctxt, primitive::ANY, meta.tpe, tokens[eq])?;
+            if(untyped(meta.tpe)){
+                move_ptr(ctxt, tk);
+                return error(ctxt, "cannot infer expression type");
+            };
+            name.itype = meta.tpe;
+        case let meta: *var_meta =>
+            name.itype = meta.name.itype;
         };
     };
-    node.meta = var_meta {
+    node.path = tokens[begin..end];
+    node.meta = alloc(var_meta {
         lin = tokens[begin].lin,
         cln = tokens[begin].cln,
+        ffi = void,
+        mod = void,
+        glob = false,
         name = name,
-    };
+    })!;
     return (node, end);
 };
 
 // evaluates arithmetic, boolean, binary and string expressions
-fn eval_abbs_exp(ctxt: context, tokens: []token, at: size, hint: primitive = primitive::ANY)
+fn eval_abbs_exp(ctxt: *context, tokens: []token, at: size, hint: primitive = primitive::ANY)
     ((*ast, size) | COMPERR) = {
     const max = len(tokens);
     const begin = at;
@@ -1222,62 +2099,90 @@ fn eval_abbs_exp(ctxt: context, tokens: []token, at: size, hint: primitive = pri
     let tk = next_tk(ctxt, tokens, end,
         "expected %bexpression member%r, but got %y{}%d")?;
 
-    const node = new_node(tokens, begin);
-    node.kind = path_t::EXPR;
-    node.inner = null;
-    let exp: nullable *ast = null;
     let tpe = hint;
-
+    let membs = []: []*ast;
     if(tk.val is operator){
         const oper = tk.val as operator;
         if(!is_unary(oper)){
-            move_ptr(&ctxt, tk);
+            move_ptr(ctxt, tk);
             return error(ctxt, "invalid use of operator");
         };
+        const op = new_node(tokens, end);
+        op.kind = path_t::OPERATOR;
+        append(membs, op)!;
         end += 1;
         tk = next_tk(ctxt, tokens, end,
             "expected %bexpression member%r, but got %y{}%d")?;
     };
-    for(!comp_tk(tk.val, symbol::EOL) && end < max){
-        const (mem, _end) = eval_member(ctxt, tokens, end, tpe)?;
+    for(!(comp_tk(tk.val, symbol::RGT_PAR) || comp_tk(tk.val, symbol::COMMA) ||
+        comp_tk(tk.val, symbol::EOL)) && end < max){
+        const (mem_l, _end) = eval_member(ctxt, tokens, end, tpe)?;
         end = _end;
-        exp = push_node(exp, mem);
-        if(node.inner is null) node.inner = exp;
-
-        const meta = (exp as *ast).meta as expr_meta;
-        tpe = push_type(ctxt, tpe, meta.tpe, tk)?;
-
+        append(membs, mem_l)!;
+        match(mem_l.meta){
+        case let member_t: primitive =>
+            tpe = push_type(ctxt, tpe, member_t, tk)?;
+        case let exp_meta: *expr_meta =>
+            tpe = push_type(ctxt, tpe, exp_meta.tpe, tk)?;
+        case let fncall: *funcall_meta =>
+            const f_meta = fncall.fun.meta as *fn_meta;
+            tpe = push_type(ctxt, tpe, f_meta.fn_type, tk)?;
+        case =>
+            assert(false, "unreachable");
+        };
         tk = next_tk(ctxt, tokens, end,
             "expected %boperator%r or %bend of line%r, but got %y{}%d")?;
-        if(comp_tk(tk.val, symbol::EOL)) break;
+
+        if(comp_tk(tk.val, symbol::RGT_PAR) || comp_tk(tk.val, symbol::COMMA) ||
+            comp_tk(tk.val, symbol::EOL)) break;
 
         if(!(tk.val is operator)){
-            move_ptr(&ctxt, tk);
-            return error(ctxt, "expected %boperator%r or %bend of line%r, but got %y{}%d",
+            move_ptr(ctxt, tk);
+            return error(ctxt,
+                "expected %boperator%r or %bend of line%r, but got %y{}%d",
                 strtoken(tk.val));
         } else if(!is_binary(tk.val as operator)){
-            move_ptr(&ctxt, tk);
+            move_ptr(ctxt, tk);
             return error(ctxt, "invalid %bbinary operator%d");
         };
-        end += 1;
-        const (mem2, _end) = eval_member(ctxt, tokens, end, tpe)?;
-        end = _end;
-        exp = push_node(exp, mem2);
+        const op = new_node(tokens, end);
+        op.kind = path_t::OPERATOR;
+        append(membs, op)!;
 
+        end += 1;
+        const (mem_r, _end) = eval_member(ctxt, tokens, end, tpe)?;
+        end = _end;
+        append(membs, mem_r)!;
+        match(mem_r.meta){
+        case let member_t: primitive =>
+            tpe = push_type(ctxt, tpe, member_t, tk)?;
+        case let exp_meta: *expr_meta =>
+            tpe = push_type(ctxt, tpe, exp_meta.tpe, tk)?;
+        case let fncall: *funcall_meta =>
+            const f_meta = fncall.fun.meta as *fn_meta;
+            tpe = push_type(ctxt, tpe, f_meta.fn_type, tk)?;
+        case =>
+            assert(false, "unreachable");
+        };
         tk = next_tk(ctxt, tokens, end,
             "expected %bexpression member%r, but got %y{}%d")?;
-        if(comp_tk(tk.val, symbol::RGT_PAR)) break;
+        if(comp_tk(tk.val, symbol::RGT_PAR) ||
+            comp_tk(tk.val, symbol::EOL)) break;
     };
+    const node = new_node(tokens, begin);
+    node.kind = path_t::EXPR;
     node.path = tokens[begin..end];
-    node.meta = expr_meta {
+    node.meta = alloc(expr_meta {
         rets = false,
         tpe = tpe,
-    };
+        scp = void,
+        members = membs,
+    })!;
     return (node, end);
 };
 
 // evaluates an expression member
-fn eval_member(ctxt: context, tokens: []token, at: size, hint: primitive = primitive::ANY)
+fn eval_member(ctxt: *context, tokens: []token, at: size, hint: primitive = primitive::ANY)
     ((*ast, size) | COMPERR) = {
     const begin = at;
     let end = at;
@@ -1294,28 +2199,28 @@ fn eval_member(ctxt: context, tokens: []token, at: size, hint: primitive = primi
                 "expected %btype casting%r or %bexpression continuation%r, "
                 "but got %y{}%d")?;
             if(tk.val is primitive){ // TODO: composite types
-                const meta = &(exp.meta as expr_meta);
-                meta.tpe = push_type(ctxt, meta.tpe, tk.val as primitive, tk)?;
+                const meta = exp.meta as *expr_meta;
+                meta.tpe = cast(ctxt, meta.tpe, tk.val as primitive, tk)?;
                 return (exp, end + 1);
             } else {
                 return (exp, end);
             };
         } else {
-            move_ptr(&ctxt, tk);
+            move_ptr(ctxt, tk);
             return error(ctxt, "expected %bvalid member%r, but got %y{}%d",
                 strtoken(tk.val));
         };
-    case let num: number =>
+    case size =>
         end += 1;
         tk = next_tk(ctxt, tokens, end, "expected %btype casting%r or "
             "%bexpression continuation%r, but got %y{}%d")?;
         if(tk.val is primitive){ // TODO: composite types
             const new = tk.val as primitive;
-            if(is_castable(primitive::NUMBER, new)){
-                tpe = push_type(ctxt, tpe, new, tk)?;
+            if(is_subtype(primitive::NUMBER, tpe)){
+                tpe = cast(ctxt, tpe, new, tk)?;
                 end += 1;
             } else {
-                move_ptr(&ctxt, tk);
+                move_ptr(ctxt, tk);
                 return error(ctxt, "invalid cast of %g{}%r to %g{}%d",
                     strtoken(primitive::NUMBER), strtoken(new));
             };
@@ -1323,16 +2228,24 @@ fn eval_member(ctxt: context, tokens: []token, at: size, hint: primitive = primi
             tpe = push_type(ctxt, tpe, primitive::NUMBER, tk)?;
         };
     case let idt: ident =>
-        // TODO: funcalls, module access, field access
+        // TODO: module access, field access
         match(get_var(ctxt.scp as *scope, idt)){
         case let var: *ast =>
-            const meta = var.meta as var_meta;
+            const meta = var.meta as *var_meta;
             tpe = meta.name.itype;
             end += 1;
         case =>
-            move_ptr(&ctxt, tk);
-            return error(ctxt, "the variable %y{}%r is undefined at this point",
-                idt.name);
+            tk = next_tk(ctxt, tokens, end + 1, "expected %bexpression continuation%r "
+                "or %bfunction call%r, but got %y{}%d")?;
+            // funcall
+            if(comp_tk(tk.val, symbol::LFT_PAR) || (end + 1 < len(tokens) &&
+                comp_tk(tokens[end + 1].val, symbol::FIELD))){
+                return eval_funcall(ctxt, tokens, end);
+            } else {
+                move_ptr(ctxt, tk);
+                return error(ctxt, "the variable %y{}%r is undefined at this point",
+                    idt.id);
+            };
         };
         tk = next_tk(ctxt, tokens, end, "expected %btype casting%r or "
             "%bexpression continuation%r, but got %y{}%d")?;
@@ -1342,42 +2255,140 @@ fn eval_member(ctxt: context, tokens: []token, at: size, hint: primitive = primi
                 tpe = push_type(ctxt, tpe, new, tk)?;
                 end += 1;
             } else {
-                move_ptr(&ctxt, tk);
+                move_ptr(ctxt, tk);
                 return error(ctxt, "invalid cast of %g{}%r to %g{}%d",
                     strtoken(primitive::NUMBER), strtoken(new));
             };
         };
-    case let txt: str =>
+    case str =>
         tpe = push_type(ctxt, tpe, primitive::STR, tk)?;
         end += 1;
         // TODO: casting to composite types
     case =>
-        move_ptr(&ctxt, tk);
+        move_ptr(ctxt, tk);
         return error(ctxt, "invalid %bexpression member%r found here%d");
     };
     const node = new_node(tokens, begin);
-    node.kind = path_t::EXPR;
-    node.meta = expr_meta {
-        rets = false,
-        tpe = tpe,
-    };
+    node.kind = path_t::MEMBER;
+    node.meta = tpe;
     node.path = tokens[begin..end];
     return (node, end);
 };
 
-fn push_type(ctxt: context, current: primitive, new: primitive, pos: token) (primitive | COMPERR) = {
-    if(untyped(new) && untyped(current)){
-        move_ptr(&ctxt, pos);
-        return error(ctxt, "the given expression is untyped and cannot be assigned");
+fn eval_funcall(ctxt: *context, tokens: []token, at: size) ((*ast, size) | COMPERR) = {
+    const begin = at;
+    let end = at;
+    const fun_name = tokens[begin].val as ident;
+    const fun =
+        match(get_fun(ctxt, fun_name)){
+        case let fun: *ast => yield fun;
+        case void =>
+            yield if(end + 1 < len(tokens) && comp_tk(tokens[end + 1].val, symbol::FIELD)){
+                const obj = next_tk(ctxt, tokens, end + 2,
+                    "expected %bmodule field access%r, but got %y{}%d")?;
+                if(!(obj.val is ident)){
+                    move_ptr(ctxt, obj);
+                    return error(ctxt, "expected %bvalid module field%r, but got %y{}%",
+                        strtoken(obj.val));
+                };
+                end += 2;
+                yield get_mod_fun(ctxt, tokens[begin], obj.val as ident)?;
+            } else {
+                move_ptr(ctxt, tokens[at]);
+                return error(ctxt, "the function %y{}%r is undefined at this point",
+                    fun_name.id);
+            };
+        };
+    const f_meta = fun.meta as *fn_meta;
+    move_ptr(ctxt, tokens[begin]);
+    validate_efx(ctxt, f_meta, (ctxt.scp as *scope).effects)?;
+
+    f_meta.used = true;
+    const tpe = f_meta.fn_type;
+    const arg_l = (f_meta.params as *ast).meta as *param_meta;
+
+    end = pop_assert(ctxt, tokens, end + 1, symbol::LFT_PAR,
+        "expected %bfunction call argument list%r, but got %y{}%d")?;
+    
+    let tk = next_tk(ctxt, tokens, end,
+        "expected %bfunction argument%r, but got %y{}%d")?;
+
+    const node = new_node(tokens, begin);
+    node.kind = path_t::FUN_CALL;
+
+    const list = []: []*ast;
+    for(!comp_tk(tk.val, symbol::RGT_PAR)){
+        if(len(list) + 1 > len(arg_l.names)){
+            move_ptr(ctxt, tk);
+            return error(ctxt, "too much arguments in the function call. "
+                "the function %g{}%r takes %g{}%r arguments%d", f_meta.name.id,
+                len(arg_l.names));
+        };
+        const (exp, _end) = eval_expression(ctxt, tokens, end,
+            arg_l.names[len(list)].itype)?;
+        end = _end;
+        append(list, exp)!;
+
+        tk = next_tk(ctxt, tokens, end,
+            "expected %bcomma%r or %bclosing parenthesis%r, but got %y{}%d")?;
+        if(comp_tk(tk.val, symbol::COMMA)){
+            end += 1;
+            tk = next_tk(ctxt, tokens, end,
+                "expected %bfunction argument%r, but got %y{}%d")?;
+        };
     };
-    if(is_subtype(new, current)){
+    if(len(list) < len(arg_l.names)){
+        move_ptr(ctxt, tk);
+        return error(ctxt, "missing the %b{} argument%r of the function",
+            ordnum(len(list) + 1));
+    };
+    end += 1;
+    node.path = tokens[begin..end];
+    node.meta = alloc(funcall_meta {
+        fun = fun,
+        args = list,
+    })!;
+    return (node, end);
+};
+
+fn fix_global(meta: (*fn_meta | *var_meta)) str = {
+    match(meta){
+    case let f_meta: *fn_meta =>
+        if(f_meta.ffi is str){
+            return f_meta.ffi as str;
+        } else if(f_meta.mod is str){
+            return f_meta.mod as str;
+        } else {
+            return f_meta.name.id;
+        };
+    case let v_meta: *var_meta =>
+        if(v_meta.ffi is str){
+            return v_meta.ffi as str;
+        } else {
+            return v_meta.name.id;
+        };
+    };
+};
+
+fn push_type(ctxt: *context, current: primitive, new: primitive, pos: token) (primitive | COMPERR) = {
+    if(is_subtype(new, current) || current == primitive::ANY){
         if(current == primitive::ANY || current == primitive::NUMBER ||
             current == primitive::RATIO) return new;
         return current;
     } else {
-        move_ptr(&ctxt, pos);
+        move_ptr(ctxt, pos);
         return error(ctxt, "%Rtype mismatch;%r source is %y{}%r, but dest is %y{}%d",
             strtoken(new), strtoken(current));
+    };
+};
+
+fn cast(ctxt: *context, current: primitive, new: primitive, pos: token) (primitive | COMPERR) = {
+    if(is_castable(current, new)){
+        return new;
+    } else {
+        move_ptr(ctxt, pos);
+        return error(ctxt, "invalid cast of %g{}%r to %g{}%d",
+            strtoken(current), strtoken(new));
     };
 };
 
@@ -1390,5 +2401,33 @@ fn is_castable(this: primitive, that: primitive) bool = {
 };
 
 fn is_subtype(this: primitive, that: primitive) bool = {
-    return true;
+    if(this == primitive::ANY) return true;
+    switch(that){
+    case primitive::U8, primitive::U16,
+        primitive::U32, primitive::U64 =>
+        return (this <= that && this >= primitive::U8) || this == primitive::NUMBER;
+    case primitive::I8, primitive::I16,
+        primitive::I32, primitive::I64 =>
+        return (this <= that && this >= primitive::I8) || this == primitive::NUMBER;
+    case primitive::F32, primitive::F64 =>
+        return (this <= that && this >= primitive::F32) || this == primitive::RATIO;
+    case primitive::NUMBER =>
+        return this == primitive::NUMBER || is_subtype(that, this);
+    case primitive::RATIO =>
+        return this == primitive::RATIO || is_subtype(that, this);
+    case primitive::VOID =>
+        return this == primitive::UNIT || this == primitive::VOID;
+    case =>
+        return this == that;
+    };
+};
+
+fn true_size(lit: str) size = {
+    const fixed = strings::multireplace(lit,
+        ("\\t", "\t"), ("\\b", "\b"),
+        ("\\a", "\a"), ("\\r", "\r"),
+        ("\\n", "\n"), ("\\f", "\f"),
+        ("\\0", "\0"), ("\\\"", "\""))!;
+    defer free(fixed);
+    return len(fixed);
 };
