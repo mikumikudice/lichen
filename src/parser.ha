@@ -1968,7 +1968,7 @@ fn validate_efx(ctxt: *context, called: *fn_meta, caller: []tkval)
             if(mod == (lr_tag as ident).id) return;
         };
         return error(ctxt,
-            "this function %b{}%r is from the module "
+            "the function %b{}%r is from the module "
             "%g{}%r, but the caller function doesn't "
             "implement this effect tag",
             called.name.id, mod);
@@ -1983,10 +1983,9 @@ fn validate_efx(ctxt: *context, called: *fn_meta, caller: []tkval)
             };
             if(!found){
                 return error(ctxt,
-                    "this function %b{}%r implements "
-                    "the effect %g{}%r, but the caller "
-                    "function doesn't", called.name.id,
-                    (ld_tag as ident).id);
+                    "the function %b{}%r implements the effect "
+                    "%g{}%r, but the caller function doesn't",
+                    called.name.id, (ld_tag as ident).id);
             };
         };
     };
