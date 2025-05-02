@@ -11,3 +11,7 @@ pub fn scan(size u64) str = rt {
 pub fn print(data str) unit = rt {
     rt_puts(stdout, data);
 }; 
+
+pub fn fprint(handle u32, data str) unit = rt {
+    rt_puts(handle, data);
+};
