@@ -29,7 +29,8 @@ fn gen_pos(ctxt: *context) str = {
 fn u8tostr(a: []u8) str = strings::fromutf8(a)!;
 
 // loads the file `fname` and instantiates
-// a file parsing object
+// a file parsing object. returns an error
+// if such file cannot be opened.
 fn load(fname: str, libpath: str) (context | COMPERR) = {
     // open file or rise an error
     const fsrc = match(os::open(fname)){
@@ -141,6 +142,8 @@ fn comp_tk(lft: tkval, rgt: tkval) bool = {
     };
 };
 
+// returns a new token with given `val` as value at the
+// current context position.
 fn new_tk(ctxt: *context, val: tkval) token = {
     assert(ctxt.lst != len(ctxt.src));
     return token {
@@ -162,6 +165,8 @@ fn move_cln(ctxt: *context, amount: size = 1) void = {
     };
 };
 
+// forcefully moves the context to the position of the
+// given token.
 fn move_ptr(ctxt: *context, tk: token) void = {
     ctxt.lin = tk.lin;
     ctxt.cln = tk.cln;
@@ -292,6 +297,8 @@ fn free_nodes(_node: nullable *ast) void = {
     };
 };
 
+// fetches the corresponding definition of `var` from the current
+// scope. returns void if no match is found.
 fn get_var(scp: *scope, var: ident) (*ast | void) = {
     for(let var_def ..& scp.vars){
         const meta = var_def.meta as *var_meta;
@@ -301,6 +308,8 @@ fn get_var(scp: *scope, var: ident) (*ast | void) = {
         return get_var(scp.upper as *scope, var);
 };
 
+// fetches the corresponding definition of `var` from the module bound
+// to `mod`. returns an error if said module or variable do not exist.
 fn get_mod_var(ctxt: *context, mod: token, name: ident) (*ast | COMPERR) = {
     move_ptr(ctxt, mod);
     const modname = mod.val as ident;
@@ -322,6 +331,8 @@ fn get_mod_var(ctxt: *context, mod: token, name: ident) (*ast | COMPERR) = {
         "%p\"%c{0} %d= %puse %y\"{0}.ms\"%d;%p\"", modname.id);
 };
 
+// pushes given variable definition to the current scope. returns an
+// error if the variable namespace is already in use.
 fn push_var(ctxt: *context, var_def: *ast) (void | COMPERR) = {
     const meta = var_def.meta as *var_meta;
     if(meta.name.itype == primitive::VOID){
@@ -346,6 +357,8 @@ fn push_var(ctxt: *context, var_def: *ast) (void | COMPERR) = {
     };
 };
 
+// fetches the corresponding function definition of `name` from the
+// current scope. returns void if no match is found.
 fn get_fun(ctxt: *context, name: ident) (*ast | void) = {
     for(let fun ..& ctxt.fun_defs){
         const meta = fun.meta as *fn_meta;
@@ -353,6 +366,8 @@ fn get_fun(ctxt: *context, name: ident) (*ast | void) = {
     };
 };
 
+// fetches the corresponding function definition of `name` from the module
+// bound to `mod`. returns an error if said module or variable do not exist.
 fn get_mod_fun(ctxt: *context, mod: token, name: ident) (*ast | COMPERR) = {
     move_ptr(ctxt, mod);
     const modname = mod.val as ident;
@@ -377,6 +392,8 @@ fn get_mod_fun(ctxt: *context, mod: token, name: ident) (*ast | COMPERR) = {
             "%p\"%c{0} %d= %puse %y\"{0}.ms\"%d;%p\"", modname.id);
 };
 
+// pushes given function definition to the given context. returns an
+// error if the function namespace is already in use.
 fn push_fun(ctxt: *context, fn_def: *ast) (void | COMPERR) = {
     const meta = fn_def.meta as *fn_meta;
     match(get_fun(ctxt, meta.name)){
@@ -391,6 +408,8 @@ fn push_fun(ctxt: *context, fn_def: *ast) (void | COMPERR) = {
     };
 };
 
+// pushes a new string literal to the context and returns its index. if given
+// literal already exits, it's index is returned instead.
 fn push_str(ctxt: *context, lit: str) size = {
     match(finds(ctxt.literals, lit)){
     case let id: size => return id;
@@ -400,6 +419,8 @@ fn push_str(ctxt: *context, lit: str) size = {
     };
 };
 
+// pushes a new module bound to `bind` to the current context. returns an error
+// if given bind is already in use.
 fn push_module(ctxt: *context, bind: token, module: comp_obj) (void | COMPERR) = {
     const val = (bind.val as ident).id;
     for(let mod .. ctxt.modules){
@@ -415,6 +436,7 @@ fn push_module(ctxt: *context, bind: token, module: comp_obj) (void | COMPERR) =
     append(ctxt.modules, (bind, module))!;
 };
 
+// cleans up all allocated data from an abstract object file.
 fn free_module(obj: comp_obj) void = {
     io::close(obj.buffer)!;
     free(obj.buffer);
@@ -437,7 +459,12 @@ fn free_module(obj: comp_obj) void = {
     };
 };
 
+// qbe_t modes
 type mode = enum u8 { REAL, ASSIGN, LOAD };
+
+// returns the qbe equivalent of a given type. changing the mode to
+// ASSIGN rounds types smaller than a word to a word, and to LOAD
+// adds a sign prefix to the type.
 fn qbe_t(tpe: primitive, md: mode = mode::REAL) str = {
     switch(tpe){
     case primitive::U8 =>
@@ -1062,6 +1089,8 @@ fn compile(filename: str, libpath: str, buffer: *memio::stream,
     };
 };
 
+// generates the qbe IR of a given context and ast `head` and writes it to
+// `buffer`. returns an error if any compilation error occurs.
 fn gen_file(ctxt: *context, tokens: []token, buffer: *memio::stream,
     head: nullable *ast) (void | COMPERR) = {
     for(let node = head; node != null){
@@ -1149,6 +1178,7 @@ fn gen_file(ctxt: *context, tokens: []token, buffer: *memio::stream,
     };
 };
 
+// checks if a given definition is an FFI symbol
 fn check_for_FFI(ctxt: *context, node: *ast) (bool | COMPERR) = {
     if(!comp_tk(node.path[0].val, symbol::FFI)){
         return false;
@@ -1160,6 +1190,7 @@ fn check_for_FFI(ctxt: *context, node: *ast) (bool | COMPERR) = {
     return true;
 };
 
+// generates the qbe IR for a function definition
 fn gen_fun(ctxt: *context, tokens: []token, buffer: *memio::stream,
     this: *ast) (void | COMPERR) = {
     const meta = this.meta as *fn_meta;
@@ -1232,6 +1263,7 @@ fn gen_fun(ctxt: *context, tokens: []token, buffer: *memio::stream,
     };
 };
 
+// generates the qbe IR for a given scope
 fn gen_scope(ctxt: *context, buffer: *memio::stream, node: nullable *ast) (void | COMPERR) = {
     const node = node as *ast;
     const scp_meta = node.meta as *expr_meta;
@@ -1268,6 +1300,7 @@ fn gen_scope(ctxt: *context, buffer: *memio::stream, node: nullable *ast) (void 
     ctxt.scp = safe;
 };
 
+// generates the qbe IR for a given expression
 fn gen_exp(ctxt: *context, buffer: *memio::stream, exp: *ast,
     dest: str, exp_type: primitive) void = {
     const exp_t = qbe_t(exp_type, mode::ASSIGN);
@@ -1495,6 +1528,8 @@ fn gen_exp(ctxt: *context, buffer: *memio::stream, exp: *ast,
     };
 };
 
+// generates the qbeIR for a given funcall. if `dest` is set, the return value
+// is assigned to it. `dest` shall not have qbe temporaries prefix.
 fn gen_funcall(ctxt: *context, buffer: *memio::stream,
     this: *ast, dest: (void | str) = void) void = {
     const meta = this.meta as *funcall_meta;
@@ -1548,6 +1583,8 @@ fn gen_funcall(ctxt: *context, buffer: *memio::stream,
     fmt::fprintf(buffer, "{})", memio::string(&temp)!)!;
 };
 
+// generates the coresponding move instruction for a given member and fixes any
+// casting for the given member type and expected `tpe` type.
 fn gen_member(ctxt: *context, header: *memio::stream,
     buffer: *memio::stream, member: *ast, tpe: primitive) void = {
     match(member.path[0].val){
@@ -1659,6 +1696,7 @@ fn eval_c_def(ctxt: *context, tokens: []token, at: size, pub: bool = false)
     return (node, end);
 };
 
+// evaluates an "use" statement
 fn eval_use(ctxt: *context, tokens: []token, at: size) ((*ast, size) | COMPERR) = {
     const begin = at;
     let end = at;
@@ -1884,6 +1922,7 @@ fn eval_fun_def(ctxt: *context, tokens: []token, at: size, pub: bool = false)
     return (node, end);
 };
 
+// evaluates a function tag setpath
 fn eval_efx(ctxt: *context, tokens: []token, at: size)
     (([]tkval, (void | str), size) | COMPERR) = {
     let end = at;
@@ -1960,6 +1999,7 @@ fn eval_efx(ctxt: *context, tokens: []token, at: size)
     return (efx, ffi, end);
 };
 
+// validades effects for a given called function and a caller set of tags
 fn validate_efx(ctxt: *context, called: *fn_meta, caller: []tkval)
     (void | COMPERR) = {
     if(len(caller) > 0 && comp_tk(caller[0], keyword::DO)){
@@ -2053,6 +2093,7 @@ fn eval_param_l(ctxt: *context, tokens: []token, at: size) ((*ast, size) | COMPE
     return (node, end);
 };
 
+// skips a scope definition
 fn skip_scope(ctxt: *context, tokens: []token, at: size) (size | COMPERR) = {
     const max = len(tokens);
     let end = pop_assert(ctxt, tokens, at, symbol::LFT_CURLY,
@@ -2069,8 +2110,8 @@ fn skip_scope(ctxt: *context, tokens: []token, at: size) (size | COMPERR) = {
         strtoken(eof));
 };
 
-// evaluates a scope
-// remember to set the scope field of context before calling this
+// evaluates a scope.
+// remember to set the scope field of context before calling this.
 fn eval_scope(ctxt: *context, tokens: []token, at: size, hint: primitive = primitive::ANY)
     ((*ast, size) | COMPERR) = {
     const begin = at;
@@ -2147,6 +2188,7 @@ fn eval_scope(ctxt: *context, tokens: []token, at: size, hint: primitive = primi
     return (node, end);
 };
 
+// evaluates a generic expression
 fn eval_expression(ctxt: *context, tokens: []token, at: size, hint: primitive = primitive::ANY)
     ((*ast, size) | COMPERR) = {
     let tk = tokens[at];
@@ -2401,19 +2443,36 @@ fn eval_member(ctxt: *context, tokens: []token, at: size, hint: primitive = prim
             tpe = push_type(ctxt, tpe, primitive::NUMBER, tk)?;
         };
     case let idt: ident =>
-        // TODO: module access, field access
+        // TODO: field access
         match(get_var(ctxt.scp as *scope, idt)){
         case let var: *ast =>
             const meta = var.meta as *var_meta;
             tpe = push_type(ctxt, tpe, meta.name.itype, tk)?;
             return (var, end + 1);
         case =>
-            tk = next_tk(ctxt, tokens, end + 1, "expected %bexpression continuation%r "
-                "or %bfunction call%r, but got %y{}")?;
+            tk = next_tk(ctxt, tokens, end + 1,
+                "expected %bexpression continuation%r, but got %y{}")?;
             // funcall
-            if(comp_tk(tk.val, symbol::LFT_PAR) || (end + 1 < len(tokens) &&
-                comp_tk(tokens[end + 1].val, symbol::FIELD))){
+            if(comp_tk(tk.val, symbol::LFT_PAR)){
                 return eval_funcall(ctxt, tokens, end);
+            } else if((end + 2 < len(tokens) &&
+                comp_tk(tokens[end + 1].val, symbol::FIELD)) &&
+                tokens[end + 2].val is ident){
+                const field = tokens[end + 2].val as ident;
+                match(get_mod_var(ctxt, tokens[begin], field)){
+                case let var: *ast =>
+                    const meta = var.meta as *var_meta;
+                    tpe = push_type(ctxt, tpe, meta.name.itype, tk)?;
+                    return (var, end + 3);
+                case let e: COMPERR =>
+                    tk = next_tk(ctxt, tokens, end + 3,
+                        "expected %bfunction call%r or %boperator%r, but got %y{}")?;
+                    if(comp_tk(tk.val, symbol::LFT_PAR)){
+                        return eval_funcall(ctxt, tokens, end);
+                    } else {
+                        return e;
+                    };
+                };
             } else {
                 move_ptr(ctxt, tk);
                 return error(ctxt, "the variable %y{}%r is undefined at this point",
@@ -2435,6 +2494,7 @@ fn eval_member(ctxt: *context, tokens: []token, at: size, hint: primitive = prim
     return (node, end);
 };
 
+// evaluates a function call
 fn eval_funcall(ctxt: *context, tokens: []token, at: size) ((*ast, size) | COMPERR) = {
     const begin = at;
     let end = at;
@@ -2512,6 +2572,7 @@ fn eval_funcall(ctxt: *context, tokens: []token, at: size) ((*ast, size) | COMPE
     return (node, end);
 };
 
+// returns the correct IR representation for a given namespace from its metadata
 fn fix_global(meta: (*fn_meta | *var_meta)) str = {
     match(meta){
     case let f_meta: *fn_meta =>
@@ -2531,6 +2592,9 @@ fn fix_global(meta: (*fn_meta | *var_meta)) str = {
     };
 };
 
+// attempts to update a given current type to a new one, returning an error if
+// not possible. if exp is set to true, the error refers to left anf right hands,
+// if not, as source and dest types.
 fn push_type(ctxt: *context, current: primitive, new: primitive, pos: token, exp: bool = false)
     (primitive | COMPERR) = {
     if(is_subtype(new, current) || current == primitive::ANY){
@@ -2550,6 +2614,8 @@ fn push_type(ctxt: *context, current: primitive, new: primitive, pos: token, exp
     };
 };
 
+// attemps to cast a given current type to a new one, returning an error if it's
+// an invalid cast. the error points to the given `pos` token.
 fn cast(ctxt: *context, current: primitive, new: primitive, pos: token) (primitive | COMPERR) = {
     if(is_castable(current, new)){
         return new;
@@ -2560,16 +2626,19 @@ fn cast(ctxt: *context, current: primitive, new: primitive, pos: token) (primiti
     };
 };
 
+// checks is a given type is not a solid type
 fn untyped(tpe: primitive) bool = {
     return tpe == primitive::ANY || tpe == primitive::NUMBER || tpe == primitive::RATIO;
 };
 
+// checks if a given type is castable in another
 fn is_castable(this: primitive, that: primitive) bool = {
     if(is_subtype(this, primitive::NUMBER) &&
         is_subtype(that, primitive::NUMBER)) return true;
     return is_subtype(this, that) || is_subtype(that, this);
 };
 
+// checks if a given type is a subset of another
 fn is_subtype(this: primitive, that: primitive) bool = {
     if(this == primitive::ANY) return true;
     switch(that){
@@ -2592,6 +2661,7 @@ fn is_subtype(this: primitive, that: primitive) bool = {
     };
 };
 
+// returns the actual parsed size of a given string
 fn true_size(lit: str) size = {
     const fixed = strings::multireplace(lit,
         ("\\t", "\t"), ("\\b", "\b"),
@@ -2602,6 +2672,7 @@ fn true_size(lit: str) size = {
     return len(fixed);
 };
 
+// returns a tip for a given undefined function
 fn undef_tip(name: str) str = {
     if(name == "print"){
         return ". %gtry using the module %yio%g with "
