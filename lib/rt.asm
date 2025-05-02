@@ -46,13 +46,6 @@ global rt_sleep
 global rt_unlink
 global rt_exit
 
-global rt_indxb
-global rt_mvtob
-global rt_strcmp
-global rt_absb
-global rt_absh
-global rt_absw
-global rt_absl
 
 ; fn(...) unit
 rt_dummy:
@@ -194,7 +187,7 @@ rt_putb:
     pop rdi
     ret
 
-; fn(size u64) rec { u64, u64 }
+; fn(size u64) rec { ptr u64, size u64 }
 rt_arena:
     push rdi
     push rsi
@@ -232,7 +225,7 @@ rt_arena:
     .err:
     call rt_exit
 
-; fn(ptr rec { u64, u64 }) unit
+; fn(ptr rec { ptr u64, size u64 }) unit
 rt_free:
     push rdi
     push rdx
@@ -406,8 +399,6 @@ rt_rename:
 
 ; fn(code u32) void
 rt_exit:
-    call rt_absw
-    mov rdi, rax
     mov rax, 3ch
     syscall
     hlt
@@ -454,53 +445,3 @@ rt_strcmp:
         pop rsi
         pop rdi
         ret
-
-; fn(num i8) u8
-rt_absb:
-    push rbx
-    xor rax, rax
-    xor rbx, rbx
-    mov bx, di
-    mov al, bl
-    sar bl, 7
-    xor al, bl
-    sub al, bl
-    pop rbx
-    ret
-
-; fn(num i16) u16
-rt_absh:
-    push rbx
-    xor rax, rax
-    xor rbx, rbx
-    mov bx, di
-    mov ax, di
-    sar bx, 15
-    xor ax, bx
-    sub ax, bx
-    pop rbx
-    ret
-
-; fn(num i32) u32
-rt_absw:
-    push rbx
-    xor rax, rax
-    xor rbx, rbx
-    mov ebx, edi
-    mov eax, edi
-    sar ebx, 31
-    xor eax, ebx
-    sub eax, ebx
-    pop rbx
-    ret
-
-; fn(num i64) 64
-rt_absl:
-    push rbx
-    mov rbx, rdi
-    mov rax, rdi
-    sar rbx, 63
-    xor rax, rbx
-    sub rax, rbx
-    pop rbx
-    ret

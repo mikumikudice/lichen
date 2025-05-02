@@ -14,35 +14,38 @@ const version = "0.4.0";
 const temp = ".tmp/";
 
 export fn main() void = {
-    const abt = "%gmmc is the compiler for the moss programming language.%d";
+    const abt = "%gmmc is the compiler for the moss programming language.";
     const usg = fmt::asprintf(
         "%gmmc usage:\n\n %y$ {} "
-        "%b[flags] <main file> [output file name]%d",
+        "%b[flags] <main file> [output file name]",
         os::args[0])!;
     defer free(usg);
 
     const flg =
         "\n%gflags usage:%d\n"
         "\n %g-h\t\t"
-        "%y-- prints this help message%d"
+        "%y-- prints this help message"
         "\n %g-v\t\t"
-        "%y-- prints the current version of the compiler%d"
+        "%y-- prints the current version of the compiler"
 
         "\n %g-l\t%b<path>\t"
-        "%y-- includes an object file or library in the linking list%d"
+        "%y-- includes an object file or library in the linking list"
 
         "\n %g-stb\t%b<path>\t"
-        "%y-- sets path for stdlib and runtime%d"
+        "%y-- sets path for stdlib and runtime"
 
         "\n %g-c\t\t"
-        "%y-- only checks for compile errors and generates no output files%d"
+        "%y-- only checks for compile errors and generates no output files"
 
         "\n %g-vb\t\t"
-        "%y-- prompts each substep. if %g-c%y is also set, dumps qbe IR%d";
+        "%y-- prompts each substep. if %g-c%y is also set, dumps qbe IR"
+        
+        "\n %g-t\t\t"
+        "%y-- keeps temporary files at %g.tmp/%y folder";
 
     const hlp =
         "\n%gget help on learning how to use moss in "
-        "%bhttps://git.sr.ht/~mikaela-md/mossy/tree/main/doc/tut.md%d";
+        "%bhttps://git.sr.ht/~mikaela-md/mossy/tree/main/doc/tut.md";
 
     const home = os::getenv("HOME"): str;
 
@@ -58,7 +61,7 @@ export fn main() void = {
     } else if(argc == 2){
         // versioning
         if(os::args[1] == "-v" || os::args[1] == "--version"){
-            color("%gmika's moss compiler %yv{}%d", version);
+            color("%gmika's moss compiler %yv{}", version);
             return;
         // help
         } else if(os::args[1] == "-h" || os::args[1] == "--help"){
@@ -70,6 +73,7 @@ export fn main() void = {
     let libset = false;
     let outset = false;
     let infset = false;
+    let keeptemps = false;
 
     let outfile = "";
     let srcname = "";
@@ -109,6 +113,9 @@ export fn main() void = {
                 continue;
             case "-c" =>
                 just_check = true;
+                continue;
+            case "-t" =>
+                keeptemps = true;
                 continue;
             case =>
                 color("%runknown flag %g{}", arg);
@@ -150,6 +157,7 @@ export fn main() void = {
     };
     match(compile(srcname, libpath, alloc(memio::dynamic())!, true)){
     case let obj: comp_obj =>
+        defer free(defs);
         defer free_module(obj);
         if(just_check){
             if(!silent) fmt::println(memio::string(obj.buffer)!)!;
@@ -186,6 +194,8 @@ export fn main() void = {
         append(mold_args, rt_out)!;
 
         run_cmd(silent, "mold", mold_args...);
+        if(!keeptemps) run_cmd(silent, "rm", "-rf", temp);
+
     case let err: COMPERR =>
         defer free(err.1);
         defer io::close(err.1)!;
@@ -255,13 +265,13 @@ fn run_cmd(noprint: bool, cmd: str, args: str...) void = {
         case let e: exec::error =>
             if(e is exec::nocmd){
                 if(cmd == "mold"){
-                    color("%ymold not found. using ld%d");
+                    color("%ymold not found. using ld");
                     run_cmd(noprint, "ld", args...);
                 } else {
-                    color_error("%Rmissing dependency:%b {}%d", cmd);
+                    color_error("%Rmissing dependency:%b {}", cmd);
                 };
             };
-            color_error("%r{} failed%d", cmd);
+            color_error("%r{} failed", cmd);
         };
     match(exec::fork()!){
     case void =>
@@ -271,7 +281,7 @@ fn run_cmd(noprint: bool, cmd: str, args: str...) void = {
         free(exe.argv);
         free(exe.files);
         strings::freeall(exe.env);
-        if(stat.status != 0) color_error("%r{} failed%d", cmd);
+        if(stat.status != 0) color_error("%r{} failed", cmd);
     };
 };
 
@@ -325,7 +335,8 @@ fn color(fmt: str, args: fmt::field...) void = {
             case 'W' =>
                 fmt::fprintf(&buffer, "\x1b[0;47m")!;
             case =>
-                fmt::fatalf("invalid escape color {}", path[c + 1]: rune);
+                fmt::fprint(&buffer, chr: rune)!;
+                c -= 1;
             };
             c += 1;
         } else {
