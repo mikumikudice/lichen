@@ -1154,13 +1154,77 @@ fn gen_file(ctxt: *context, tokens: []token, buffer: *memio::stream,
                     case operator::FDIV =>
                         move_ptr(ctxt, inner.path[i]);
                         return error(ctxt, "invalid float division between integers");
+                    case operator::MOD =>
+                        acc &= num;
+                    case operator::LEQ =>
+                        if(acc <= num){
+                            acc = 1;
+                        } else {
+                            acc = 0;
+                        };
+                    case operator::GEQ =>
+                        if(acc >= num){
+                            acc = 1;
+                        } else {
+                            acc = 0;
+                        };
+                    case operator::LST =>
+                        if(acc > num){
+                            acc = 1;
+                        } else {
+                            acc = 0;
+                        };
+                    case operator::GTT =>
+                        if(acc < num){
+                            acc = 1;
+                        } else {
+                            acc = 0;
+                        };
+                    case operator::EQL =>
+                        if(acc == num){
+                            acc = 1;
+                        } else {
+                            acc = 0;
+                        };
+                    case operator::NEQ =>
+                        if(acc != num){
+                            acc = 1;
+                        } else {
+                            acc = 0;
+                        };
+                    case operator::SHL =>
+                        acc <<= num;
+                    case operator::SHR =>
+                        acc >>= num;
+                    case operator::LOR =>
+                        acc |= num;
+                    case operator::LAND =>
+                        acc &= num;
+                    case operator::BOR =>
+                        if(acc != 0 || num != 0){
+                            acc = 1;
+                        } else {
+                            acc = 0;
+                        };
+                    case operator::BAND =>
+                        if(acc != 0 && num != 0){
+                            acc = 1;
+                        } else {
+                            acc = 0;
+                        };
+                    case operator::NOT =>
+                        if(acc != 0){
+                            acc = 0;
+                        } else {
+                            acc = 1;
+                        };
                     case =>
-                        assert(false, "TODO");
+                        assert(false, "unreachable");
                     };
                 };
                 fmt::fprintfln(buffer, "{} {} }}", qbe_t(tpe), acc)!;
             } else {
-                assert(false, "TODO");
+                assert(false, "TODO: constant ratios");
             };
         case path_t::FUN_DEF =>
             const meta = this.meta as *fn_meta;
@@ -1494,6 +1558,22 @@ fn gen_exp(ctxt: *context, buffer: *memio::stream, exp: *ast,
                         yield fmt::asprint(num)!;
                     case let txt: str =>
                         yield fmt::asprintf("$lit.{}", push_str(ctxt, txt))!;
+                    case let kwd: keyword =>
+                        yield switch(kwd){
+                        case keyword::TODO =>
+                            yield
+                            if(is_subtype(exp_type, primitive::STR)){
+                                yield strings::dup("0")!;
+                            } else {
+                                yield strings::dup("$empty.str")!;
+                            };
+                        case keyword::FAIL =>
+                            assert(false, "TODO: error types");
+                            yield "";
+                        case =>
+                            assert(false, "unreachable");
+                            yield "";
+                        };
                     case =>
                         assert(false, strtoken(members[i + 1].path[0].val));
                         yield "";
@@ -1624,6 +1704,19 @@ fn gen_member(ctxt: *context, header: *memio::stream,
             } else {
                 fmt::fprintf(buffer, "copy %{}", meta.name.id)!;
             };
+        };
+    case let kwd: keyword =>
+        switch(kwd){
+        case keyword::TODO =>
+            if(is_subtype(tpe, primitive::STR)){
+                fmt::fprint(buffer, "copy $empty.str")!;
+            } else {
+                fmt::fprint(buffer, "copy 0")!;
+            };
+        case keyword::FAIL =>
+            assert(false, "TODO: error types");
+        case =>
+            assert(false, "unreachable");
         };
     case let num: size =>
         fmt::fprintf(buffer, "copy {}", num)!;
@@ -2483,6 +2576,22 @@ fn eval_member(ctxt: *context, tokens: []token, at: size, hint: primitive = prim
         tpe = push_type(ctxt, tpe, primitive::STR, tk)?;
         end += 1;
         // TODO: casting to composite types
+    case let kwd: keyword =>
+        if(kwd == keyword::TODO){
+            if(untyped(tpe)){
+                move_ptr(ctxt, tk);
+                return error(ctxt, "%gtodo%r cannot infer expression type");
+            };
+            end += 1;
+        } else if(kwd == keyword::FAIL){
+            if(false){ // TODO: unions and error types
+                move_ptr(ctxt, tk);
+                return error(ctxt, "%gerror%r is not a subtype of this expression");
+            };
+            end += 1;
+        } else {
+            assert(false, "TODO: statements");
+        };
     case =>
         move_ptr(ctxt, tk);
         return error(ctxt, "invalid %bexpression member%r found here");
