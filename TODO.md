@@ -1,11 +1,11 @@
+- implement if/else statements
+- fix memory leaks
 - implement iterators
 - string concatenation
-- fix empty file with multiple comments crash
 - implement arrays
 - tagged unions
 - tuples
 - error type
-- first-class functions
 - implement dynamic types
 - implement safety checking for stack vs heap data
 - update io/rt module for dynamic types
