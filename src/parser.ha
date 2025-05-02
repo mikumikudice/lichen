@@ -318,7 +318,8 @@ fn get_mod_var(ctxt: *context, mod: token, name: ident) (*ast | COMPERR) = {
             "the module %b{} (bound to %g{}%b)%r has no %y{}%r function",
             m.1.ctxt.name, modname.id, name.id);
     };
-    return error(ctxt, "module bind %b{}%r not found", modname.id);
+    return error(ctxt, "module bind %b{0}%r not found. try adding "
+        "%p\"%c{0} %d= %puse %y\"{0}.ms\"%d;%p\"", modname.id);
 };
 
 fn push_var(ctxt: *context, var_def: *ast) (void | COMPERR) = {
@@ -367,11 +368,13 @@ fn get_mod_fun(ctxt: *context, mod: token, name: ident) (*ast | COMPERR) = {
                 return fun;
             };
         };
+        const help = undef_tip(name.id);
         return error(ctxt,
-            "the module %b{} (bound to %g{}%b)%r has no %y{}%r function",
-            m.1.ctxt.name, modname.id, name.id);
+            "the module %b{} (bound to %g{}%b)%r has no %y{}%r function{}",
+            m.1.ctxt.name, modname.id, name.id, help);
     };
-    return error(ctxt, "module bind %b{}%r not found", modname.id);
+        return error(ctxt, "module bind %b{0}%r not found. try adding "
+            "%p\"%c{0} %d= %puse %y\"{0}.ms\"%d;%p\"", modname.id);
 };
 
 fn push_fun(ctxt: *context, fn_def: *ast) (void | COMPERR) = {
@@ -1967,11 +1970,16 @@ fn validate_efx(ctxt: *context, called: *fn_meta, caller: []tkval)
         for(let lr_tag .. caller){
             if(mod == (lr_tag as ident).id) return;
         };
+        const help = fmt::asprintf(
+            "%gtry doing %p\"%d= %b{} %y{{%p\""
+            "%g in the function scope definition",
+            mod)!;
+        defer free(help);
         return error(ctxt,
             "the function %b{}%r is from the module "
             "%g{}%r, but the caller function doesn't "
-            "implement this effect tag",
-            called.name.id, mod);
+            "implement this effect tag\n{}",
+            called.name.id, mod, help);
     case void =>
         for(let ld_tag .. called.effects){
             let found = false;
@@ -1982,10 +1990,16 @@ fn validate_efx(ctxt: *context, called: *fn_meta, caller: []tkval)
                 };
             };
             if(!found){
+                const tag = (ld_tag as ident).id;
+                const help = fmt::asprintf(
+                    "%gtry doing %p\"%d= %b{} %y{{%p\""
+                    "%g in the function scope definition",
+                    tag)!;
+                defer free(help);
                 return error(ctxt,
                     "the function %b{}%r implements the effect "
-                    "%g{}%r, but the caller function doesn't",
-                    called.name.id, (ld_tag as ident).id);
+                    "%g{}%r, but the caller function doesn't\n{}",
+                    called.name.id, tag, help);
             };
         };
     };
@@ -2440,9 +2454,10 @@ fn eval_funcall(ctxt: *context, tokens: []token, at: size) ((*ast, size) | COMPE
                 end += 2;
                 yield get_mod_fun(ctxt, tokens[begin], obj.val as ident)?;
             } else {
+                const help = undef_tip(fun_name.id);
                 move_ptr(ctxt, tokens[at]);
-                return error(ctxt, "the function %y{}%r is undefined at this point",
-                    fun_name.id);
+                return error(ctxt, "the function %y{}%r is undefined at this point{}",
+                    fun_name.id, help);
             };
         };
     const f_meta = fun.meta as *fn_meta;
@@ -2585,4 +2600,19 @@ fn true_size(lit: str) size = {
         ("\\0", "\0"), ("\\\"", "\""))!;
     defer free(fixed);
     return len(fixed);
+};
+
+fn undef_tip(name: str) str = {
+    if(name == "print"){
+        return ". %gtry using the module %yio%g with "
+            "%p\"%bio%d::%bprint%d()%p\"";
+    } else if(name == "printf"){
+        return ". %gtry using the module %yio%g with "
+            "%p\"%bio%d::%bprintf%d()%p\"";
+    } else if(name == "scan"){
+        return ". %gtry using the module %yio%g with "
+            "%p\"%bio%d::%bscan%d()%p\"";
+    } else {
+        return "";
+    };
 };
