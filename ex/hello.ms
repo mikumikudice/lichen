@@ -1,5 +1,5 @@
-use io;
+io = use "io.ms";
 
-pub main = fn() void & io {
-    io::put("mornin' sailor!\n");
+pub fn main() void = io {
+    io::print("mornin' sailor!\n");
 };
