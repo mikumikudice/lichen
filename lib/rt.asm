@@ -34,13 +34,12 @@ global rt_open
 global rt_close
 global rt_putb
 
-global rt_arena
+global rt_alloc
 global rt_free
+global rt_setlen
 global rt_copy
-global rt_strlset
 global rt_strcpy
 global rt_strrev
-global rt_memset
 
 global rt_sleep
 global rt_unlink
@@ -96,44 +95,18 @@ rt_close:
     syscall
     ret
 
-; fn(handler u32, bz u64) str
+; fn(handler u32, buffer @str) unit
 rt_gets:
-    push rcx
     push rdx
-    push rsi
-
-    mov rcx, [last]
-    cmp rbp, rcx
-    jz .off
-    mov [stko], rsi
-    mov [last], rbp
-    jmp .fnsh
-    .off:
-    mov rcx, [stko]
-    add rcx, rsi
-    mov [stko], rcx
-    .fnsh:
-
-    mov rcx, rsp
-    sub rcx, [stko]
-    push rcx
-
-    mov rdx, rsi
-    mov rsi, rcx
-    xor rax, rax
+    mov rdx, [rsi]
+    sub rdx, 8
+    add rsi, 8
+    mov rax, 0h
     syscall
     
     cmp rax, 0
     jl .err
-    pop rcx
-    sub rcx, 8
-    dec rax
-    mov [rcx], rax
-
-    mov rax, rcx
-    pop rsi
     pop rdx
-    pop rcx
     ret
 
     .err:
@@ -149,8 +122,9 @@ rt_puts:
     xor rdi, rdi        ; clear residual bytes
     mov edi, ecx
     mov rdx, [rsi]      ; gets length
+    sub rdx, 8
     add rsi, 8
-    mov rax, 1          ; system call (write)
+    mov rax, 1h         ; system call (write)
     syscall             ; calls it
 
     cmp rax, 0
@@ -179,7 +153,7 @@ rt_putb:
     mov [buffb], dl 
     mov rsi, buffb      ; get data source
     mov rdx, 1          ; gets length
-    mov rax, 1          ; system call (write)
+    mov rax, 1h         ; system call (write)
     syscall             ; calls it
     pop rdx
     pop rcx
@@ -187,8 +161,8 @@ rt_putb:
     pop rdi
     ret
 
-; fn(size u64) rec { ptr u64, size u64 }
-rt_arena:
+; fn(size u64) ptr
+rt_alloc:
     push rdi
     push rsi
     push rdx
@@ -198,7 +172,7 @@ rt_arena:
     xor r9, r9
     xor r8, r8
     mov rsi, rdi        ; get memory size
-    add rsi, 16
+    add rsi, 8
     xor rdi, rdi        ; clear register for null
     mov rdx, 7          ; prot
     mov r10, 22h        ; MAP_ANONYMOUS | MAP_PRIVATE
@@ -208,31 +182,24 @@ rt_arena:
     cmp rax, 0
     jl .err
 
-    mov rdx, rax
-    add rdx, 16
-    mov [rax], rdx
-    mov rdi, rax
-    add rdi, 8
-    mov [rdi], rsi
-    add [rdi], rax
+
     pop r8
     pop r9
     pop r10
     pop rdx
     pop rsi
     pop rdi
+
     ret
     .err:
+    mov rdi, rax
     call rt_exit
 
-; fn(ptr rec { ptr u64, size u64 }) unit
+; fn(ptr u64) unit
 rt_free:
-    push rdi
     push rdx
     push rsi
-    mov rdx, [rdi + 8]  ; get length from pointer
-    sub rdx, rdi
-    mov rsi, rdx
+    mov rsi, [rdi]      ; get length from pointer
     mov rax, 0bh        ; munmap syscall
     syscall
 
@@ -241,7 +208,6 @@ rt_free:
 
     pop rsi
     pop rdx
-    pop rdi
     ret
     .err:
     call rt_exit
@@ -274,6 +240,11 @@ rt_copy:
     pop rcx
     ret
 
+; fn(dest str, len u64) unit
+rt_setlen:
+    mov [rdi], rsi
+    ret
+
 ; fn(dest str, src str, size u64) unit
 rt_strcpy:
     push rdi
@@ -287,7 +258,6 @@ rt_strcpy:
     pop rdx
     pop rsi
     pop rdi
-    mov [rdi], rdx
     xor rax, rax
     ret
 
