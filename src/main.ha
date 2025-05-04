@@ -206,6 +206,12 @@ export fn main() void = {
 
 fn gen_mods(ctxt: *context, args: *[]str, skip: *[]str) (void | COMPERR) = {
     for(let mod ..& ctxt.modules){
+        for(let fun_def ..& mod.1.ctxt.fun_defs){
+            const meta = fun_def.meta as *fn_meta;
+            const name = strings::replace(meta.name.id, "'", ".q")!;
+            defer free(name);
+            meta.mod = fmt::asprintf("{}.{}", (mod.0.val as ident).id, name)!;
+        };
         if(finds(*skip, mod.1.ctxt.name) is void){
             append(skip, mod.1.ctxt.name)!;
             const outfile = strings::rcut(mod.1.ctxt.name, ".ms").0;
