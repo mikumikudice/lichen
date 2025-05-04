@@ -24,6 +24,7 @@ local tests = {
     { src = "mods", input = "", output = "mornin' sailor!\n", code = 0, nocomp = false },
     { src = "types", input = "", output = "", code = 0, nocomp = false },
     { src = "exp", input = "", output = "", code = 0, nocomp = false },
+    { src = "reply", input = "mika", output = "hi! what's your name?\n > hello, mika", code = 0, nocomp = false },
 }
 
 local failed = {}
@@ -52,15 +53,12 @@ for _, test in pairs(tests) do
             local res = log:read("a")
             log:close()
 
-            if test.output == "" and res ~= "" then
-                res = res:gsub("\n", "\\n")
-                failed[#failed + 1] = test.src .. "'s ouput is incorrect: \"" .. res .. "\""
-                fails = fails + 1
-            elseif test.output ~= "" and res ~= test.output then
+            if test.output ~= res then
                 res = res:gsub("\n", "\\n")
                 local expected = test.output:gsub("\n", "\\n")
-                failed[#failed + 1] = test.src .. "'s ouput is incorrect:\n\tgot: \"" ..
-                    res .. "\"\n\texpected: \"" .. expected .. "\""
+                failed[#failed + 1] = test.src .. "'s ouput is incorrect:\nexpected:\t\"" ..
+                    expected .. "\" (len: " .. (#expected) .. ")\n" .. "got:\t\t\"" .. res ..
+                    "\" (len: " .. (#res) .. ")"
             end
         end
     end
@@ -77,7 +75,7 @@ if #failed > 0 then
     end
     os.exit(1)
 else
-    run("rm -r " .. tmp)
-    run("rm -r .tmp/")
+    --run("rm -r " .. tmp)
+    --run("rm -r .tmp/")
 end
 
