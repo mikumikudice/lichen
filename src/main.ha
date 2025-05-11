@@ -157,7 +157,6 @@ export fn main() void = {
     };
     match(compile(srcname, libpath, alloc(memio::dynamic())!, true)){
     case let obj: comp_obj =>
-        defer free(defs);
         defer free_module(obj);
         if(just_check){
             if(!silent) fmt::println(memio::string(obj.buffer)!)!;
@@ -279,16 +278,9 @@ fn run_cmd(noprint: bool, cmd: str, args: str...) void = {
             };
             color_error("%r{} failed", cmd);
         };
-    match(exec::fork()!){
-    case void =>
-        exec::exec(&exe);
-    case let proc: exec::process =>
-        const stat = exec::wait(&proc)!;
-        free(exe.argv);
-        free(exe.files);
-        strings::freeall(exe.env);
-        if(stat.status != 0) color_error("%r{} failed", cmd);
-    };
+    const proc = exec::start(&exe)!;
+    const stat = exec::wait(&proc)!;
+    if(stat.status != 0) color_error("%r{} failed", cmd);
 };
 
 fn color(fmt: str, args: fmt::field...) void = {

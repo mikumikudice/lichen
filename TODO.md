@@ -1,11 +1,10 @@
 - implement if/else statements
 - fix memory leaks
 - implement iterators
-- string concatenation
+- string concatenation at runtime
 - implement arrays
 - tagged unions
 - tuples
 - error type
 - implement dynamic types
-- implement safety checking for stack vs heap data
 - update io/rt module for dynamic types

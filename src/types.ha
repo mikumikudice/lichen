@@ -12,7 +12,7 @@ use memio;
 // prim := u8 | u16 | u32 | u64 | i8 | i16 | i32 | i64 | str | unit | void
 //
 // ident := (A-Z | a-z | 0-9 | _)+
-// const_val := number | string | FFI_literal
+// const_val := ([unary_operator],  number | string) | FFI_literal
 // number := (["0x" | "0o" | "0b"] (0-9)+) | char_lit
 // FFI_literal := "$", ident
 //
@@ -21,17 +21,16 @@ use memio;
 // binary_operator := "+" | "-" | "*" | "/" | ":" | "%" | "<<" | ">>" | "==" |
 //      "!=" | "<" | ">" | "<=" | ">=" | "&&" | "||" | "&" | "|" | "^" | ".."
 //
-// unary_operator := "+" | "-" | "~" | "#"
+// unary_operator :=  "~" | "#" | "!"
 //
 // fun_def := "fn", ident, param_list, type, "=", effect, (scope | FFI_literal), eol
 // param_list := "(", (ident, type)*, ")"
 // effect := ident | "do" ("&", ident)*
 // scope := "{", (expression, eol)*, ["=>", expression, eol], "}"
 //
-// expression := declaration | statement | ([unary_operator],
-//      member, (binary_operator, member)*), [type]
+// expression := ["+" | "-"], declaration | statement | (member, (binary_operator, member)*), [type]
 //
-// declaration := "let", ident+, [type], "=", expression, eol
+// declaration := "let", ident, [type], "=", expression, eol
 //
 // array := "[", ((expression, (",", expression)*)*) | range, "]"
 // range := number, "..", number, [binary_operator, number]
@@ -55,7 +54,7 @@ use memio;
 //
 // error_handle := ("!" | "?"), expression
 //
-// member := ("(", expression, ")") | number | ident | string | fun_call | array_indexing | field_access |
+// member := [unary_operator], ("(", expression, ")") | number | ident | string | fun_call | array_indexing | field_access |
 //      module_access | record_literal | field_assign | record_mod | tuple | "todo" | "fail" | member, [type]
 //
 // fun_call := ident | field_access | module_access, "(", (expression, [",", expression])*, ")", [error_handle]
@@ -106,8 +105,8 @@ const prm_value = [
 ];
 
 const opr_value = [
-    "leq", "geq", "assignment", "eq",
-    "neq", "shl", "shr", "lt", "gt",
+    "assignment", "eq", "neq", "leq", "geq",
+    "lt", "gt", "shl", "shr",
     "logic or", "logic and",
     "boolean or", "boolean and",
     "not", "plus", "minus", "multiply",
@@ -118,8 +117,8 @@ const opr_value = [
 ];
 
 type operator = enum u8 {
-    LEQ, GEQ, ASG, EQL, NEQ,
-    SHL, SHR, LST, GTT,
+    ASG, EQL, NEQ, LEQ, GEQ,
+    LST, GTT, SHL, SHR,
     LOR, LAND, BOR, BAND,
     NOT, PLS, MIN, MUL,
     IDIV, FDIV, MOD,
@@ -230,12 +229,25 @@ type param_meta = struct {
 type expr_meta = struct {
     rets: bool,
     tpe: primitive,
+    members: [](*ast | operator),
+};
+
+type scope_meta = struct {
+    rets: bool,
+    tpe: primitive,
     scp: (void | *scope),
     members: []*ast,
 };
 
+type member_meta = struct {
+    pre: (void | operator),
+    val: (tkval | *ast),
+    tpe: primitive,
+};
+
 type node_meta = (*var_meta | *fn_meta | *param_meta |
-    *expr_meta | *funcall_meta | primitive);
+    *scope_meta | *expr_meta | *funcall_meta |
+    *member_meta | primitive);
 
 type ast = struct {
     kind: path_t,

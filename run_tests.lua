@@ -12,18 +12,34 @@ local tmp = ".test/"
 local flags = "-std lib/ -vb -t"
 
 local time = os.clock()
+
 run("./install.sh")
 --run("./hare_test.sh")
 run("mkdir -p " .. tmp)
 
 local tests = {
+    -- fails --
     { src = "empty", input = "", output = "", code = 1, nocomp = true },
+    { src = "fail_mod_name_1", input = "", output = "", code = 1, nocomp = true },
+    { src = "fail_mod_name_2", input = "", output = "", code = 1, nocomp = true },
+    { src = "fail_fun_name_1", input = "", output = "", code = 1, nocomp = true },
+    { src = "fail_fun_name_2", input = "", output = "", code = 1, nocomp = true },
+    { src = "fail_var_name_1", input = "", output = "", code = 1, nocomp = true },
+    { src = "fail_var_name_2", input = "", output = "", code = 1, nocomp = true },
+
+    -- syntax and type checking --
     { src = "vars", input = "", output = "", code = 0, nocomp = false },
+    { src = "globs", input = "", output = "", code = 0, nocomp = false },
     { src = "funcs", input = "", output = "", code = 0, nocomp = false },
-    { src = "hello", input = "", output = "mornin' sailor!\n", code = 0, nocomp = false },
-    { src = "mods", input = "", output = "mornin' sailor!\n", code = 0, nocomp = false },
     { src = "types", input = "", output = "", code = 0, nocomp = false },
     { src = "exp", input = "", output = "", code = 0, nocomp = false },
+    { src = "strings", input = "", output = "", code = 0, nocomp = false },
+    { src = "oper", input = "", output = "", code = 0, nocomp = false },
+    { src = "bool", input = "", output = "", code = 0, nocomp = false },
+
+    -- io and effects --
+    { src = "hello", input = "", output = "mornin' sailor!\n", code = 0, nocomp = false },
+    { src = "mods", input = "", output = "mornin' sailor!\n", code = 0, nocomp = false },
     { src = "reply", input = "mika", output = "hi! what's your name?\n > hello, mika", code = 0, nocomp = false },
 }
 
@@ -66,8 +82,7 @@ for _, test in pairs(tests) do
 end
 
 local max = #tests
-time = os.clock() - time
-print((max - #failed) .. " of " .. (max) .. " tests succeeded in " .. (time) .. " seconds")
+print((max - #failed) .. " of " .. (max) .. " tests succeeded in " .. (os.clock() - time) .. " seconds")
 
 if #failed > 0 then
     for i, err in pairs(failed) do
@@ -75,7 +90,7 @@ if #failed > 0 then
     end
     os.exit(1)
 else
-    --run("rm -r " .. tmp)
-    --run("rm -r .tmp/")
+    run("rm -r " .. tmp)
+    run("rm -r .tmp/")
 end
 
