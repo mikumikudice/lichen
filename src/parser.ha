@@ -42,9 +42,6 @@ fn load(fname: str, libpath: str) (context | COMPERR) = {
     };
     defer io::close(fsrc)!;
 
-    let (_, name) = strings::rcut(fname, "/");
-    if(name == "") name = fname;
-
     const file = context {
         name = fname,
         libpath = libpath,
@@ -591,20 +588,7 @@ fn compile(filename: str, libpath: str, buffer: *memio::stream,
     main: bool = false) (comp_obj | COMPERR) = {
     filename = strings::dup(filename)!;
     // load source file
-    const _ctxt =
-        match(load(filename, libpath)){
-        case let c: context => yield c;
-        case let e: COMPERR =>
-            yield if(!main){
-                const file = strings::concat(libpath, filename)!;
-                free(filename);
-                filename = file;
-                yield load(filename, libpath)?;
-            } else {
-                return e;
-            };
-        };
-    const ctxt = alloc(_ctxt)!;
+    const ctxt = alloc(load(filename, libpath)?)!;
     ctxt.scp = &ctxt.glob;
 
     // tokenize
@@ -722,6 +706,7 @@ fn compile(filename: str, libpath: str, buffer: *memio::stream,
             // string literal
             if(ctxt.src[start] == '\"'){
                 start += 1;
+                move_cln(ctxt, start - ctxt.ptr + 2);
                 ctxt.ptr = start;
                 const dup = ctxt;
 
@@ -770,18 +755,18 @@ fn compile(filename: str, libpath: str, buffer: *memio::stream,
                         break;
                     case =>
                         if(escape){
-                            dup.cln = start;
+                            dup.cln = ctxt.ptr - ctxt.lst;
                             return error(dup, "invalid escape sequence \"\\{}\"",
                                 ctxt.src[ctxt.ptr]: rune);
                         };
                     };
                     ctxt.ptr += 1;
-                    move_cln(ctxt);
                 };
                 if(!closed) return error(dup, "unclosed string found here");
                 assert(!escape);
                 append(tokens, new_tk(dup,
                     u8tostr(ctxt.src[start..(ctxt.ptr - 1)])))!;
+                move_cln(ctxt, ctxt.ptr - start + 1);
                 continue;
             // character literal
             } else if(ctxt.src[start] == '\''){
@@ -1953,8 +1938,15 @@ fn eval_use(ctxt: *context, tokens: []token, at: size) ((*ast, size) | COMPERR) 
         if(os::exists(stdpath)){
             yield stdpath;
         } else {
-            yield path;
+            yield strings::concat(
+                strings::rcut(ctxt.name, "/").0, "/", path)!;
         };
+
+    if(ctxt.name == file){
+        move_ptr(ctxt, tk);
+        return error(ctxt, "cannot recursively use a module");
+    };
+
     const module = compile(file, ctxt.libpath,
         alloc(memio::dynamic())!)?;
     push_module(ctxt, bind, module)?;

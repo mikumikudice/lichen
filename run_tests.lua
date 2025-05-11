@@ -26,6 +26,7 @@ local tests = {
     { src = "fail_fun_name_2", input = "", output = "", code = 1, nocomp = true },
     { src = "fail_var_name_1", input = "", output = "", code = 1, nocomp = true },
     { src = "fail_var_name_2", input = "", output = "", code = 1, nocomp = true },
+    { src = "recursive", input = "", output = "", code = 1, nocomp = true },
 
     -- syntax and type checking --
     { src = "vars", input = "", output = "", code = 0, nocomp = false },

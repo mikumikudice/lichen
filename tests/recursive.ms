@@ -1,0 +1,1 @@
+main = use "recursive.ms";
