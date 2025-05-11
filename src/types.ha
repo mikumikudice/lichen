@@ -173,6 +173,7 @@ type context = struct {
     literals: []str,
     fun_defs: []*ast,
     modules: [](token, comp_obj),
+    scope_owner: (void | ident),
 };
 
 type comp_obj = struct {

@@ -1,5 +1,3 @@
-- fixed lexing of bitwise shift left operator and character literals
-- implemented boolean and/or, logic and/or and bitwise operators
-- implemented dup-checking for functions named as globals or modules and variables as functions, globals or modules
-- optimized and simplified expression parsing
-- fixed parsing of unary operators
+- fixed tag checking for calling functions tagged with `do`
+- fixed expression generation for unit/void types
+- prohibit variables to be of unit/void type

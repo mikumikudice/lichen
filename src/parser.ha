@@ -56,6 +56,7 @@ fn load(fname: str, libpath: str) (context | COMPERR) = {
             vars = [],
             upper = void,
         },
+        scope_owner = void,
     };
     // load every line until EOF
     for(true) match(bufio::read_line(fsrc)!){
@@ -573,12 +574,14 @@ fn qbe_t(tpe: primitive, md: mode = mode::REAL) str = {
     case primitive::I32 =>
         if(md == mode::LOAD) return "sw";
         return "w";
-    case primitive::U64, primitive::I64, primitive::STR,
-        primitive::UNIT =>
+    case primitive::U64, primitive::I64, primitive::STR =>
         return "l";
+    case primitive::UNIT, primitive::VOID =>
+        assert(md != mode::ASSIGN);
+        return prm_value[tpe];
     case =>
         assert(false);
-        color_error("%Runreachable:%r unknown type %y{}", tpe: int);
+        color_error("%Runreachable:%r unknown type %y{}", prm_value[tpe]);
     };
 };
 
@@ -1364,7 +1367,9 @@ fn gen_fun(ctxt: *context, tokens: []token, buffer: *memio::stream,
         append(params, pdef)!;
     };
     ctxt.scp = &local_scp;
+    ctxt.scope_owner = meta.name;
     const (body, _) = eval_scope(ctxt, tokens, meta.scope_begin, meta.fn_type)?;
+    ctxt.scope_owner = void;
     const scp_tpe = (body.meta as *scope_meta).tpe;
 
     if(!is_subtype(scp_tpe, meta.fn_type)){
@@ -1429,6 +1434,23 @@ fn gen_scope(ctxt: *context, buffer: *memio::stream, node: nullable *ast) (void 
             gen_exp(ctxt, buffer, this.inner as *ast, name, meta.name.itype);
         case path_t::EXPR =>
             const meta = this.meta as *expr_meta;
+            if(meta.tpe == primitive::VOID || meta.tpe == primitive::UNIT){
+                fmt::fprintfln(buffer, "\n\tdbgloc {}, {}",
+                    this.path[0].lin + 1, this.path[0].cln + 1)!;
+                for(let m ..& meta.members){
+                    if(m is operator) continue;
+                    const member = m as *ast;
+                    match(member.meta){
+                    case let memb: *member_meta =>
+                        free(gen_member(ctxt, buffer, member, memb.tpe));
+                    case let funcall: *funcall_meta =>
+                        gen_funcall(ctxt, buffer, member);
+                    case =>
+                        assert(false, "TODO");
+                    };
+                };
+                continue;
+            };
             const dest = fmt::asprintf("exp.{}", qbe_t(meta.tpe))!;
             defer free(dest);
 
@@ -1622,15 +1644,14 @@ fn gen_funcall(ctxt: *context, buffer: *memio::stream,
     const fun = meta.fun;
     const f_meta = fun.meta as *fn_meta;
     const tpe = f_meta.fn_type;
-    const exp_t = qbe_t(tpe);
     const p_meta = (f_meta.params as *ast).meta as *param_meta;
     const name = strings::replace(fix_global(f_meta), "'", ".q")!;
     defer free(name);
     match(dest){
     case let wrap: str =>
-        if(tpe != primitive::UNIT){
+        if(tpe != primitive::UNIT && tpe != primitive::VOID){
             fmt::fprintf(&temp, "\t%{} ={} call ${}(",
-                wrap, exp_t, name)!;
+                wrap, qbe_t(tpe, mode::ASSIGN), name)!;
         } else {
             fmt::fprintf(&temp, "\tcall ${}(", name)!;    
         };
@@ -1771,12 +1792,12 @@ fn gen_move(ctxt: *context, header: *memio::stream, buffer: *memio::stream,
 
 fn gen_member(ctxt: *context, buffer: *memio::stream,
     member: *ast, exp_type: primitive) str = {
-    const move_t = qbe_t(exp_type, mode::ASSIGN);
     const m_meta = member.meta as *member_meta;
     match(m_meta.val){
     case let node: *ast =>
         match(node.meta){
         case let var: *var_meta =>
+            const move_t = qbe_t(exp_type, mode::ASSIGN);
             let name = strings::replace(var.name.id, "'", ".q")!;
             defer free(name);
             if(is_subtype(var.name.itype, primitive::NUMBER)){
@@ -1840,10 +1861,12 @@ fn gen_member(ctxt: *context, buffer: *memio::stream,
                 return "";
             };
         case let exp: *expr_meta =>
+            const move_t = qbe_t(exp_type);
             const wrap = fmt::asprintf("%exp.{}", move_t)!;
             gen_exp(ctxt, buffer, node, wrap, exp.tpe);
             return wrap;
         case let funcall: *funcall_meta =>
+            const move_t = qbe_t(exp_type);
             const f_meta = funcall.fun.meta as *fn_meta;
             const wrap = fmt::asprintf("%exp.{}", move_t)!;
             const slice = strings::sub(wrap, 1);
@@ -1987,6 +2010,12 @@ fn eval_c_def(ctxt: *context, tokens: []token, at: size, pub: bool = false)
     name.pub = pub;
     name.glob = true;
     name.itype = tpe.val as primitive;
+
+    if(name.itype == primitive::VOID || name.itype == primitive::UNIT){
+        move_ptr(ctxt, tpe);
+        return error(ctxt, "cannot define a variable as %b{}",
+            prm_value[name.itype]);
+    };
 
     // assignment operator
     end = pop_assert(ctxt, tokens, end, operator::ASG,
@@ -2348,7 +2377,13 @@ fn validate_efx(ctxt: *context, called: *fn_meta, caller: []tkval)
                 };
             };
             if(!found){
-                const tag = (ld_tag as ident).id;
+                const tag =
+                    match(ld_tag){
+                    case let tag: ident =>
+                        yield tag.id;
+                    case keyword =>
+                        yield "do";
+                    };
                 const help = fmt::asprintf(
                     "%gtry doing %p\"%d= %b{} %y{{%p\""
                     "%g in the function scope definition",
@@ -2553,6 +2588,11 @@ fn eval_decl(ctxt: *context, tokens: []token, at: size) ((*ast, size) | COMPERR)
     node.kind = path_t::DECL;
     match(tk.val){
     case let prim: primitive =>
+        if(prim == primitive::VOID || prim == primitive::UNIT){
+            move_ptr(ctxt, tpe);
+            return error(ctxt, "cannot define a variable as %b{}",
+                prm_value[prim]);
+        };
         end = pop_assert(ctxt, tokens, end + 1, operator::ASG,
             "exprected %bvalue assignment%r, but got %y{}")?;
         const eq = end;
@@ -2592,6 +2632,11 @@ fn eval_decl(ctxt: *context, tokens: []token, at: size) ((*ast, size) | COMPERR)
             if(untyped(meta.tpe)){
                 move_ptr(ctxt, tk);
                 return error(ctxt, "cannot infer expression type");
+            };
+            if(meta.tpe == primitive::VOID || meta.tpe == primitive::UNIT){
+                move_ptr(ctxt, tpe);
+                return error(ctxt, "cannot define a variable as %b{}",
+                    prm_value[name.itype]);
             };
             name.itype = meta.tpe;
         case let meta: *var_meta =>

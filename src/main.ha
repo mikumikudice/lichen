@@ -39,6 +39,12 @@ export fn main() void = {
 
         "\n %g-vb\t\t"
         "%y-- prompts each substep. if %g-c%y is also set, dumps qbe IR"
+
+        "\n %g-static\t\t"
+        "%y-- produces a static library"
+
+        "\n %g-shared\t\t"
+        "%y-- produces a shared library"
         
         "\n %g-t\t\t"
         "%y-- keeps temporary files at %g.tmp/%y folder";
@@ -74,6 +80,8 @@ export fn main() void = {
     let outset = false;
     let infset = false;
     let keeptemps = false;
+    let sharedlib = false;
+    let staticlib = false;
 
     let outfile = "";
     let srcname = "";
@@ -117,6 +125,22 @@ export fn main() void = {
             case "-t" =>
                 keeptemps = true;
                 continue;
+            case "-shared" =>
+                if(!staticlib){
+                    sharedlib = true;
+                } else {
+                    color("%rshared library flag set over static library flag");
+                    color_error(flg);
+                };
+                continue;
+            case "-static" =>
+                if(!sharedlib){
+                    staticlib = true;
+                } else {
+                    color("%rstatic library flag set over shared library flag");
+                    color_error(flg);
+                };
+                continue;
             case =>
                 color("%runknown flag %g{}", arg);
                 color_error(flg);
@@ -142,8 +166,17 @@ export fn main() void = {
         color_error("%rno input file given");
     };
     if(!outset){
-        outfile = strings::rcut(srcname, ".ms").0;
+        if(sharedlib){
+            outfile = strings::concat(
+                strings::rcut(srcname, ".ms").0, ".so")!;
+        } else if(staticlib){
+            outfile = strings::concat(
+                strings::rcut(srcname, ".ms").0, ".a")!;
+        } else {
+            outfile = strings::rcut(srcname, ".ms").0;
+        };
     };
+    defer if((sharedlib || staticlib) && !outset) free(outfile);
     libpath =
         if(strings::hassuffix(libpath, "/")){
             yield libpath;
@@ -155,7 +188,8 @@ export fn main() void = {
     if(!os::exists(libpath)){
         color_error("%rthe given path %y\"{}\"%r does not exists", libpath);
     };
-    match(compile(srcname, libpath, alloc(memio::dynamic())!, true)){
+    match(compile(srcname, libpath, alloc(memio::dynamic())!,
+        !(sharedlib || staticlib))){
     case let obj: comp_obj =>
         defer free_module(obj);
         if(just_check){
@@ -167,6 +201,16 @@ export fn main() void = {
         const mold_args = []: []str;
         defer free(mold_args);
         defer for(let obj ..& mold_args) free(obj);
+
+        if(sharedlib){
+            append(mold_args, strings::dup("-r")!)!;
+            append(mold_args, strings::dup("-s")!)!;
+            append(mold_args, strings::dup("-shared")!)!;
+            append(mold_args, strings::dup("-fPIC")!)!;
+        } else if(staticlib){
+            append(mold_args, strings::dup("-r")!)!;
+            append(mold_args, strings::dup("-s")!)!;
+        };
 
         append(mold_args, strings::dup("-o")!)!;
         append(mold_args, strings::dup(outfile)!)!;
@@ -271,6 +315,7 @@ fn run_cmd(noprint: bool, cmd: str, args: str...) void = {
             if(e is exec::nocmd){
                 if(cmd == "mold"){
                     color("%ymold not found. using ld");
+                    append(args, strings::dup("-nostdlib")!)!;
                     run_cmd(noprint, "ld", args...);
                 } else {
                     color_error("%Rmissing dependency:%b {}", cmd);
