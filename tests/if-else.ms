@@ -1,0 +1,49 @@
+io = use "io.ms";
+
+pub fn main() void = io {
+    let x = 6 u64;
+    let y = 7 u32;
+    let z = x * (y u64);
+
+    if x < y u64 {
+        io::print("test 0 ok\n");
+    } else {
+        io::print("test 0 fail\n");
+    };
+
+    if x || y {
+        io::print("test 1 ok\n");
+    } else {
+        io::print("test 1 fail\n");
+    };
+
+    if x + 1 == y u64 {
+        io::print("test 2 ok\n");
+    } else {
+        io::print("test 2 fail\n");
+    };
+
+    if z && x == y - 1 {
+        io::print("test 3 ok\n");
+    } else {
+        io::print("test 3 fail\n");
+    };
+
+    if z && z == x * y u64 {
+        io::print("test 4 ok\n");
+    } else {
+        io::print("test 4 fail\n");
+    };
+
+    if z - z || x {
+        io::print("test 5 ok\n");
+    } else {
+        io::print("test 5 fail\n");
+    };
+
+    if x u32 == y || x < z {
+        io::print("test 6 ok\n");
+    } else {
+        io::print("test 6 fail\n");
+    };
+};

@@ -240,6 +240,13 @@ type scope_meta = struct {
     members: []*ast,
 };
 
+type if_else_meta = struct {
+    rets: bool,
+    tpe: primitive,
+    conds: []*ast,
+    bodies: []*ast,
+};
+
 type member_meta = struct {
     pre: (void | operator),
     val: (tkval | *ast),
@@ -248,7 +255,7 @@ type member_meta = struct {
 
 type node_meta = (*var_meta | *fn_meta | *param_meta |
     *scope_meta | *expr_meta | *funcall_meta |
-    *member_meta | primitive);
+    *member_meta | *if_else_meta | primitive);
 
 type ast = struct {
     kind: path_t,

@@ -1,3 +1,3 @@
-- fixed tag checking for calling functions tagged with `do`
-- fixed expression generation for unit/void types
-- prohibit variables to be of unit/void type
+- implemented if-else blocks and allowed them to be valid values
+- fixed expression generation for lazy logic operator evaluation
+- implemented rudimentary operator precedence

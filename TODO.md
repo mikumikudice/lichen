@@ -1,10 +1,11 @@
-- implement if/else statements
-- fix memory leaks
-- implement iterators
-- string concatenation at runtime
 - implement arrays
+- implement match block
+- implement iterators
+- tail-call optimization
+- fix memory leaks
+- string concatenation at runtime
 - tagged unions
 - tuples
 - error type
 - implement dynamic types
-- update io/rt module for dynamic types
+- update io module for dynamic types

@@ -42,6 +42,11 @@ local tests = {
     { src = "hello", input = "", output = "mornin' sailor!\n", code = 0, nocomp = false },
     { src = "mods", input = "", output = "mornin' sailor!\n", code = 0, nocomp = false },
     { src = "reply", input = "mika", output = "hi! what's your name?\n > hello, mika", code = 0, nocomp = false },
+
+    -- branching and recursion --
+    { src = "if-else", input = "", output = "test 0 ok\ntest 1 ok\ntest 2 ok\ntest 3 ok\n" ..
+        "test 4 ok\ntest 5 ok\ntest 6 ok\n", code = 0, nocomp = false },
+    { src = "tailcall", input = "", output = "worked!\n", code = 0, nocomp = false },
 }
 
 local failed = {}
