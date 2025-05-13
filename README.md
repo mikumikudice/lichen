@@ -48,3 +48,11 @@ optionally, if you have lua 5.3, you can run an automated test unit for all mile
 
 # learning moss
 you can learn moss in a course of one to three days. [this](doc/tut.md) is the tutorial.
+
+# coding tools
+
+## LSP
+moss has not and probably will never have an official LSP, but you're free do develop one yourself. feel free to hit me about that.
+
+## highlighting
+there's a vs code/codium extension for a simple syntax highlighting in [here](https://github.com/mikumikudice/moss-syntax-highlight).
