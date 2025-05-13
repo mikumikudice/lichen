@@ -154,6 +154,25 @@ let lower = for c .. text {
 ```
 see more about arrays address for in [here](#arrays).
 
+## iterator accumulators
+this iterator can also have accumulators, so you can evaluate to a mapped/reduced value of the given array. for instance:
+```rust
+let nums = [1, 2, 3, 4, 5, 6] u32;
+let sum  =
+    for c u32 = 0; i .. nums {
+        => c + i;
+    };
+
+let odd, even =
+    for o, e u32 = (0, 0); i .. nums {
+        => if i % 2 == 0 {
+            => (o, e + 1);
+        } else {
+            => (o + 1, e);
+        };
+    };
+```
+this way you can reproduce the effect of functions as foldl/foldr found in other functional languages.
 
 ## match statement
 the match statement can be used to pattern-match against values (akin to a switch statement in other languages) and types for tagged unions.
