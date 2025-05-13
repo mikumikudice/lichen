@@ -591,6 +591,21 @@ fn qbe_t(tpe: primitive, md: mode = mode::REAL) str = {
     };
 };
 
+fn type_size(tpe: primitive) size = {
+    switch(tpe){
+    case primitive::UNIT, primitive::VOID => return 0;
+    case primitive::U8, primitive::I8 => return 1;
+    case primitive::U16, primitive::I16 => return 2;
+    case primitive::U32, primitive::I32, 
+        primitive::F32 => return 4;
+    case primitive::U64, primitive::I64,
+        primitive::F64, primitive::STR => return 8;
+    case =>
+        assert(false, "unreachable");
+        return 0;
+    };
+};
+
 // compiles down a given file to its QBE IR equivalent as a memio stream
 // returns a COMPERR if any compilation error occurs.
 fn compile(filename: str, libpath: str, buffer: *memio::stream,
@@ -3319,9 +3334,22 @@ fn untyped(tpe: primitive) bool = {
 
 // checks if a given type is castable in another
 fn is_castable(this: primitive, that: primitive) bool = {
-    if(is_subtype(this, primitive::NUMBER) &&
-        is_subtype(that, primitive::NUMBER)) return true;
-    return is_subtype(this, that) || is_subtype(that, this);
+    switch(that){
+    case primitive::U8, primitive::U16, primitive::U32, primitive::U64 =>
+        return this == primitive::NUMBER || is_subtype(this, primitive::U64) ||
+            is_subtype(this, primitive::I64);
+    case primitive::I8, primitive::I16, primitive::I32, primitive::I64 =>
+        return this == primitive::NUMBER || is_subtype(this, primitive::I64) ||
+            is_subtype(this, primitive::U64);
+    case primitive::F32, primitive::F64 =>
+        return this == primitive::NUMBER || is_subtype(this, primitive::RATIO) ||
+            (is_subtype(this, primitive::NUMBER) && type_size(this) == type_size(that));
+    case primitive::STR, primitive::UNIT, primitive::VOID =>
+        return this == that;
+    case =>
+        assert(false, "unreachable");
+        return false;
+    };
 };
 
 // checks if a given type is a subset of another
