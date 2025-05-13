@@ -448,6 +448,16 @@ pub fn main() void = {
 };
 ```
 
+# syntax, operators and expressions
+moss has a stupidly simple operator precedence and expression parsing system. for instance, there's only four levels of precedence (from lowest to highest): boolean and/or, comparison operators, all other kinds of operations, parenthesis. of course, the evaluation of function arguments and unary operators is above all of these. and boolean expressions evaluate to numeric values (i.e. 0 and 1), for instance:
+```rust
+let y u32 = 1 + 1 * 2;                      // equivalent to (1 + 1) * 2
+let z u32 = 4 * 5 + 2 / 5;                  // equivalent to ((4 * 5) + 2) / 5
+let a u32 = 4 == 3 + 1 && 5 * 2 + 1 == 11;  // equivalent to (4 == (3 + 1)) && (( (5 * 2) + 1 ) == 11)
+let b u32 = 6 > 1 == 1;                     // equivalent to (6 > 1) == 1
+let c u32 = 8 < 4 == 0;                     // equivalent to (8 < 4) == 0
+```
+
 # trivia
 - the official mascot of the moss programming language is the vietnamese mossy frog.
 
