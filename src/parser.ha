@@ -3365,7 +3365,13 @@ fn undef_tip(name: str) str = {
     } else if(name == "printf"){
         return ". %gtry using the module %yio%g with "
             "%p\"%bio%d::%bprintf%d()%p\"";
+    } else if(name == "println"){
+        return ". %gtry using the module %yio%g with "
+            "%p\"%bio%d::%bprintln%d()%p\"";
     } else if(name == "scan"){
+        return ". %gtry using the module %yio%g with "
+            "%p\"%bio%d::%bscan%d()%p\"";
+    } else if(name == "scanf"){
         return ". %gtry using the module %yio%g with "
             "%p\"%bio%d::%bscan%d()%p\"";
     } else {
