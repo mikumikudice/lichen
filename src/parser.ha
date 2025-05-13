@@ -1212,7 +1212,7 @@ fn gen_file(ctxt: *context, tokens: []token, buffer: *memio::stream,
                         i += 1;
                     };
                 };
-                fmt::fprintf(buffer, "l {}", length + 8)!;
+                fmt::fprintf(buffer, "l {}, l {}", length + 8, length)!;
                 for(let slc .. slices){
                     fmt::fprintf(buffer, ", b \"{}\"", slc)!;
                 };
@@ -1323,8 +1323,9 @@ fn gen_file(ctxt: *context, tokens: []token, buffer: *memio::stream,
     };
     const lit_c = len(ctxt.literals);
     for(let lit = 0z; lit < lit_c; lit += 1){
-        fmt::fprintfln(buffer, "data $lit.{} = {{ l {}, b \"{}\" }}", 
-            lit, true_size(ctxt.literals[lit]) + 8, ctxt.literals[lit])!;
+        fmt::fprintfln(buffer, "data $lit.{} = {{ l {}, l {}, b \"{}\" }}", 
+            lit, true_size(ctxt.literals[lit]) + 8, true_size(ctxt.literals[lit]),
+            ctxt.literals[lit])!;
     };
 };
 
@@ -1602,8 +1603,19 @@ fn gen_exp_steps(ctxt: *context, buffer: *memio::stream, members: [](*ast | oper
                     assert(false, "TODO");
                     yield "";
                 };
-            fmt::fprintfln(buffer, "\t%{0} ={1} {2} %{0}, {3}",
-                dest, exp_t, inst, memb)!;
+            const memb_meta = (members[m - 1] as *ast).meta as *member_meta;
+            if(is_subtype(memb_meta.tpe, primitive::STR)){
+                if(op == operator::PLS){
+                    assert(false, "TODO: runtime string concatenation");
+                } else if(op == operator::MUL){
+                    assert(false, "TODO: string repeat");
+                } else {
+                    assert(false, "unreachable");
+                };
+            } else {
+                fmt::fprintfln(buffer, "\t%{0} ={1} {2} %{0}, {3}",
+                    dest, exp_t, inst, memb)!;
+            };
         case operator::EQL, operator::NEQ, operator::LEQ, operator::GEQ,
             operator::LST, operator::GTT =>
             const inst =
@@ -1639,6 +1651,7 @@ fn gen_exp_steps(ctxt: *context, buffer: *memio::stream, members: [](*ast | oper
                     yield "";
                 };
             const pos = members[m - 1] as *ast;
+            const memb_meta = pos.meta as *member_meta;
             const right = fmt::asprintf("rght.{}.{}",
                 pos.path[0].lin + 1, pos.path[0].cln + 1)!;
             defer free(right);
@@ -1646,8 +1659,19 @@ fn gen_exp_steps(ctxt: *context, buffer: *memio::stream, members: [](*ast | oper
             m += gen_exp_steps(ctxt, buffer, members[m .. max], right,
                 exp_type, true);
 
-            fmt::fprintfln(buffer, "\t%{0} ={1} c{2}{1} %{0}, %{3}",
-                dest, exp_t, inst, right)!;
+            if(is_subtype(memb_meta.tpe, primitive::STR)){
+                if(op == operator::EQL){
+                    fmt::fprintfln(buffer, "\t%{0} =l call $rt_strcmp(l %{0}, l %{1})",
+                        dest, right)!;
+                } else {
+                    fmt::fprintfln(buffer, "\t%{0} =l call $rt_strcmp(l %{0}, l %{1})",
+                        dest, right)!;
+                    fmt::fprintfln(buffer, "\t%{0} =l ceql l%{0}, 0", dest)!;
+                };
+            } else {
+                fmt::fprintfln(buffer, "\t%{0} ={1} c{2}{1} %{0}, %{3}",
+                    dest, exp_t, inst, right)!;
+            };
         case operator::LAND =>
             if(stop_logic) return m;
             const pos = members[m - 1] as *ast;
@@ -1796,7 +1820,8 @@ fn gen_move(ctxt: *context, header: *memio::stream, buffer: *memio::stream,
                         fmt::fprintfln(header, "\t%{} ={} xor %{}, 18446744073709551615",
                             name, move_t, old_name)!;
                     case operator::LENGTH =>
-                        fmt::fprintfln(header, "\t%{0} =l loadl %{0}", name)!;
+                        fmt::fprintfln(buffer, "\t%{0}.len =l add %{0}, 8", name)!;
+                        fmt::fprintfln(buffer, "\t%{0} =l loadl %{0}.len", name)!;
                     case =>
                         assert(false, "unreachable");
                     };
@@ -1844,8 +1869,9 @@ fn gen_move(ctxt: *context, header: *memio::stream, buffer: *memio::stream,
             if(m_meta.pre is operator){
                 switch(m_meta.pre as operator){
                 case operator::LENGTH =>
-                    fmt::fprintfln(buffer, "\t%{} =l loadl $lit.{}",
-                        dest, push_str(ctxt, txt))!;
+                    const id = push_str(ctxt, txt);
+                    fmt::fprintfln(buffer, "\t%{}.len =l add $lit.{}, 8", id)!;
+                    fmt::fprintfln(buffer, "\t%{} =l loadl %{}.len", dest, id)!;
                 case =>
                     assert(false, "unreachable");
                 };
@@ -1901,7 +1927,8 @@ fn gen_member(ctxt: *context, buffer: *memio::stream,
                         fmt::fprintfln(buffer, "\t%{} ={} xor %{}, 18446744073709551615",
                             name, move_t, old_name)!;
                     case operator::LENGTH =>
-                        fmt::fprintfln(buffer, "\t%{0} =l loadl %{0}", name)!;
+                        fmt::fprintfln(buffer, "\t%{0}.len =l add %{0}, 8", name)!;
+                        fmt::fprintfln(buffer, "\t%{0} =l loadl %{0}.len", name)!;
                     case =>
                         assert(false, "unreachable");
                     };
@@ -1969,8 +1996,8 @@ fn gen_member(ctxt: *context, buffer: *memio::stream,
                 case operator::LENGTH =>
                     const id = push_str(ctxt, txt);
                     const wrap = fmt::asprintf("%l.{}", id)!;
-                    fmt::fprintfln(buffer, "\t%{} =l loadl $lit.{}",
-                        wrap, id)!;
+                    fmt::fprintfln(buffer, "\t%{}.len =l add $lit.{}, 8", id)!;
+                    fmt::fprintfln(buffer, "\t%{} =l loadl %{}.len", wrap, id)!;
                     return wrap;
                 case =>
                     assert(false, "unreachable");
@@ -2769,6 +2796,7 @@ fn eval_abbs_exp(ctxt: *context, tokens: []token, at: size, hint: primitive = pr
     for(!(comp_tk(tk.val, symbol::RGT_PAR) || comp_tk(tk.val, symbol::LFT_CURLY) ||
         comp_tk(tk.val, symbol::COMMA) || comp_tk(tk.val, symbol::EOL)) && end < max){
         let boolean = false;
+        let str_rep = false;
         if(!(tk.val is operator)){
             move_ptr(ctxt, tk);
             return error(ctxt, "expected %boperator%r or %bend of line%r, but got %y{}",
@@ -2779,9 +2807,16 @@ fn eval_abbs_exp(ctxt: *context, tokens: []token, at: size, hint: primitive = pr
         } else {
             const op = tk.val as operator;
             switch(op){
-            case operator::EQL, operator::NEQ, operator::LAND, operator::LOR =>
+            case operator::EQL, operator::NEQ, operator::LAND, operator::LOR,
+                operator::LEQ, operator::GEQ, operator::LST, operator::GTT =>
+                if(!untyped(meta.tpe) && is_subtype(meta.tpe, primitive::STR)){
+                    if(op != operator::EQL && op != operator::NEQ){
+                        move_ptr(ctxt, tk);
+                        return error(ctxt, "invalid string comparison operator");
+                    };
+                };
                 boolean = true;
-            case operator::PLS =>
+            case operator::PLS, operator::MUL =>
                 if(!is_subtype(meta.tpe, primitive::STR) &&
                     !is_subtype(meta.tpe, primitive::NUMBER) &&
                     !is_subtype(meta.tpe, primitive::RATIO)){
@@ -2789,6 +2824,7 @@ fn eval_abbs_exp(ctxt: *context, tokens: []token, at: size, hint: primitive = pr
                     return error(ctxt, "cannot perform arithmetic on %b{}",
                         strtoken(meta.tpe));
                 };
+                if(op == operator::MUL) str_rep = true;
             case =>
                 if(!is_subtype(meta.tpe, primitive::NUMBER) &&
                     !is_subtype(meta.tpe, primitive::RATIO)){
@@ -2803,7 +2839,23 @@ fn eval_abbs_exp(ctxt: *context, tokens: []token, at: size, hint: primitive = pr
         const mr_meta = mem_r.meta as *member_meta;
         end = _end;
 
-        if(!boolean){
+        if(str_rep){
+            if(is_subtype(tpe, primitive::STR) &&
+                !is_subtype(mr_meta.tpe, primitive::NUMBER)){
+                move_ptr(ctxt, tk);
+                return error(ctxt,
+                    "string repetition expects a %bnumeric multiplier, but got %y{}",
+                    strtoken(mr_meta.tpe));
+            } else if(is_subtype(mr_meta.tpe, primitive::STR) &&
+                !is_subtype(tpe, primitive::NUMBER)){
+                move_ptr(ctxt, tk);
+                return error(ctxt,
+                    "string repetition expects a %bnumeric multiplier, but got %y{}",
+                    strtoken(tpe));
+            } else {
+                tpe = push_type(ctxt, tpe, mr_meta.tpe, tk)?;
+            };
+        } else if(!boolean){
             tpe = push_type(ctxt, tpe, mr_meta.tpe, tk)?;
         } else if(!untyped(mr_meta.tpe)){
             tpe = mr_meta.tpe;

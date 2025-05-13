@@ -38,6 +38,7 @@ global rt_alloc
 global rt_free
 global rt_setlen
 global rt_copy
+global rt_strcmp
 global rt_strcpy
 global rt_strrev
 
@@ -74,8 +75,8 @@ rt_open:
     mov [rcx], byte 0
     sub rcx, [stko]
 
-    mov rdx, [rdi]
-    add rdi, 8
+    mov rdx, [rdi + 8]
+    add rdi, 16
     mov rsi, rdi
     mov rdi, rcx
     call rt_copy
@@ -98,15 +99,17 @@ rt_close:
 ; fn(handler u32, buffer @str) unit
 rt_gets:
     push rdx
-    mov rdx, [rsi]
-    sub rdx, 8
-    add rsi, 8
+    push rsi
+    mov rdx, [rsi]      ; get max buffer capacity
+    add rsi, 16         ; get buffer content address
     mov rax, 0h
     syscall
     
     cmp rax, 0
     jl .err
+    pop rsi
     pop rdx
+    mov [rsi + 8], rax  ; assign buffer current size
     ret
 
     .err:
@@ -118,12 +121,11 @@ rt_puts:
     push rsi
     push rcx
     push rdx
-    mov ecx, edi
+    mov ecx, edi        ; get file descriptor
     xor rdi, rdi        ; clear residual bytes
-    mov edi, ecx
-    mov rdx, [rsi]      ; gets length
-    sub rdx, 8
-    add rsi, 8
+    mov edi, ecx        ; assign file descriptor
+    mov rdx, [rsi + 8]  ; gets length
+    add rsi, 16         ; move to actual data address
     mov rax, 1h         ; system call (write)
     syscall             ; calls it
 
@@ -182,13 +184,13 @@ rt_alloc:
     cmp rax, 0
     jl .err
 
-
     pop r8
     pop r9
     pop r10
     pop rdx
     pop rsi
     pop rdi
+    mov [rax], rdi
 
     ret
     .err:
@@ -199,7 +201,7 @@ rt_alloc:
 rt_free:
     push rdx
     push rsi
-    mov rsi, [rdi]      ; get length from pointer
+    xor rsi, rsi        ; clear unused argument
     mov rax, 0bh        ; munmap syscall
     syscall
 
@@ -373,7 +375,7 @@ rt_exit:
     syscall
     hlt
 
-; fn(a str, b str) u8
+; fn(a str, b str) u64
 rt_strcmp:
     push rdi
     push rsi
@@ -381,13 +383,13 @@ rt_strcmp:
     push rcx
     push rdx
 
-    mov rbx, [rdi]
-    mov rcx, [rsi]
+    mov rbx, [rdi + 8]
+    mov rcx, [rsi + 8]
     cmp rbx, rcx
     jne .f
     mov rdx, rbx
-    add rdi, 8
-    add rsi, 8
+    add rdi, 16
+    add rsi, 16
     .rpt:
         cmp rdx, 0
         jz .t

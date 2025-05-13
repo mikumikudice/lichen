@@ -34,7 +34,7 @@ local tests = {
     { src = "funcs", input = "", output = "", code = 0, nocomp = false },
     { src = "types", input = "", output = "", code = 0, nocomp = false },
     { src = "exp", input = "", output = "", code = 0, nocomp = false },
-    { src = "strings", input = "", output = "", code = 0, nocomp = false },
+    { src = "strings", input = "", output = "ok\n", code = 0, nocomp = false },
     { src = "oper", input = "", output = "", code = 0, nocomp = false },
     { src = "bool", input = "", output = "", code = 0, nocomp = false },
 

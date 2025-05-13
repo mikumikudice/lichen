@@ -1,3 +1,4 @@
-- implemented if-else blocks and allowed them to be valid values
-- fixed expression generation for lazy logic operator evaluation
-- implemented rudimentary operator precedence
+- reimplemented strings as a fat pointer with a capacity and length
+- updated io module and runtime to accommodate said update
+- implement TODOs for string concatenation/repetition operations
+- implemented string comparison as value-wise and not address-wise
