@@ -416,7 +416,7 @@ fn get_mod_fun(ctxt: *context, bind: token, name: ident) (*ast | COMPERR) = {
         const meta = fun.meta as *fn_meta;
         if(meta.name.id == name.id){
             meta.used = true;
-            meta.origin = modname.id;
+            meta.origin = mod.1.ctxt.name;
             meta.mod = fmt::asprintf("{}.{}",
                 modname.id, meta.name.id)!;
             return fun;
@@ -1314,7 +1314,8 @@ fn gen_file(ctxt: *context, tokens: []token, buffer: *memio::stream,
             };
         case path_t::FUN_DEF =>
             const meta = this.meta as *fn_meta;
-            if(meta.used && meta.ffi is void){
+            if((meta.used || (meta.name.pub && (sharedlib || staticlib)))
+                && meta.ffi is void){
                 gen_fun(ctxt, tokens, buffer, this)?;
             };
         case => void;
@@ -2450,22 +2451,7 @@ fn validate_efx(ctxt: *context, called: *fn_meta, caller: []tkval)
     if(len(caller) > 0 && comp_tk(caller[0], keyword::DO)){
         return;
     };
-    match(called.origin){
-    case let mod: str =>
-        for(let lr_tag .. caller){
-            if(mod == (lr_tag as ident).id) return;
-        };
-        const help = fmt::asprintf(
-            "%gtry doing %p\"%d= %b{} %y{{%p\""
-            "%g in the function scope definition",
-            mod)!;
-        defer free(help);
-        return error(ctxt,
-            "the function %b{}%r is from the module "
-            "%g{}%r, but the caller function doesn't "
-            "implement this effect tag\n{}",
-            called.name.id, mod, help);
-    case void =>
+    if(called.origin is void || called.origin as str == ctxt.name){
         for(let ld_tag .. called.effects){
             let found = false;
             for(let lr_tag .. caller){
@@ -2493,6 +2479,22 @@ fn validate_efx(ctxt: *context, called: *fn_meta, caller: []tkval)
                     called.name.id, tag, help);
             };
         };
+    } else {
+        const mod = (called.origin as str);
+        const bind = strings::rcut(strings::rcut(mod, "/").1, ".").0;
+        for(let lr_tag .. caller){
+            if(bind == (lr_tag as ident).id) return;
+        };
+        const help = fmt::asprintf(
+            "%gtry doing %p\"%d= %b{} %y{{%p\""
+            "%g in the function scope definition",
+            bind)!;
+        defer free(help);
+        return error(ctxt,
+            "the function %b{}%r is from the module "
+            "%g{}%r, but the caller function doesn't "
+            "implement this effect tag\n{}",
+            called.name.id, bind, help);
     };
 };
 

@@ -13,6 +13,8 @@ const version = "0.4.0";
 
 const temp = ".tmp/";
 
+let sharedlib = false;
+let staticlib = false;
 export fn main() void = {
     const abt = "%gmmc is the compiler for the moss programming language.";
     const usg = fmt::asprintf(
@@ -80,8 +82,6 @@ export fn main() void = {
     let outset = false;
     let infset = false;
     let keeptemps = false;
-    let sharedlib = false;
-    let staticlib = false;
 
     let outfile = "";
     let srcname = "";

@@ -1,4 +1,2 @@
-- reimplemented strings as a fat pointer with a capacity and length
-- updated io module and runtime to accommodate said update
-- implement TODOs for string concatenation/repetition operations
-- implemented string comparison as value-wise and not address-wise
+- forcefully export public functions when producing a library
+- fix false-positive with effect tags within module self-calls
