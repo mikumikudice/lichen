@@ -40,10 +40,10 @@ export fn main() void = {
         "\n %g-vb\t\t"
         "%y-- prompts each substep. if %g-c%y is also set, dumps qbe IR"
 
-        "\n %g-static\t\t"
+        "\n %g-static\t"
         "%y-- produces a static library"
 
-        "\n %g-shared\t\t"
+        "\n %g-shared\t"
         "%y-- produces a shared library"
         
         "\n %g-t\t\t"
