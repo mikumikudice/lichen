@@ -8,7 +8,7 @@ use memio;
 // record := "record", "{",(ident, type, eol)+, "}", eol
 // enum := "enum", [type], "{", (ident, ["=", const_val]*), "}", eol
 // union := type, ["|", type]+
-// type := prim | ident
+// type := prim | ident | ("(", type, [",", type]+ ")")
 // prim := u8 | u16 | u32 | u64 | i8 | i16 | i32 | i64 | str | unit | void
 //
 // ident := (A-Z | a-z | 0-9 | _)+
@@ -40,7 +40,7 @@ use memio;
 //
 // statement := if_else_block | for_block | match_block | test_block
 //
-// statement_declaration := ident, "=", expression
+// statement_declaration := ident, [type], "=", expression
 //
 // if_else_block := if_block, [else_block]
 // if_block := "if", [statement_declaration], expression, scope

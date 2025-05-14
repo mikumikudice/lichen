@@ -190,7 +190,6 @@ rt_alloc:
     pop rdx
     pop rsi
     pop rdi
-    mov [rax], rdi
 
     ret
     .err:
