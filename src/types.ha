@@ -174,6 +174,7 @@ type context = struct {
     fun_defs: []*ast,
     modules: [](token, comp_obj),
     scope_owner: (void | ident),
+    eval: bool,
 };
 
 type comp_obj = struct {
@@ -199,6 +200,7 @@ type var_meta = struct {
     ffi: (void | str),
     mod: (void | str),
     glob: bool,
+    rets: bool,
     name: ident,
 };
 

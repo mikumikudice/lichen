@@ -57,6 +57,7 @@ fn load(fname: str, libpath: str) (context | COMPERR) = {
             upper = void,
         },
         scope_owner = void,
+        eval = false,
     };
     // load every line until EOF
     for(true) match(bufio::read_line(fsrc)!){
@@ -1383,6 +1384,7 @@ fn gen_fun(ctxt: *context, tokens: []token, buffer: *memio::stream,
             cln = param_l.pos[p].cln,
             ffi = void,
             mod = void,
+            rets = false,
             glob = false,
             name = param_l.names[p],
         })!;
@@ -1455,7 +1457,9 @@ fn gen_scope(ctxt: *context, buffer: *memio::stream, node: nullable *ast,
 
             const name = strings::replace(meta.name.id, "'", ".q")!;
             defer free(name);
-            gen_exp(ctxt, buffer, this.inner as *ast, name, meta.name.itype);
+            ctxt.eval = true;
+            gen_exp(ctxt, buffer, this.inner as *ast, name, meta.name.itype)?;
+            ctxt.eval = false;
         case path_t::EXPR =>
             const meta = this.meta as *expr_meta;
             if(meta.tpe == primitive::VOID || meta.tpe == primitive::UNIT){
@@ -1466,68 +1470,36 @@ fn gen_scope(ctxt: *context, buffer: *memio::stream, node: nullable *ast,
                     const member = m as *ast;
                     match(member.meta){
                     case let memb: *member_meta =>
-                        free(gen_member(ctxt, buffer, member, memb.tpe));
+                        free(gen_member(ctxt, buffer, member, memb.tpe)?);
                     case let funcall: *funcall_meta =>
-                        gen_funcall(ctxt, buffer, member);
+                        gen_funcall(ctxt, buffer, member)?;
                     case =>
                         assert(false, "TODO");
                     };
                 };
                 continue;
             };
-            const dest = fmt::asprintf("exp.{}.{}",
-                this.path[0].lin + 1, this.path[0].cln + 1)!;
+            const dest =
+                match(stt_dest){
+                case let d: str => yield strings::dup(d)!;
+                case void =>
+                    yield fmt::asprintf("exp.{}.{}",
+                        this.path[0].lin + 1, this.path[0].cln + 1)!;
+                };
             defer free(dest);
 
             fmt::fprintfln(buffer, "\n\tdbgloc {}, {}",
                 this.path[0].lin + 1, this.path[0].cln + 1)!;
 
-            gen_exp(ctxt, buffer, this, dest, meta.tpe);
+            gen_exp(ctxt, buffer, this, dest, meta.tpe)?;
         case path_t::FUN_CALL =>
             fmt::fprintfln(buffer, "\n\tdbgloc {}, {}",
                 this.path[0].lin + 1, this.path[0].cln + 1)!;
-            gen_funcall(ctxt, buffer, this);
+            gen_funcall(ctxt, buffer, this)?;
         case path_t::STATEMENT =>
             switch(this.path[0].val as keyword){
             case keyword::IF =>
-                const meta = this.meta as *if_else_meta;
-                const cond_max = len(meta.conds);
-                const body_max = len(meta.bodies);
-                const c_dest = fmt::asprintf("cond.{}.{}",
-                    this.path[0].lin + 1, this.path[0].cln + 1)!;
-                defer free(c_dest);
-
-                fmt::fprintfln(buffer, "\n\tdbgloc {}, {}",
-                    this.path[0].lin + 1, this.path[0].cln + 1)!;
-
-                for(let b = 0z; b < body_max; b += 1){
-                    const body = meta.bodies[b];
-                    if(b < cond_max){
-                        const cond = meta.conds[b];
-
-                        const c_meta = cond.meta as *expr_meta;
-                        gen_exp(ctxt, buffer, cond, c_dest, c_meta.tpe);
-
-                        fmt::fprintfln(buffer, "\tjnz %{0}, @t.{0}.{1}, @f.{0}.{1}\n@t.{0}.{1}", c_dest, b)!;
-                        
-                        if(meta.rets){
-                            gen_scope(ctxt, buffer, body, stt_dest)?;
-                        } else {
-                            gen_scope(ctxt, buffer, body)?;
-                            fmt::fprintfln(buffer, "\tjmp @end.{}", c_dest)!;
-                        };
-                        fmt::fprintfln(buffer, "@f.{}.{}", c_dest, b)!;
-                    } else {
-                        if(meta.rets){
-                            gen_scope(ctxt, buffer, body, stt_dest)?;
-                        } else {
-                            gen_scope(ctxt, buffer, body)?;
-                            fmt::fprintfln(buffer, "\tjmp @end.{}", c_dest)!;
-                        };
-                    };
-                };
-                fmt::fprintfln(buffer, "@end.{}", c_dest)!;
-                if(meta.rets) fmt::fprintln(buffer, "\thlt\n")!;
+                gen_if_else(ctxt, buffer, this, stt_dest)?;
             case keyword::FOR =>
                 assert(false, "TODO");
             case keyword::MATCH =>
@@ -1542,27 +1514,68 @@ fn gen_scope(ctxt: *context, buffer: *memio::stream, node: nullable *ast,
     ctxt.scp = safe;
 };
 
+fn gen_if_else(ctxt: *context, buffer: *memio::stream, this: *ast,
+    stt_dest: (void | str) = void) (void | COMPERR) = {
+    const meta = this.meta as *if_else_meta;
+    const cond_max = len(meta.conds);
+    const body_max = len(meta.bodies);
+    const c_dest = fmt::asprintf("cond.{}.{}",
+        this.path[0].lin + 1, this.path[0].cln + 1)!;
+    defer free(c_dest);
+
+    for(let b = 0z; b < body_max; b += 1){
+        const body = meta.bodies[b];
+        const b_meta = meta.bodies[b].meta as *scope_meta;
+        if(b < cond_max){
+            const cond = meta.conds[b];
+
+            const c_meta = cond.meta as *expr_meta;
+            gen_exp(ctxt, buffer, cond, c_dest, c_meta.tpe)?;
+
+            fmt::fprintfln(buffer, "\tjnz %{0}, @t.{0}.{1}, @f.{0}.{1}\n@t.{0}.{1}", c_dest, b)!;
+            gen_scope(ctxt, buffer, body, stt_dest)?;
+
+            if(!b_meta.rets || ctxt.eval){
+                fmt::fprintfln(buffer, "\tjmp @end.{}", c_dest)!;
+            };
+            fmt::fprintfln(buffer, "@f.{}.{}", c_dest, b)!;
+        } else {
+            gen_scope(ctxt, buffer, body, stt_dest)?;
+            if(!b_meta.rets || ctxt.eval){
+                fmt::fprintfln(buffer, "\tjmp @end.{}", c_dest)!;
+            };
+        };
+    };
+    fmt::fprintfln(buffer, "@end.{}", c_dest)!;
+    if(meta.rets) fmt::fprintln(buffer, "\thlt\n")!;
+};
+
 // generates the qbe IR for a given expression
 fn gen_exp(ctxt: *context, buffer: *memio::stream, exp: *ast,
-    dest: str, exp_type: primitive) void = {
-    if(exp.meta is *var_meta){
+    dest: str, exp_type: primitive) (void | COMPERR) = {
+    match(exp.meta){
+    case let var: *var_meta =>
         const temp = memio::dynamic();
         defer io::close(&temp)!;
-        gen_move(ctxt, &temp, buffer, dest, exp, exp_type);
-        return;
-    };
-    const exp_meta = exp.meta as *expr_meta;
-    const members = exp_meta.members;
+        gen_move(ctxt, &temp, buffer, dest, exp, exp_type)?;
 
-    gen_exp_steps(ctxt, buffer, members, dest, exp_type);
+        if(var.rets){
+            fmt::fprintfln(buffer, "\tret %{}", dest)!;
+        };
+    case let exp_meta: *expr_meta =>
+        const members = exp_meta.members;
+        gen_exp_steps(ctxt, buffer, members, dest, exp_type)?;
 
-    if(exp_meta.rets){
-        fmt::fprintfln(buffer, "\tret %{}", dest)!;
+        if(exp_meta.rets && !ctxt.eval){
+            fmt::fprintfln(buffer, "\tret %{}", dest)!;
+        };
+    case =>
+        assert(false, "unreachabla");
     };
 };
 
 fn gen_exp_steps(ctxt: *context, buffer: *memio::stream, members: [](*ast | operator),
-    dest: str, exp_type: primitive, stop_logic: bool = false) size = {
+    dest: str, exp_type: primitive, stop_logic: bool = false) (size | COMPERR) = {
     const exp_t = qbe_t(exp_type, mode::ASSIGN);
     const temp = memio::dynamic();
     defer io::close(&temp)!;
@@ -1571,17 +1584,17 @@ fn gen_exp_steps(ctxt: *context, buffer: *memio::stream, members: [](*ast | oper
         case let oper: operator =>
             if(oper == operator::MIN){
                 gen_move(ctxt, &temp, buffer, dest,
-                    members[1] as *ast, exp_type);
+                    members[1] as *ast, exp_type)?;
                 fmt::fprintfln(buffer, "{0}\t{1} ={2} neg {1}",
                     memio::string(&temp)!, dest, exp_t)!;
             } else {
                 gen_move(ctxt, &temp, buffer, dest,
-                    members[1] as *ast, exp_type);
+                    members[1] as *ast, exp_type)?;
             };
             yield 2z;
         case let mem: *ast =>
             gen_move(ctxt, &temp, buffer, dest,
-                members[0] as *ast, exp_type);
+                members[0] as *ast, exp_type)?;
             yield 1z;
         };
     const max = len(members);
@@ -1591,7 +1604,7 @@ fn gen_exp_steps(ctxt: *context, buffer: *memio::stream, members: [](*ast | oper
         case operator::PLS, operator::MIN, operator::MUL, operator::IDIV,
             operator::SHL, operator::SHR, operator::BAND, operator::BOR =>
             const memb = gen_member(ctxt, buffer, members[m + 1] as *ast,
-                exp_type);
+                exp_type)?;
             defer free(memb);
             const inst =
                 switch(op){
@@ -1671,7 +1684,7 @@ fn gen_exp_steps(ctxt: *context, buffer: *memio::stream, members: [](*ast | oper
             defer free(right);
 
             m += gen_exp_steps(ctxt, buffer, members[m .. max], right,
-                exp_type, true);
+                exp_type, true)?;
 
             if(is_subtype(memb_meta.tpe, primitive::STR)){
                 if(op == operator::EQL){
@@ -1700,7 +1713,7 @@ fn gen_exp_steps(ctxt: *context, buffer: *memio::stream, members: [](*ast | oper
                 pos.path[0].lin + 1, pos.path[0].cln + 1)!;
             defer free(right);
             m += gen_exp_steps(ctxt, buffer, members[m .. max], right,
-                exp_type, true);
+                exp_type, true)?;
 
             fmt::fprintfln(buffer, "\tjnz %{0}, @{1}.t, @{1}.f", right, label)!;
             fmt::fprintfln(buffer, "@{0}.t\n\tjmp @{0}.asg\n@{0}.f\n\tjmp @{0}.asg",
@@ -1722,7 +1735,7 @@ fn gen_exp_steps(ctxt: *context, buffer: *memio::stream, members: [](*ast | oper
                 pos.path[0].lin + 1, pos.path[0].cln + 1)!;
             defer free(right);
             m += gen_exp_steps(ctxt, buffer, members[m .. max], right,
-                exp_type, true);
+                exp_type, true)?;
 
             assert(m >= max || comp_tk(members[m] as operator, operator::LAND) ||
                 comp_tk(members[m] as operator, operator::LOR));
@@ -1746,7 +1759,7 @@ fn gen_exp_steps(ctxt: *context, buffer: *memio::stream, members: [](*ast | oper
 // generates the qbeIR for a given funcall. if `dest` is set, the return value
 // is assigned to it. `dest` shall not have qbe temporaries prefix.
 fn gen_funcall(ctxt: *context, buffer: *memio::stream,
-    this: *ast, dest: (void | str) = void) void = {
+    this: *ast, dest: (void | str) = void) (void | COMPERR) = {
     const meta = this.meta as *funcall_meta;
     const temp = memio::dynamic();
     defer io::close(&temp)!;
@@ -1779,7 +1792,7 @@ fn gen_funcall(ctxt: *context, buffer: *memio::stream,
                 arg.path[0].lin, arg.path[0].cln)!;
             defer free(wrap);
 
-            gen_exp(ctxt, buffer, arg, wrap, p_meta.names[a].itype);
+            gen_exp(ctxt, buffer, arg, wrap, p_meta.names[a].itype)?;
             fmt::fprintf(&temp, "{} %{}, ", arg_t, wrap)!;
         case let vdef: *var_meta =>
             fmt::fprintf(&temp, "{} %{}, ", arg_t, vdef.name.id)!;
@@ -1791,7 +1804,7 @@ fn gen_funcall(ctxt: *context, buffer: *memio::stream,
 // generates the coresponding move instruction for a given member and fixes any
 // casting for the given member type and expected `tpe` type.
 fn gen_move(ctxt: *context, header: *memio::stream, buffer: *memio::stream,
-    dest: str, member: *ast, tpe: primitive) void = {
+    dest: str, member: *ast, tpe: primitive) (void | COMPERR) = {
     assert(!strings::hasprefix(dest, "%"));
     const move_t = qbe_t(tpe, mode::ASSIGN);
     const m_meta = member.meta as *member_meta;
@@ -1857,10 +1870,12 @@ fn gen_move(ctxt: *context, header: *memio::stream, buffer: *memio::stream,
                         memio::string(header)!, dest, move_t, name)!;
                 };
             };
+        case *if_else_meta =>
+            gen_if_else(ctxt, buffer, node, dest)?;
         case let exp: *expr_meta =>
-            gen_exp(ctxt, buffer, node, dest, exp.tpe);
+            gen_exp(ctxt, buffer, node, dest, exp.tpe)?;
         case let funcall: *funcall_meta =>
-            gen_funcall(ctxt, buffer, node, dest);
+            gen_funcall(ctxt, buffer, node, dest)?;
         };
     case let tok: tkval =>
         match(tok){
@@ -1900,7 +1915,7 @@ fn gen_move(ctxt: *context, header: *memio::stream, buffer: *memio::stream,
 };
 
 fn gen_member(ctxt: *context, buffer: *memio::stream,
-    member: *ast, exp_type: primitive) str = {
+    member: *ast, exp_type: primitive) (str | COMPERR) = {
     const m_meta = member.meta as *member_meta;
     match(m_meta.val){
     case let node: *ast =>
@@ -1972,7 +1987,7 @@ fn gen_member(ctxt: *context, buffer: *memio::stream,
                 node.path[0].lin + 1, node.path[0].cln + 1)!;
             const slice = strings::sub(wrap, 1);
 
-            gen_exp(ctxt, buffer, node, slice, exp.tpe);
+            gen_exp(ctxt, buffer, node, slice, exp.tpe)?;
             return wrap;
         case let funcall: *funcall_meta =>
             const move_t = qbe_t(exp_type);
@@ -1982,7 +1997,13 @@ fn gen_member(ctxt: *context, buffer: *memio::stream,
                 node.path[0].lin + 1, node.path[0].cln + 1)!;
             const slice = strings::sub(wrap, 1);
 
-            gen_funcall(ctxt, buffer, node, slice);
+            gen_funcall(ctxt, buffer, node, slice)?;
+            return wrap;
+        case *if_else_meta =>
+            const wrap = fmt::asprintf("%exp.{}.{}",
+                node.path[0].lin + 1, node.path[0].cln + 1)!;
+
+            gen_if_else(ctxt, buffer, node, wrap)?;
             return wrap;
         };
     case let tok: tkval =>
@@ -2152,6 +2173,7 @@ fn eval_c_def(ctxt: *context, tokens: []token, at: size, pub: bool = false)
         cln = tokens[begin].cln,
         ffi = ffi,
         mod = void,
+        rets = false,
         glob = true,
         name = name,
     })!;
@@ -2608,13 +2630,16 @@ fn eval_scope(ctxt: *context, tokens: []token, at: size, hint: primitive = primi
                 match(exp.meta){
                 case let e_meta: *expr_meta =>
                     e_meta.rets = true;
+                    if(len(e_meta.members) == 1 && e_meta.members[0] is *ast)
+                        match((e_meta.members[0] as *ast).meta){
+                        case let ifel: *if_else_meta =>
+                            ifel.rets = true;
+                        case => void;
+                    };
                     tpe = push_type(ctxt, tpe, e_meta.tpe,
                         ret_pos, tpe_msg::FN_RT)?;
-                case let ifel_block: *if_else_meta =>
-                    ifel_block.rets = true;
-                    tpe = push_type(ctxt, tpe, ifel_block.tpe,
-                        ret_pos, tpe_msg::FN_RT)?;
                 case let v_meta: *var_meta =>
+                    v_meta.rets = true;
                     tpe = push_type(ctxt, tpe, v_meta.name.itype,
                         ret_pos, tpe_msg::FN_RT)?;
                 };
@@ -2666,14 +2691,8 @@ fn eval_expression(ctxt: *context, tokens: []token, at: size, hint: primitive = 
         switch(kwd){
         case keyword::LET =>
             return eval_decl(ctxt, tokens, at)?;
-        case keyword::IF =>
-            return eval_if_else(ctxt, tokens, at, hint)?;
-        case keyword::FOR =>
-            assert(false, "TODO: for block");
-            return error(ctxt, "");
-        case keyword::MATCH =>
-            assert(false, "TODO: match block");
-            return error(ctxt, "");
+        case keyword::IF, keyword::FOR, keyword::MATCH =>
+            return eval_abbs_exp(ctxt, tokens, at, hint, msg_kind)?;
         case =>
             move_ptr(ctxt, tk);
             return error(ctxt, "invalid statement");
@@ -2727,6 +2746,11 @@ fn eval_decl(ctxt: *context, tokens: []token, at: size) ((*ast, size) | COMPERR)
                     "cannot return a value from the right side of an assigntment");
             };
             name.itype = push_type(ctxt, meta.tpe, prim, tokens[eq])?;
+        case let meta: *if_else_meta =>
+            if(len(meta.conds) == len(meta.bodies)){
+                move_ptr(ctxt, tk);
+                return error(ctxt, "the if block is not exhaustive");
+            };
         case let meta: *var_meta =>
             name.itype = push_type(ctxt, meta.name.itype, prim, tokens[eq])?;
         };
@@ -2743,11 +2767,6 @@ fn eval_decl(ctxt: *context, tokens: []token, at: size) ((*ast, size) | COMPERR)
         node.inner = exp;
         match(exp.meta){
         case let meta: *expr_meta =>
-            if(meta.rets){
-                assert(comp_tk(tokens[eq + 1].val, operator::MAP));
-                move_ptr(ctxt, tokens[eq + 1]);
-                return error(ctxt, "cannot return a value from the right side of an assigntment");
-            };
             if(untyped(meta.tpe)){
                 move_ptr(ctxt, tk);
                 return error(ctxt, "cannot infer expression type");
@@ -2768,6 +2787,7 @@ fn eval_decl(ctxt: *context, tokens: []token, at: size) ((*ast, size) | COMPERR)
         cln = tokens[begin].cln,
         ffi = void,
         mod = void,
+        rets = false,
         glob = false,
         name = name,
     })!;

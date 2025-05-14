@@ -1,2 +1,2 @@
-- forcefully export public functions when producing a library
-- fix false-positive with effect tags within module self-calls
+- fix evaluation of if-else blocks as a value
+- implement exhaustive branch evaluation checking
