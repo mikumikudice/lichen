@@ -1503,7 +1503,6 @@ fn gen_scope(ctxt: *context, buffer: *memio::stream, node: nullable *ast,
                 for(let b = 0z; b < body_max; b += 1){
                     const body = meta.bodies[b];
                     if(b < cond_max){
-                        if(b > 0) fmt::fprintfln(buffer, "@f.{}.{}", c_dest, b - 1)!;
                         const cond = meta.conds[b];
 
                         const c_meta = cond.meta as *expr_meta;
@@ -1517,9 +1516,8 @@ fn gen_scope(ctxt: *context, buffer: *memio::stream, node: nullable *ast,
                             gen_scope(ctxt, buffer, body)?;
                             fmt::fprintfln(buffer, "\tjmp @end.{}", c_dest)!;
                         };
+                        fmt::fprintfln(buffer, "@f.{}.{}", c_dest, b)!;
                     } else {
-                        fmt::fprintfln(buffer, "@f.{}.{}", c_dest, b - 1)!;
-
                         if(meta.rets){
                             gen_scope(ctxt, buffer, body, stt_dest)?;
                         } else {
