@@ -58,6 +58,7 @@ fn load(fname: str, libpath: str) (context | COMPERR) = {
         },
         scope_owner = void,
         eval = false,
+        tailcall = false,
     };
     // load every line until EOF
     for(true) match(bufio::read_line(fsrc)!){
@@ -1392,9 +1393,8 @@ fn gen_fun(ctxt: *context, tokens: []token, buffer: *memio::stream,
         append(params, pdef)!;
     };
     ctxt.scp = &local_scp;
-    ctxt.scope_owner = meta.name;
+    ctxt.scope_owner = meta;
     const (body, _) = eval_scope(ctxt, tokens, meta.scope_begin, meta.fn_type)?;
-    ctxt.scope_owner = void;
     const scp_tpe = (body.meta as *scope_meta).tpe;
 
     if(!is_subtype(scp_tpe, meta.fn_type)){
@@ -1425,14 +1425,16 @@ fn gen_fun(ctxt: *context, tokens: []token, buffer: *memio::stream,
         fmt::fprintf(buffer, "{} %{}, ", qbe_t(param_l.names[p].itype),
             param_l.names[p].id)!;
     };
-    fmt::fprint(buffer, "){\n@start")!;
+    fmt::fprintfln(buffer, "){{\n@start\n\tdbgloc {}, {}\n@body",
+        body.path[0].lin + 1, body.path[0].cln + 1)!;
     gen_scope(ctxt, buffer, body)?;
+    ctxt.scope_owner = void;
 
     const end = len(this.path) - 2;
     if(meta.fn_type == primitive::VOID){
-        fmt::fprintln(buffer, "\n\tcall $rt_exit(w 0)\n\thlt\n}")!;
+        fmt::fprintln(buffer, "\tcall $rt_exit(w 0)\n\thlt\n}")!;
     } else if(meta.fn_type == primitive::UNIT){
-        fmt::fprintln(buffer, "\n\tret\n}")!;
+        fmt::fprintln(buffer, "\tret\n}")!;
     } else {
         fmt::fprintln(buffer, "}")!;
     };
@@ -1470,6 +1472,16 @@ fn gen_scope(ctxt: *context, buffer: *memio::stream, node: nullable *ast,
                     const member = m as *ast;
                     match(member.meta){
                     case let memb: *member_meta =>
+                        if(memb.val is *ast) match((memb.val as *ast).meta){
+                        // tailcall elimination
+                        case let call: *funcall_meta =>
+                            if(call.fun.meta as *fn_meta == ctxt.scope_owner as *fn_meta){
+                                ctxt.tailcall = true;
+                                tailcall(ctxt, buffer, call)?;
+                                continue;
+                            };
+                        case => void;
+                        };
                         free(gen_member(ctxt, buffer, member, memb.tpe)?);
                     case let funcall: *funcall_meta =>
                         gen_funcall(ctxt, buffer, member)?;
@@ -1535,18 +1547,19 @@ fn gen_if_else(ctxt: *context, buffer: *memio::stream, this: *ast,
             fmt::fprintfln(buffer, "\tjnz %{0}, @t.{0}.{1}, @f.{0}.{1}\n@t.{0}.{1}", c_dest, b)!;
             gen_scope(ctxt, buffer, body, stt_dest)?;
 
-            if(!b_meta.rets || ctxt.eval){
+            if(!ctxt.tailcall && (!b_meta.rets || ctxt.eval)){
                 fmt::fprintfln(buffer, "\tjmp @end.{}", c_dest)!;
             };
             fmt::fprintfln(buffer, "@f.{}.{}", c_dest, b)!;
         } else {
             gen_scope(ctxt, buffer, body, stt_dest)?;
-            if(!b_meta.rets || ctxt.eval){
+            if(!ctxt.tailcall && (!b_meta.rets || ctxt.eval)){
                 fmt::fprintfln(buffer, "\tjmp @end.{}", c_dest)!;
             };
         };
     };
     fmt::fprintfln(buffer, "@end.{}", c_dest)!;
+    ctxt.tailcall = false;
     if(meta.rets) fmt::fprintln(buffer, "\thlt\n")!;
 };
 
@@ -1579,6 +1592,8 @@ fn gen_exp_steps(ctxt: *context, buffer: *memio::stream, members: [](*ast | oper
     const exp_t = qbe_t(exp_type, mode::ASSIGN);
     const temp = memio::dynamic();
     defer io::close(&temp)!;
+
+    const max = len(members);
     const begin =
         match(members[0]){
         case let oper: operator =>
@@ -1597,7 +1612,6 @@ fn gen_exp_steps(ctxt: *context, buffer: *memio::stream, members: [](*ast | oper
                 members[0] as *ast, exp_type)?;
             yield 1z;
         };
-    const max = len(members);
     for(let m = begin; m < max; m += 2){
         const op = members[m] as operator;
         switch(op){
@@ -1754,6 +1768,34 @@ fn gen_exp_steps(ctxt: *context, buffer: *memio::stream, members: [](*ast | oper
         };
     };
     return max;
+};
+
+fn tailcall(ctxt: *context, buffer: *memio::stream, call: *funcall_meta) (void | COMPERR) = {
+    const fun = call.fun.meta as *fn_meta;
+    const p_meta = (fun.params as *ast).meta as *param_meta;
+    const max = len(p_meta.names);
+    assert(len(call.args) == max);
+
+    const temp = memio::dynamic();
+    defer io::close(&temp)!;
+    for(let a = 0z; a < max; a += 1){
+        const arg = call.args[a];
+        const arg_t = qbe_t(p_meta.names[a].itype);
+        match(arg.meta){
+        case let expr: *expr_meta =>
+            const wrap = fmt::asprintf("arg.{}.{}.{}", arg_t,
+                arg.path[0].lin, arg.path[0].cln)!;
+            defer free(wrap);
+
+            gen_exp(ctxt, buffer, arg, wrap, p_meta.names[a].itype)?;
+            fmt::fprintfln(&temp, "\t%{} ={} copy %{}",
+                p_meta.names[a].id, arg_t, wrap)!;
+        case let vdef: *var_meta =>
+            fmt::fprintfln(&temp, "\t%{} ={} copy %{}",
+                p_meta.names[a].id, arg_t, vdef.name.id)!;
+        };
+    };
+    fmt::fprintfln(buffer, "{}\tjmp @body", memio::string(&temp)!)!;
 };
 
 // generates the qbeIR for a given funcall. if `dest` is set, the return value

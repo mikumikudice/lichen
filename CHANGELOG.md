@@ -1,2 +1,3 @@
-- fix evaluation of if-else blocks as a value
-- implement exhaustive branch evaluation checking
+- implement minimal tail-call elimination
+- fixed some label-generation bugs
+- added debug info at the beginning of the function body

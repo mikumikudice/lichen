@@ -26,7 +26,7 @@ local tests = {
     { src = "fail_fun_name_2", input = "", output = "", code = 1, nocomp = true },
     { src = "fail_var_name_1", input = "", output = "", code = 1, nocomp = true },
     { src = "fail_var_name_2", input = "", output = "", code = 1, nocomp = true },
-    { src = "recursive", input = "", output = "", code = 1, nocomp = true },
+    { src = "self-import", input = "", output = "", code = 1, nocomp = true },
 
     -- syntax and type checking --
     { src = "vars", input = "", output = "", code = 0, nocomp = false },
@@ -46,7 +46,8 @@ local tests = {
     -- branching and recursion --
     { src = "if-else", input = "", output = "test 0 ok\ntest 1 ok\ntest 2 ok\ntest 3 ok\n" ..
         "test 4 ok\ntest 5 ok\ntest 6 ok\n", code = 0, nocomp = false },
-    { src = "tailcall", input = "", output = "worked!\n", code = 0, nocomp = false },
+    { src = "recursive", input = "", output = "worked!\n", code = 0, nocomp = false },
+    { src = "tailcall", input = "", output = "loop!\nloop!\nloop!\nloop!\n", code = 0, nocomp = false },
 }
 
 local failed = {}

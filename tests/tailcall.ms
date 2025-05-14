@@ -1,18 +1,12 @@
-io = use "io.ms";
+io = use "io.ms"; 
 
 pub fn main() void = io {
-    let x = factorial(4);
-    if x == 24 {
-        io::print("worked!\n");
-    } else {
-        io::print("failed :c\n");
-    };
+    loop(4);
 };
 
-fn factorial(n u64) u64 = {
-    => if n > 1 {
-        => n * factorial(n - 1);
-    } else {
-        => n;
+fn loop(times u32) unit = io {
+    if times {
+        io::println("loop!");
+        loop(times - 1);
     };
 };
