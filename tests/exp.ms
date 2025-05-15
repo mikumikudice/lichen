@@ -9,5 +9,6 @@ fn foo(x u32) u32 = {
 };
 
 fn bar(x u32) u32 = {
-    => foo(x + todo);
+    let y u32 = todo;
+    => foo(x + y);
 };

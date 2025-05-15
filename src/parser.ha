@@ -2733,8 +2733,11 @@ fn eval_expression(ctxt: *context, tokens: []token, at: size, hint: primitive = 
         switch(kwd){
         case keyword::LET =>
             return eval_decl(ctxt, tokens, at)?;
-        case keyword::IF, keyword::FOR, keyword::MATCH =>
+        case keyword::IF, keyword::FOR, keyword::MATCH,
+            keyword::TODO, keyword::FAIL =>
             return eval_abbs_exp(ctxt, tokens, at, hint, msg_kind)?;
+        case keyword::TEST =>
+            return eval_test(ctxt, tokens, at)?;
         case =>
             move_ptr(ctxt, tk);
             return error(ctxt, "invalid statement");
@@ -2742,6 +2745,27 @@ fn eval_expression(ctxt: *context, tokens: []token, at: size, hint: primitive = 
     case =>
         return eval_abbs_exp(ctxt, tokens, at, hint, msg_kind)?;
     };
+};
+
+fn eval_test(ctxt: *context, tokens: []token, at: size) ((*ast, size) | COMPERR) = {
+    const begin = at;
+    assert(comp_tk(tokens[at].val, keyword::TEST));
+
+    const buffer = memio::dynamic();
+    error_line(ctxt, &buffer);
+
+    const (exp, end) = eval_expression(ctxt, tokens, begin + 1,
+        primitive::NUMBER, tpe_msg::BOOL)?;
+
+    const node = new_node(tokens, begin);
+    node.kind = path_t::STATEMENT;
+    node.path = tokens[begin .. end];
+    node.meta = alloc(test_meta {
+        cond = exp,
+        global = false,
+        line_msg = buffer,
+    })!;
+    return (node, end);
 };
 
 // evaluates a namespace declaration
@@ -2859,12 +2883,11 @@ fn eval_abbs_exp(ctxt: *context, tokens: []token, at: size, hint: primitive = pr
             "expected %bcontant value%r, but got %y{}")?;
     };
     // eval first member
-    const (memb, _end) = eval_member(ctxt, tokens, end, hint)?;
-    const m_meta = memb.meta as *member_meta;
+    const (mem_l, _end) = eval_member(ctxt, tokens, end)?;
+    const ml_meta = mem_l.meta as *member_meta;
+    let lft_t = ml_meta.tpe;
     end = _end;
-
-    tpe = push_type(ctxt, tpe, m_meta.tpe, tk)?;
-    append(meta.members, memb)!;
+    append(meta.members, mem_l)!;
 
     tk = next_tk(ctxt, tokens, end,
         "expected %boperator%r or %bend of line%r, but got %y{}")?;
@@ -2872,83 +2895,164 @@ fn eval_abbs_exp(ctxt: *context, tokens: []token, at: size, hint: primitive = pr
     // keep parsing expression
     for(!(comp_tk(tk.val, symbol::RGT_PAR) || comp_tk(tk.val, symbol::LFT_CURLY) ||
         comp_tk(tk.val, symbol::COMMA) || comp_tk(tk.val, symbol::EOL)) && end < max){
-        let boolean = false;
-        let str_rep = false;
-        if(!(tk.val is operator)){
-            move_ptr(ctxt, tk);
-            return error(ctxt, "expected %boperator%r or %bend of line%r, but got %y{}",
-                strtoken(tk.val));
-        } else if(!is_binary(tk.val as operator)){
-            move_ptr(ctxt, tk);
-            return error(ctxt, "invalid %bbinary operator");
-        } else {
-            const op = tk.val as operator;
-            switch(op){
-            case operator::EQL, operator::NEQ, operator::LAND, operator::LOR,
-                operator::LEQ, operator::GEQ, operator::LST, operator::GTT =>
-                if(!untyped(meta.tpe) && is_subtype(meta.tpe, primitive::STR)){
-                    if(op != operator::EQL && op != operator::NEQ){
-                        move_ptr(ctxt, tk);
-                        return error(ctxt, "invalid string comparison operator");
-                    };
-                };
-                boolean = true;
-            case operator::PLS, operator::MUL =>
-                if(!is_subtype(meta.tpe, primitive::STR) &&
-                    !is_subtype(meta.tpe, primitive::NUMBER) &&
-                    !is_subtype(meta.tpe, primitive::RATIO)){
-                    move_ptr(ctxt, tk);
-                    return error(ctxt, "cannot perform arithmetic on %b{}",
-                        strtoken(meta.tpe));
-                };
-                if(op == operator::MUL) str_rep = true;
-            case =>
-                if(!is_subtype(meta.tpe, primitive::NUMBER) &&
-                    !is_subtype(meta.tpe, primitive::RATIO)){
-                    move_ptr(ctxt, tk);
-                    return error(ctxt, "cannot perform arithmetic on %b{}",
-                        strtoken(meta.tpe));
-                };
-            };
-            append(meta.members, op)!;
-        };
-        const (mem_r, _end) = eval_member(ctxt, tokens, end + 1, hint)?;
-        const mr_meta = mem_r.meta as *member_meta;
-        end = _end;
-
-        if(str_rep){
-            if(is_subtype(tpe, primitive::STR) &&
-                !is_subtype(mr_meta.tpe, primitive::NUMBER)){
+        const oper =
+            if(!(tk.val is operator)){
                 move_ptr(ctxt, tk);
-                return error(ctxt,
-                    "string repetition expects a %bnumeric multiplier, but got %y{}",
-                    strtoken(mr_meta.tpe));
-            } else if(is_subtype(mr_meta.tpe, primitive::STR) &&
-                !is_subtype(tpe, primitive::NUMBER)){
+                return error(ctxt, "expected %boperator%r or %bend of line%r, but got %y{}",
+                    strtoken(tk.val));
+            } else if(!is_binary(tk.val as operator)){
                 move_ptr(ctxt, tk);
-                return error(ctxt,
-                    "string repetition expects a %bnumeric multiplier, but got %y{}",
-                    strtoken(tpe));
+                return error(ctxt, "invalid %bbinary operator");
             } else {
-                tpe = push_type(ctxt, tpe, mr_meta.tpe, tk)?;
+                yield tk.val as operator;
             };
-        } else if(!boolean){
-            tpe = push_type(ctxt, tpe, mr_meta.tpe, tk)?;
-        } else if(!untyped(mr_meta.tpe)){
-            tpe = mr_meta.tpe;
-        };
+        append(meta.members, oper)!;
+
+        const (mem_r, _end) = eval_member(ctxt, tokens, end + 1)?;
+        const mr_meta = mem_r.meta as *member_meta;
+        let rgt_t = mr_meta.tpe;
+        end = _end;
         append(meta.members, mem_r)!;
 
-        // update type when it is a comparison
-        if(boolean) switch(tpe){
-        case primitive::STR, primitive::UNIT, primitive::VOID =>
-            tpe = primitive::U64;
-        case => void;
+        move_ptr(ctxt, tk);
+        switch(oper){
+        case operator::LAND, operator::LOR =>
+            tpe = mr_meta.tpe;
+        case operator::EQL, operator::NEQ =>
+            if(!untyped(lft_t) && !untyped(rgt_t)){
+                if(lft_t != rgt_t){
+                    return error(ctxt,
+                        "type mismatch between lefthand side %y({})%r and righthand side %y({})",
+                        strtoken(lft_t), strtoken(rgt_t));
+                };
+                tpe = push_type(ctxt, tpe, rgt_t, tk)?;
+            } else {
+                if(!is_subtype(lft_t, rgt_t)){
+                    return error(ctxt,
+                        "type mismatch between lefthand side %y({})%r and righthand side %y({})",
+                        strtoken(lft_t), strtoken(rgt_t));
+                };
+                if(untyped(lft_t)){
+                    tpe = push_type(ctxt, tpe, rgt_t, tk)?;
+                } else {
+                    tpe = push_type(ctxt, tpe, lft_t, tk)?;   
+                };
+            };
+            if(!is_subtype(tpe, primitive::NUMBER) &&
+                !is_subtype(tpe, primitive::RATIO)){
+                tpe = primitive::U64;
+            };
+        case operator::LEQ, operator::GEQ, operator::LST, operator::GTT =>
+            if(!untyped(lft_t) && !untyped(rgt_t)){
+                if(lft_t != rgt_t){
+                    return error(ctxt,
+                        "type mismatch between lefthand side %y({})%r and righthand side %y({})",
+                        strtoken(lft_t), strtoken(rgt_t));
+                };
+                tpe = push_type(ctxt, tpe, rgt_t, tk)?;
+            } else {
+                if(!is_subtype(lft_t, rgt_t)){
+                    return error(ctxt,
+                        "type mismatch between lefthand side %y({})%r and righthand side %y({})",
+                        strtoken(lft_t), strtoken(rgt_t));
+                };
+                if(untyped(lft_t)){
+                    tpe = push_type(ctxt, tpe, rgt_t, tk)?;
+                } else {
+                    tpe = push_type(ctxt, tpe, lft_t, tk)?;   
+                };
+            };
+            if(!is_subtype(rgt_t, primitive::NUMBER) &&
+                !is_subtype(rgt_t, primitive::NUMBER)){
+                return error(ctxt, "invalid comparison operator for %b{}",
+                    strtoken(rgt_t));
+            };
+        case operator::MUL =>
+            if(is_subtype(lft_t, primitive::STR) ||
+                is_subtype(rgt_t, primitive::STR)){
+                if(is_subtype(lft_t, primitive::STR) &&
+                    !is_subtype(rgt_t, primitive::STR)){
+                    if(!is_subtype(rgt_t, primitive::NUMBER)){
+                        return error(ctxt, "cannot %brepeat a string%r by %y{}",
+                            strtoken(rgt_t));
+                    };
+                } else if(is_subtype(rgt_t, primitive::STR) &&
+                    !is_subtype(lft_t, primitive::STR)){
+                    if(!is_subtype(lft_t, primitive::NUMBER)){
+                        return error(ctxt, "cannot %brepeat a string%r by %y{}",
+                            strtoken(lft_t));
+                    };
+                } else if(!is_subtype(lft_t, rgt_t)){
+                    return error(ctxt,
+                    "type mismatch between lefthand side %y({})%r and righthand side %y({})",
+                    strtoken(lft_t), strtoken(rgt_t));
+                };
+                tpe = push_type(ctxt, tpe, primitive::STR, tk)?;
+            } else {
+                if(!untyped(lft_t) && !untyped(rgt_t)){
+                    if(lft_t != rgt_t){
+                        return error(ctxt,
+                            "type mismatch between lefthand side %y({})%r and righthand side %y({})",
+                            strtoken(lft_t), strtoken(rgt_t));
+                    };
+                    tpe = push_type(ctxt, tpe, rgt_t, tk)?;
+                } else {
+                    if(!is_subtype(ml_meta.tpe, rgt_t)){
+                        return error(ctxt,
+                            "type mismatch between lefthand side %y({})%r and righthand side %y({})",
+                            strtoken(ml_meta.tpe), strtoken(rgt_t));
+                    };
+                    if(untyped(lft_t)){
+                        tpe = push_type(ctxt, tpe, rgt_t, tk)?;
+                    } else {
+                        tpe = push_type(ctxt, tpe, lft_t, tk)?;   
+                    };
+                };
+                if(!is_subtype(tpe, primitive::NUMBER) &&
+                    !is_subtype(tpe, primitive::NUMBER)){
+                    return error(ctxt, "cannot perform arithmetic on %b{}",
+                        strtoken(tpe));
+                };
+            };
+        case =>
+            if(!untyped(lft_t) && !untyped(rgt_t)){
+                if(lft_t != rgt_t){
+                    return error(ctxt,
+                        "type mismatch between lefthand side %y({})%r and righthand side %y({})",
+                        strtoken(lft_t), strtoken(rgt_t));
+                };
+                tpe = push_type(ctxt, tpe, rgt_t, tk)?;
+            } else {
+                if(!is_subtype(lft_t, rgt_t)){
+                    return error(ctxt,
+                        "type mismatch between lefthand side %y({})%r and righthand side %y({})",
+                        strtoken(lft_t), strtoken(rgt_t));
+                };
+                if(untyped(lft_t)){
+                    tpe = push_type(ctxt, tpe, rgt_t, tk)?;
+                } else {
+                    tpe = push_type(ctxt, tpe, lft_t, tk)?;   
+                };
+            };
+            if(!is_subtype(tpe, primitive::NUMBER) &&
+                !is_subtype(tpe, primitive::NUMBER)){
+                return error(ctxt, "cannot perform arithmetic on %b{}",
+                    strtoken(tpe));
+            };
         };
+        lft_t = tpe;
+
+        // update type when it is a comparison
         tk = next_tk(ctxt, tokens, end,
             "expected %bcontant value%r, but got %y{}")?;
     };
-    meta.tpe = push_type(ctxt, meta.tpe, tpe, tokens[begin])?;
+    if(!untyped(tpe)){
+        move_ptr(ctxt, tokens[begin]);
+        meta.tpe = push_type(ctxt, meta.tpe, tpe, tokens[begin])?;
+    } else {
+        move_ptr(ctxt, tokens[begin]);
+        meta.tpe = push_type(ctxt, ml_meta.tpe, hint, tokens[begin])?;
+    };
     const node = new_node(tokens, begin);
     node.kind = path_t::EXPR;
     node.path = tokens[begin..end];
@@ -3110,10 +3214,6 @@ fn eval_member(ctxt: *context, tokens: []token, at: size, hint: primitive = prim
     case let kwd: keyword =>
         switch(kwd){
         case keyword::TODO =>
-            if(untyped(meta.tpe)){
-                move_ptr(ctxt, tk);
-                return error(ctxt, "%gtodo%r cannot infer expression type");
-            };
             end += 1;
             meta.val = kwd: tkval;
         case keyword::FAIL =>
@@ -3183,6 +3283,8 @@ fn eval_if_else(ctxt: *context, tokens: []token, at: size, hint: primitive)
     for(comp_tk(tk.val, keyword::IF)){
         // TODO: local if-else variables
         const (cond, begin_scope) = eval_expression(ctxt, tokens, end + 1)?;
+        push_type(ctxt, (cond.meta as *expr_meta).tpe,
+            primitive::NUMBER, tk, tpe_msg::BOOL)?;
         end = begin_scope;
         append(meta.conds, cond)!;
 
@@ -3342,7 +3444,7 @@ fn fix_global(meta: (*fn_meta | *var_meta)) str = {
 };
 
 // message modde for type error
-type tpe_msg = enum u8 { FN_RT, LT_RT, ASSIG, BRANCH };
+type tpe_msg = enum u8 { FN_RT, LT_RT, ASSIG, BRANCH, BOOL };
 
 // attempts to update a given current type to a new one, returning an error if
 // not possible. if exp is set to true, the error refers to left anf right hands,
@@ -3371,6 +3473,9 @@ fn push_type(ctxt: *context, current: primitive, new: primitive, pos: token,
             return error(ctxt,
                 "type mismatch between previous branches type %y({})%r and current branch type %y({})",
                 strtoken(current), strtoken(new));
+        case tpe_msg::BOOL =>
+            return error(ctxt,
+                "statement expected %b{}%r, but got %y{}", strtoken(current), strtoken(new));
         };
     };
 };
@@ -3427,7 +3532,8 @@ fn is_subtype(this: primitive, that: primitive) bool = {
     case primitive::NUMBER =>
         return this == primitive::NUMBER || is_subtype(that, this);
     case primitive::RATIO =>
-        return this == primitive::RATIO || is_subtype(that, this);
+        return this == primitive::RATIO || this == primitive::NUMBER ||
+            is_subtype(that, this);
     case primitive::VOID =>
         return this == primitive::UNIT || this == primitive::VOID;
     case =>

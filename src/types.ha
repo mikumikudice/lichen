@@ -94,6 +94,9 @@ type primitive = enum u8 {
     F32, F64,
     STR, UNIT, VOID,
     ANY, NUMBER, RATIO,
+    ARR_U8, ARR_U16, ARR_U32, ARR_U64,
+    ARR_I8, ARR_I16, ARR_I32, ARR_I64,
+    ARR_F32, ARR_F64, ARR_STR,
 };
 
 const prm_value = [
@@ -250,6 +253,12 @@ type if_else_meta = struct {
     bodies: []*ast,
 };
 
+type test_meta = struct {
+    cond: *ast,
+    global: bool,
+    line_msg: memio::stream,
+};
+
 type member_meta = struct {
     pre: (void | operator),
     val: (tkval | *ast),
@@ -258,7 +267,8 @@ type member_meta = struct {
 
 type node_meta = (*var_meta | *fn_meta | *param_meta |
     *scope_meta | *expr_meta | *funcall_meta |
-    *member_meta | *if_else_meta | primitive);
+    *member_meta | *if_else_meta | *test_meta |
+    primitive);
 
 type ast = struct {
     kind: path_t,

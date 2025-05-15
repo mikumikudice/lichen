@@ -1,3 +1,3 @@
-- implement minimal tail-call elimination
-- fixed some label-generation bugs
-- added debug info at the beginning of the function body
+- improve type checking processing of type hints
+- fix type mismatch not caught in tests/if-else.ms
+- update tests/strings.ms test to cover string comparison type decaying

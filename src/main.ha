@@ -395,10 +395,30 @@ fn color_error(fmt: str, args: fmt::field...) never = {
     os::exit(1);
 };
 
-fn error(file: (*context | void), fmt: str,
+fn error_line(ctxt: *context, buffer: *memio::stream) void = {
+    const max = len(ctxt.src);
+    const index = strings::index(
+        u8tostr(ctxt.src[ctxt.lst .. max]), "\n") as size + ctxt.lst;
+    assert(index > ctxt.lst);
+
+    const line = fmt::asprint(ctxt.lin + 1)!;
+    defer free(line);
+
+    fmt::fprintfln(buffer, "\n%b{} %d{}", line,
+        u8tostr(ctxt.src[ctxt.lst .. index]))!;
+
+    for(let c = 0z; c < len(line) + 1; c += 1){
+        fmt::fprint(buffer, " ")!;
+    };
+    const arrow = strings::lpad("^", '~', ctxt.cln + 1)!;
+    defer free(arrow);
+    fmt::fprintfln(buffer, "%r{}", arrow)!;
+};
+
+fn error(ctxt: (*context | void), fmt: str,
     args: fmt::field...) COMPERR = {
     let buffer = alloc(memio::dynamic())!;
-    match(file){
+    match(ctxt){
     case void =>
         fmt::fprintfln(buffer, fmt, args...)!;
     case let f: *context =>
@@ -406,22 +426,7 @@ fn error(file: (*context | void), fmt: str,
         defer free(pos);
         fmt::fprintf(buffer, "%R{}:%r ", pos)!;
         fmt::fprintfln(buffer, fmt, args...)!;
-
-        const max = len(f.src);
-        const index = strings::index(u8tostr(f.src[f.lst..max]), "\n") as size + f.lst;
-        assert(index > f.lst);
-
-        const line = fmt::asprint(f.lin + 1)!;
-        defer free(line);
-
-        fmt::fprintfln(buffer, "\n%b{} %d{}", line,
-            u8tostr(f.src[f.lst..index]))!;
-        for(let c = 0z; c < len(line) + 1; c += 1){
-            fmt::fprint(buffer, " ")!;
-        };
-        const arrow = strings::lpad("^", '~', f.cln + 1)!;
-        defer free(arrow);
-        fmt::fprintfln(buffer, "%r{}", arrow)!;
+        error_line(f, buffer);
     };
     return (1, buffer);
 };

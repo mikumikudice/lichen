@@ -23,7 +23,7 @@ pub fn main() void = io {
         io::print("test 2 fail\n");
     };
 
-    if z && x == y - 1 {
+    if z && x u32 == y - 1 {
         io::print("test 3 ok\n");
     } else {
         io::print("test 3 fail\n");
