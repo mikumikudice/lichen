@@ -192,12 +192,6 @@ export fn main() void = {
         !(sharedlib || staticlib))){
     case let obj: comp_obj =>
         defer free_module(obj);
-        if(just_check){
-            if(!silent) fmt::println(memio::string(obj.buffer)!)!;
-            return;
-        };
-        run_cmd(silent, "mkdir", "-p", temp);
-
         const mold_args = []: []str;
         defer free(mold_args);
         defer for(let obj ..& mold_args) free(obj);
@@ -217,6 +211,7 @@ export fn main() void = {
 
         append(mold_args, also_link...)!;
 
+        if(!just_check) run_cmd(silent, "mkdir", "-p", temp);
         append(mold_args, gen_obj(outfile, memio::string(obj.buffer)!, temp))!;
 
         let skip = []: []str;
@@ -228,6 +223,10 @@ export fn main() void = {
             color(memio::string(err.1)!);
             os::exit(err.0);
         case void => void;
+        };
+        if(just_check){
+            if(!silent) fmt::println(memio::string(obj.buffer)!)!;
+            return;
         };
         const rt_out = strings::concat(temp, "rt.o")!;
         const rt_src = strings::concat(libpath, "rt.asm")!;
@@ -283,18 +282,20 @@ fn gen_obj(dest: str, code: str, temp: str) str = {
     defer free(bin_src);
     const bin_out = fmt::asprintf("{}{}.o", temp, objf)!;
 
-    const file =
-        match(os::create(qbe_out, fs::mode::USER_RWX)){
-        case let f: io::file => yield f;
-        case let e: fs::error =>
-            color_error("%Robject dispatch error:%r {}",
-                fs::strerror(e));
-        };
-    io::write(file, strings::toutf8(code))!;
-    io::close(file)!;
+    if(!just_check){
+        const file =
+            match(os::create(qbe_out, fs::mode::USER_RWX)){
+            case let f: io::file => yield f;
+            case let e: fs::error =>
+                color_error("%Robject dispatch error:%r {}",
+                    fs::strerror(e));
+            };
+        io::write(file, strings::toutf8(code))!;
+        io::close(file)!;
 
-    run_cmd(silent, "qbe", "-o", bin_src, qbe_out);
-    run_cmd(silent, "as" , "-o", bin_out, bin_src);
+        run_cmd(silent, "qbe", "-o", bin_src, qbe_out);
+        run_cmd(silent, "as" , "-o", bin_out, bin_src);
+    };
     return bin_out;
 };
 
