@@ -1,5 +1,5 @@
 # disclaimer
-until the compiler is at 1.0, some of these features might be unavailable, be considered invalid syntax, .
+until the compiler is at 1.0, some of these features might be unavailable, considered invalid syntax, or cause compiler crashes.
 
 # functions and variables and values
 
@@ -18,8 +18,8 @@ type float = f32 | f64;
 // string
 type string = str;
 
-// type "empty" unit, "never" void and error
-type miscellany = unit | void | fail;
+// type "empty" unit, "never" void
+type miscellany = unit | void;
 ```
 moss also has the keyword `todo` which evaluates to the zeroed-value of any given context. normally used for unfinished code, as the name suggests.
 
@@ -46,7 +46,7 @@ fn meow() unit = io { // impure function that produces side effects from the "io
 };
 
 pub fn main() void = do { // the do keyword denotes "any side effect"
-    io::println("mornin' sailor!")!;
+    meow();
 };
 ```
 notes:
@@ -57,12 +57,13 @@ notes:
 
 
 ## variables
-variables are always immutable, both its value as the namespace itself, i.e., once assigned, nothing about the variable can be changed. in contrast to most programming languages, variable names can start with numbers as long as they are not valid numeric literals (e.g., `0x1`, `0b01`, `007`, etc).
+variables are always immutable, both its value as the namespace itself, i.e., once assigned, nothing about the variable can be changed. in contrast to most programming languages, variable names can start with numbers as long as they are not valid numeric literals (e.g., `0x1`, `0b01`, `007`, etc) and also has prime notation.
 ```rust
 let x u32 = 4;
 let y = x;                  // inferred type
 let z u64 = (x * y) u64;    // subtype casting
-let z' = z + 1;             // prime notation is valid syntax
+let 1st = x + y;            // variable name starting with a number
+let z' = z + 1st;           // prime notation is valid syntax
 ```
 you may also declare multiple variables of the same type in the same line or different types with when they are inferred from the values.
 ```rust
@@ -104,8 +105,10 @@ fn bar() u32 = { // cannot be accessed
 fn egg() unit = { // not used by the module and cannot be accessed, then it won't be code-gen'ed
     // nothing
 };
-
+```
+```rust
 // main.ms
+
 my_mod = use "mod.ms";
 
 pub fn main() void = {
@@ -114,7 +117,7 @@ pub fn main() void = {
 ```
 
 ## if-else blocks
-if-else blocks in moss can define limited-scope variables available only for the entire if-else block chain. the evaluation expression must be an integer once there is no boolean type.
+if-else blocks in moss can define limited-scope variables available only for the entire if-else block chain. the evaluation expression must be a numerical type, once there is no boolean type or "truthy" and "falsy" values.
 ```rust
     let x = foo();
     if y = bar(x); y > 4 {
@@ -129,7 +132,7 @@ notes:
 - just like functions, the if-else chain must end in a semicolon.
 - y is not visible outside the chain blocks.
 
-if statements can also be assigned as values, as long they are exhaustive.
+if statements can also be assigned as values, as long they are exhaustive or unit is a valid variation of the type.
 ```rust
 let x u32 = 4;
 let y u32 = 5;
@@ -141,7 +144,7 @@ let z = if x > y {
 ```
 
 ## for iterator
-moss is functional, which means there is no mutable state. anyhow, something alike for-loops is available for iterating over strings and arrays.
+moss is a functional language, which means there is no mutable state. anyhow, something alike for-loops is available for iterating over strings and arrays.
 ```rust
 let text str = "LoWeR cAsE";
 let lower = for c .. text {
@@ -302,14 +305,14 @@ type vec2 = record {
 };
 
 let up = vec2 { y = 1 };
-let left = vec 2 {x = -1 };
+let left = vec 2 { x = -1 };
 let upleft = up + left; // results in {x = -1, y = 1 }
 let force = upleft * 33; // results in {x = -33, y = 33 }
 ```
 once records are immutable and many times a copy with a single difference may be very useful, moss also provides a quick syntax to make copies of records with single changes.
 ```rust
-let v = vec2 {x = 1, y = 3};
-let v' = {v | y = 1};
+let v = vec2 { x = 1, y = 3 };
+let v' = { v | y = 1 };
 ```
 
 ### tagged unions
@@ -332,40 +335,90 @@ pub fn main() void = {
 };
 ```
 
+### linear constructor/deconstructor
+some functions can be wrapped around a deconstructor, yielding a linear type that has a life time on a automatic reference counting fashion. this way, when a variable is not needed anymore, it can be automatically assigned to a cleanup function. for instance:
+```rust
+// runtime wrapper for the open syscall
+fn rt_open(filename str, flags: u32, mode u32) i32 = rt$rt_open;
+
+// runtime wrapper for the close syscall
+fn rt_close(f_handle u32) unit = rt$rt_close;
+
+type handle = u32;
+type error = !i32;
+
+pub type flags = enum u32 {
+    READONLY  = 0o0000,
+    WRITEONLY = 0o0001,
+    READWRITE = 0o0002,
+    CREATE    = 0o0100,
+    EXEC      = 0o0200,
+    TRUNCATE  = 0o1000,
+    APPEND    = 0o2000,
+};
+
+fn wrap_file_error(filename str, flags: u32, mode u32) error!handle = rt {
+    => if file = rt_open(filename, flags, mode); file < 0 {
+        => file !i32;
+    } else {
+        => file u32;
+    };
+};
+
+pub fn open(filename str, flags: u32) error!handle = rt {
+    => wrap_file_error(filename, flags, 0o700)@rt_open;
+};
+```
+
+```rust
+fs = use "fs.ms";
+io = use "io.ms";
+
+pub fn main() void = fs & io {
+    // instantiate a file handle. on error, io::fatal is called
+    // `file` is created with refcount of 1
+    let file = fs::open("foo.txt", fs::flags::CREATE |
+        fs::flags::READWRITE) ! io::fatal("could not create \"foo.txt\" file");
+
+    // write to the file handle
+    io::fprint(file, "mornin' sailor!\n")!;
+
+    // at the end of the scope, the `file` refcount falls to zero,
+    // implicitly calling rt_close on it
+};
+```
+if the same cleanup function is manually called on the variable, its refcount is also decreased and the implicit call is dropped. note that after this manual call, the linear object becomes unusable.
+
 ## effect-system
 at bottom level of the language runtime, there lies the OS syscalls implemented with assembly code. these low-level functions are impure by definition and should not be called directly, instead, the standard library provides abstractions for dealing with the file system, operating system, IO operations, etc. each standard module has pure and impure functions that the compiler will match against the type notations of each function. for instance, a function that uses an impure function of the io module should be tagged as `io` (or any given alias), and so on. functions may also be tagged with `do`, which can use any function but other `do` functions. e.g.
 ```rust
 // io.ms
-pub fn print(txt str) !unit = do {
-    let out i32 = @rt_write(@rt_stdout, txt);
-    => if out < 0 {
-        => fail;
+
+// runtime wrappers for the std handles
+pub stdin  u32 = $rt_stdin;
+pub stdout u32 = $rt_stdout;
+pub stderr u32 = $rt_stderr;
+
+// runtime wrappers for io functions
+fn rt_gets(handle u32, buff str) i32 = rt$rt_gets;
+fn rt_puts(handle u32, data str) i32 = rt$rt_puts;
+
+// prints `data` to the stdout
+pub fn print(data str) unit = rt {
+    fprint(stdout, data);
+};
+
+// prints `data` followed by a new line to the stdout
+pub fn println(data str) unit = rt {
+    if #data {
+        print(data);
     };
+    print("\n"); // TODO: make it a single call with string concatenation
 };
-
-pub fn println(txt str) !unit = do {
-    => print(txtg + "\n");
-};
-
-pub fn scan(len str) !str = do {
-    let res i32 | str = @rt_read(@rt_stdin, len);
-    => match res {
-    i32 => fail;
-    out str => out;
-    };
-};
-
-pub fn scanln(len str) !str = do {
-    let out = scan(len)?;
-    let size = #out;
-    => if size > 2 {
-        => out[0..(size - 2)];
-    } else {
-        => "";
-    };
-};
-
+```
+```rust
 // main.ms
+
 io = use "io.ms";
 
 pub fn main() void = io { // main can only use io impure functions
@@ -384,12 +437,13 @@ pub fn main() void = fs & io & os {
     let name, _ = args.pop() ! // now, the second iterator copy is ignored
         io::fatal("no file name was given"); // try to pop the next argument from the new iterator and halt early on an error
     
-    let file = match fs::open(name, "w") { // try to open a file named after the second cli argument with write permissions
+    let file =
+        match fs::open(name, fs::flags::WRITEONLY) { // try to open a file named after the second cli argument with write permissions
         e fs::error => io::fatal(fs::strerror(e)); // halt on error printing the said error message
         f fs::handle => f; // yield back the file handle on success
         };
+
     io::fprintln(file, "mornin' sailor!")!; // print to the file
-    fs::close(file); // close the handle
 };
 ```
 notes:
@@ -430,7 +484,7 @@ pub fn main() void = do {
     // some code in case of an error
     let assets = load_src() ! io::fatal("asset loading failed!");
     
-    // the interrogation operator may be also used to
+    // the interrogation operator may also be used to
     // yield another given value in case of an error
     let icon = load_file("icon.ico") ? unit;
     match icon {
@@ -475,6 +529,12 @@ let z u32 = 4 * 5 + 2 / 5;                  // equivalent to ((4 * 5) + 2) / 5
 let a u32 = 4 == 3 + 1 && 5 * 2 + 1 == 11;  // equivalent to (4 == (3 + 1)) && (( (5 * 2) + 1 ) == 11)
 let b u32 = 6 > 1 == 1;                     // equivalent to (6 > 1) == 1
 let c u32 = 8 < 4 == 0;                     // equivalent to (8 < 4) == 0
+```
+moss consider plus and minus as valid unary operators and can be used as an prefix to any value, except for the plus on the middle of an expression. for instance:
+```rust
+let x = +1;
+let y = -1;
+let z = +x + -y;
 ```
 
 # trivia
