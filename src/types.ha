@@ -113,10 +113,9 @@ const opr_value = [
     "logic or", "logic and",
     "boolean or", "boolean and",
     "not", "plus", "minus", "multiply",
-    "integer division", "ratio",
-    "modulo", "bubble error",
-    "bang", "heap-alloc", "raw access",
-    "map", "range", "length"
+    "integer division", "ratio division",
+    "modulo", "bubble error", "bang",
+    "heap-alloc", "map", "range", "length"
 ];
 
 type operator = enum u8 {
@@ -256,7 +255,7 @@ type if_else_meta = struct {
 type test_meta = struct {
     cond: *ast,
     global: bool,
-    line_msg: memio::stream,
+    line_msg: *memio::stream,
 };
 
 type member_meta = struct {

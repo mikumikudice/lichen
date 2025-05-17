@@ -1,3 +1,6 @@
+// parsing test for various operators
+// and character literals
+
 pub fn main() void = {
     let x u32 = 'a' + 7 * 4;
     let y = !x << 7 & 0x11f;

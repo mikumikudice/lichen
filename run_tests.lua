@@ -37,6 +37,7 @@ local tests = {
     { src = "strings", input = "", output = "ok\n", code = 0, nocomp = false },
     { src = "oper", input = "", output = "", code = 0, nocomp = false },
     { src = "bool", input = "", output = "", code = 0, nocomp = false },
+    { src = "math", input = "", output = "test ok\n", code = 0, nocomp = false },
 
     -- io and effects --
     { src = "hello", input = "", output = "mornin' sailor!\n", code = 0, nocomp = false },
@@ -48,6 +49,9 @@ local tests = {
         "test 4 ok\ntest 5 ok\ntest 6 ok\n", code = 0, nocomp = false },
     { src = "recursive", input = "", output = "worked!\n", code = 0, nocomp = false },
     { src = "tailcall", input = "", output = "loop!\nloop!\nloop!\nloop!\n", code = 0, nocomp = false },
+
+    -- miscellany --
+    { src = "test-block", input = "", output = "", code = 0, nocomp = false },
 }
 
 local failed = {}

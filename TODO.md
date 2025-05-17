@@ -1,7 +1,7 @@
 - implement arrays
 - implement match block
 - implement iterators
-- tail-call optimization
+- implement global test block
 - fix memory leaks
 - string concatenation at runtime
 - tagged unions

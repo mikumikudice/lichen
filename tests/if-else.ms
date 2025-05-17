@@ -1,3 +1,5 @@
+// parsing test for branching and lazy expression evaluation
+
 io = use "io.ms";
 
 pub fn main() void = io {

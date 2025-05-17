@@ -1,3 +1,5 @@
+// parsing test for recursive function call
+
 io = use "io.ms";
 
 pub fn main() void = io {

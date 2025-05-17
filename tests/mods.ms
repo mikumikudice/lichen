@@ -1,5 +1,6 @@
 // parsing test for modules, nested function
 // calls, FFI symbols and effect system.
+
 io = use "io.ms";
 
 pub fn main() void = io {

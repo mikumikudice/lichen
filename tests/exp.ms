@@ -1,3 +1,6 @@
+// parsing test for function calls, expression
+// and return expresison/values
+
 pub fn main() void = {
     let x = 7 u32;
     let y = x + foo(x);

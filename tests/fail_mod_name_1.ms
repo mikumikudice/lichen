@@ -1,2 +1,5 @@
+// test for conflict between module binding
+// and variable name duplication
+
 io u32 = 4;
 io = use "io.ms";

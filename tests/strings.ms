@@ -1,3 +1,5 @@
+// various tests for string operations
+
 io = use "io.ms";
 
 msg str = "mornin' " + "sailor!";

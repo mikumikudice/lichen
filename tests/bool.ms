@@ -1,3 +1,5 @@
+// parsing test for boolean operators
+ 
 pub fn main() void = {
     let true  u8 = 1;
     let false u8 = 0;

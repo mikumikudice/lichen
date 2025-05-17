@@ -1,3 +1,5 @@
+// parsing test for math operations and operators
+
 io = use "io.ms";
 
 pub fn main() void = io {
@@ -5,8 +7,8 @@ pub fn main() void = io {
     let y = (x - 1) i32;
 
     if x == 0 && y == -1 {
-        io::put("test ok\n");
+        io::println("test ok");
     } else {
-        io::put("test fail\n");
+        io::println("test fail");
     };
 };

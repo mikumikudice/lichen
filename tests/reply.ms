@@ -1,6 +1,7 @@
 // temporary example to check if stdio is working
 // and if nested function (calls) and modules are
 // working properly.
+
 io  = use "io.ms";
 mem = use "mem.ms";
 

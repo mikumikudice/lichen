@@ -175,7 +175,8 @@ fn move_ptr(ctxt: *context, tk: token) void = {
 
 // checks if a given operator is unary
 fn is_unary(opr: operator) bool = {
-    return opr == operator::LENGTH || opr == operator::NOT || opr == operator::BANG;
+    return opr == operator::LENGTH || opr == operator::NOT ||
+        opr == operator::BANG || opr == operator::MIN;
 };
 
 // checks if a given operator is a binary
@@ -251,6 +252,9 @@ fn free_nodes(_node: nullable *ast) void = {
         void;
     case primitive =>
         void;
+    case let test: *test_meta =>
+        io::close(test.line_msg)!;
+        free(test.line_msg);
     case let memb: *member_meta =>
         defer free(memb);
         if(memb.val is *ast){
@@ -588,7 +592,7 @@ fn qbe_t(tpe: primitive, md: mode = mode::REAL) str = {
         assert(md != mode::ASSIGN);
         return prm_value[tpe];
     case =>
-        assert(false);
+        //assert(false);
         color_error("%Runreachable:%r unknown type %y{}", prm_value[tpe]);
     };
 };
@@ -1205,7 +1209,9 @@ fn gen_file(ctxt: *context, tokens: []token, buffer: *memio::stream,
             };
             const meta = this.meta as *var_meta;
             if(meta.name.pub){
-                fmt::fprintf(buffer, "export ")!;
+                fmt::fprint(buffer, "section \".rod\"\nexport ")!;
+            } else {
+                fmt::fprintfln(buffer, "section \".rod\"")!;
             };
             const name = strings::replace(meta.name.id, "'", ".q")!;
             fmt::fprintf(buffer, "data ${} = {{ ", name)!;
@@ -1229,7 +1235,7 @@ fn gen_file(ctxt: *context, tokens: []token, buffer: *memio::stream,
                         i += 1;
                     };
                 };
-                fmt::fprintf(buffer, "l {}, l {}", length + 8, length)!;
+                fmt::fprintf(buffer, "l {}, l {}", length + 16, length)!;
                 for(let slc .. slices){
                     fmt::fprintf(buffer, ", b \"{}\"", slc)!;
                 };
@@ -1341,9 +1347,9 @@ fn gen_file(ctxt: *context, tokens: []token, buffer: *memio::stream,
     };
     const lit_c = len(ctxt.literals);
     for(let lit = 0z; lit < lit_c; lit += 1){
-        fmt::fprintfln(buffer, "data $lit.{} = {{ l {}, l {}, b \"{}\" }}", 
-            lit, true_size(ctxt.literals[lit]) + 8, true_size(ctxt.literals[lit]),
-            ctxt.literals[lit])!;
+        const length = true_size(ctxt.literals[lit]);
+        fmt::fprintfln(buffer, "section \".rod\"\ndata $lit.{} = {{ l {}, l {}, b \"{}\" }}", 
+            lit, length + 16, length, ctxt.literals[lit])!;
     };
 };
 
@@ -1516,6 +1522,20 @@ fn gen_scope(ctxt: *context, buffer: *memio::stream, node: nullable *ast,
                 assert(false, "TODO");
             case keyword::MATCH =>
                 assert(false, "TODO");
+            case keyword::TEST =>
+                fmt::fprintfln(buffer, "\n\tdbgloc {}, {}",
+                    this.path[0].lin + 1, this.path[0].cln + 1)!;
+
+                const meta = this.meta as *test_meta;
+                const name = fmt::asprintf("test.{}.{}",
+                    this.path[0].lin + 1, this.path[0].cln + 1)!;
+                defer free(name);
+                gen_exp(ctxt, buffer, meta.cond, name, (meta.cond.meta as *expr_meta).tpe)?;
+
+                fmt::fprintfln(buffer, "\tjnz %{0}, @{0}.ok, @{0}.fail\n@{0}.fail\n"
+                    "\t%.stderr =l loadsw $rt_stderr\n\tcall $rt_puts(w %.stderr, l $lit.{1})\n"
+                    "\tcall $rt_exit(w 1)\n@{0}.ok",
+                    name, push_str(ctxt, memio::string(meta.line_msg)!))!;
             case =>
                 assert(false, "unreachable");
             };
@@ -1847,7 +1867,7 @@ fn gen_funcall(ctxt: *context, buffer: *memio::stream,
 // casting for the given member type and expected `tpe` type.
 fn gen_move(ctxt: *context, header: *memio::stream, buffer: *memio::stream,
     dest: str, member: *ast, tpe: primitive) (void | COMPERR) = {
-    assert(!strings::hasprefix(dest, "%"));
+    assert(!strings::hasprefix(dest, "%"), dest);
     const move_t = qbe_t(tpe, mode::ASSIGN);
     const m_meta = member.meta as *member_meta;
     match(m_meta.val){
@@ -1895,7 +1915,8 @@ fn gen_move(ctxt: *context, header: *memio::stream, buffer: *memio::stream,
                         assert(false, "unreachable");
                     };
                 };
-                if(var.name.itype == tpe || is_subtype(tpe, var.name.itype)){
+                if(var.name.itype == tpe || is_subtype(tpe, var.name.itype) ||
+                    type_size(tpe) <= type_size(var.name.itype)){
                     fmt::fprintfln(buffer, "{}\t%{} ={} copy %{}",
                         memio::string(header)!, dest, move_t, name)!;
                 } else {
@@ -2004,8 +2025,8 @@ fn gen_member(ctxt: *context, buffer: *memio::stream,
                         assert(false, "unreachable");
                     };
                 };
-                if(var.name.itype == exp_type ||
-                    is_subtype(exp_type, var.name.itype)){
+                if(var.name.itype == exp_type || is_subtype(exp_type, var.name.itype) ||
+                    type_size(exp_type) <= type_size(var.name.itype)){
                     return fmt::asprintf("%{}", name)!;
                 } else {
                     const wrap = fmt::asprintf("%{}.{}", name, move_t)!;
@@ -2044,8 +2065,9 @@ fn gen_member(ctxt: *context, buffer: *memio::stream,
         case *if_else_meta =>
             const wrap = fmt::asprintf("%exp.{}.{}",
                 node.path[0].lin + 1, node.path[0].cln + 1)!;
+            const slice = strings::sub(wrap, 1);
 
-            gen_if_else(ctxt, buffer, node, wrap)?;
+            gen_if_else(ctxt, buffer, node, slice)?;
             return wrap;
         };
     case let tok: tkval =>
@@ -2684,6 +2706,9 @@ fn eval_scope(ctxt: *context, tokens: []token, at: size, hint: primitive = primi
                     v_meta.rets = true;
                     tpe = push_type(ctxt, tpe, v_meta.name.itype,
                         ret_pos, tpe_msg::FN_RT)?;
+                case *test_meta =>
+                    move_ptr(ctxt, tk);
+                    return error(ctxt, "cannot evaluate to test blocks");
                 };
             } else {
                 move_ptr(ctxt, tk);
@@ -2706,6 +2731,7 @@ fn eval_scope(ctxt: *context, tokens: []token, at: size, hint: primitive = primi
                 };
             case *var_meta =>
                 push_var(ctxt, exp)?;
+            case *test_meta => void;
             case *funcall_meta => void;
             };
         };
@@ -2751,11 +2777,25 @@ fn eval_test(ctxt: *context, tokens: []token, at: size) ((*ast, size) | COMPERR)
     const begin = at;
     assert(comp_tk(tokens[at].val, keyword::TEST));
 
-    const buffer = memio::dynamic();
-    error_line(ctxt, &buffer);
-
     const (exp, end) = eval_expression(ctxt, tokens, begin + 1,
         primitive::NUMBER, tpe_msg::BOOL)?;
+
+    move_ptr(ctxt, tokens[at + 1]);
+    const buffer = alloc(memio::dynamic())!;
+
+    defer free(buffer);
+    defer io::close(buffer)!;
+
+    error_line(ctxt, buffer);
+
+    const line = strings::multireplace(memio::string(buffer)!,
+        ("\t", "\\t"), ("\n", "\\n"), ("\"", "\\\""), ("\'", "\\\'"))!;
+    defer free(line);
+
+    const msg = fmt::asprintf("%R{}%r test failed\\n{}\\n", gen_pos(ctxt), line)!;
+    defer free(msg);
+
+    const lit = add_color(strings::toutf8(msg));
 
     const node = new_node(tokens, begin);
     node.kind = path_t::STATEMENT;
@@ -2763,7 +2803,7 @@ fn eval_test(ctxt: *context, tokens: []token, at: size) ((*ast, size) | COMPERR)
     node.meta = alloc(test_meta {
         cond = exp,
         global = false,
-        line_msg = buffer,
+        line_msg = lit,
     })!;
     return (node, end);
 };
@@ -3206,8 +3246,25 @@ fn eval_member(ctxt: *context, tokens: []token, at: size, hint: primitive = prim
                     idt.id);
             };
         };
+        if(meta.pre is operator && is_subtype(meta.tpe, primitive::STR)){
+            if(meta.pre as operator != operator::LENGTH){
+                move_ptr(ctxt, pos);
+                return error(ctxt, "invalid unary operator for %y{}",
+                    strtoken(primitive::STR));
+            };
+            meta.tpe = primitive::U64;
+        };
     case let txt: str =>
-        meta.tpe = push_type(ctxt, meta.tpe, primitive::STR, tk)?;
+        if(meta.pre is operator){
+            if(meta.pre as operator != operator::LENGTH){
+                move_ptr(ctxt, pos);
+                return error(ctxt, "invalid unary operator for %y{}",
+                    strtoken(primitive::STR));
+            };
+            meta.tpe = primitive::U64;
+        } else {
+            meta.tpe = primitive::STR;
+        };
         end += 1;
         meta.val = txt: tkval;
         // TODO: casting to composite types

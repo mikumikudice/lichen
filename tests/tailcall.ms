@@ -1,3 +1,5 @@
+// parsing test for tail-call elimination
+
 io = use "io.ms"; 
 
 pub fn main() void = io {

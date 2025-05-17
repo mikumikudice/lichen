@@ -1,3 +1,8 @@
-- improve type checking processing of type hints
-- fix type mismatch not caught in tests/if-else.ms
-- update tests/strings.ms test to cover string comparison type decaying
+- re-added minus as an unary operator
+- fixed edge case with if-else code dispatch
+- fixed type evaluation of length operator on strings
+- optimized io module and added error functions
+- moved globals and string literals to the rod section
+- fixed type conversion IR code
+- updated test units commenting
+- minor code updates to accommodate said updates

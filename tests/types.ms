@@ -1,3 +1,5 @@
+// basic parsing test for type checking
+
 pub fn main() void = {
     let x u8 = 4;
     let y i16 = 8;
