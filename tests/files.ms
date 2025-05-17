@@ -1,12 +1,15 @@
-use rt;
+fs = use "fs.ms";
+io = use "io.ms";
 
-pub main = fn() void & rt {
-    file = rt::open("foo.txt", 64 | 2, 0o700);
+pub fn main() void = fs & io {
+    let file = fs::open("foo.txt", fs::CREATE | fs::READWRITE);
     if file > 0 {
-        rt::puts(file u32, "mornin' sailor!\n");
-        rt::close(file u32);
-        rt::unlink("foo.txt");
+        io::fprint(file u32, "mornin' sailor!\n");
+        fs::close(file u32);
+        fs::remove("foo.txt");
+
+        io::println("working!");
     } else {
-        rt::exit(file);
+        io::fatal("failed :c");
     };
 };

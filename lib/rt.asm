@@ -113,6 +113,8 @@ rt_gets:
     ret
 
     .err:
+    mov rdi, rax
+    sub rdi, 126
     call rt_exit
 
 ; fn(handler u32, data str) u32
@@ -140,6 +142,7 @@ rt_puts:
 
     .err:
     mov rdi, rax
+    sub rdi, 126
     call rt_exit
 
 ; fn(handler u32, data u8) u32
@@ -194,13 +197,13 @@ rt_alloc:
     ret
     .err:
     mov rdi, rax
+    sub rdi, 126
     call rt_exit
 
 ; fn(ptr u64) unit
 rt_free:
-    push rdx
     push rsi
-    xor rsi, rsi        ; clear unused argument
+    mov rsi, [rdi]      ; get pointer size
     mov rax, 0bh        ; munmap syscall
     syscall
 
@@ -208,9 +211,10 @@ rt_free:
     jl .err
 
     pop rsi
-    pop rdx
     ret
     .err:
+    mov rdi, rax
+    sub rdi, 126
     call rt_exit
 
 ; fn(dest raw, src raw, size u64) raw
@@ -340,8 +344,8 @@ rt_unlink:
     push rdx
 
     mov rsi, rdi
-    mov rdx, [rdi]
-    add rsi, 8
+    mov rdx, [rdi + 8]
+    add rsi, 16
 
     mov rdi, rbp
     mov byte [rdi], 0
@@ -360,6 +364,7 @@ rt_unlink:
     ret
     .err:
     mov rdi, rax
+    sub rdi, 126
     call rt_exit
 
 ; fn(old_filepath str, new_filepath str) i32

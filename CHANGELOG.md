@@ -1,8 +1,3 @@
-- re-added minus as an unary operator
-- fixed edge case with if-else code dispatch
-- fixed type evaluation of length operator on strings
-- optimized io module and added error functions
-- moved globals and string literals to the rod section
-- fixed type conversion IR code
-- updated test units commenting
-- minor code updates to accommodate said updates
+- added fs module
+- fixed free syscall
+- added test for the fs module

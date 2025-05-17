@@ -1,4 +1,5 @@
 - implement arrays
+- implement empty assignments
 - implement match block
 - implement iterators
 - implement global test block

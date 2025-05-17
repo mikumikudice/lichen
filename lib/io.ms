@@ -34,6 +34,12 @@ pub fn errorln(data str) unit = rt {
     error("\n"); // TODO: make it a single call with string concatenation
 };
 
+// prints `data` followed by a new line to the stderr and halts the program
+// TODO: mark this function as !void and return exit code of 1 on halt
+pub fn fatal(data str) void = rt {
+    errorln(data);
+};
+
 // prints `data` to the given handle
 pub fn fprint(handle u32, data str) unit = rt {
     if #data {

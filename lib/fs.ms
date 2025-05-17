@@ -1,0 +1,25 @@
+// the fs module provides all sorts of file system functions
+
+pub READONLY  u32 = 0o0000;
+pub WRITEONLY u32 = 0o0001;
+pub READWRITE u32 = 0o0002;
+pub CREATE    u32 = 0o0100;
+pub EXEC      u32 = 0o0200;
+pub TRUNCATE  u32 = 0o1000;
+pub APPEND    u32 = 0o2000;
+
+// runtime wrapper for the open syscall
+fn rt_open(filename str, flags u32, mode u32) i32 = rt$rt_open;
+
+// runtime wrapper for the close syscall
+pub fn close(handle u32) unit = rt$rt_close;
+
+// runtime wrapper for the unlink syscall
+pub fn remove(filename str) i32 = rt$rt_unlink;
+
+// runtime wrapper for the rename syscall
+pub fn rename(oldname str, newname str) i32 = rt$rt_rename;
+
+pub fn open(filename str, flags u32) i32 = rt {
+    => rt_open(filename, flags, 0o7000);
+};
