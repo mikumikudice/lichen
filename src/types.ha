@@ -8,7 +8,7 @@ use memio;
 // record := "record", "{",(ident, type, eol)+, "}", eol
 // enum := "enum", [type], "{", (ident, ["=", const_val]*), "}", eol
 // union := type, ["|", type]+
-// type := prim | ident | ("(", type, [",", type]+ ")")
+// type := [[type], "!"], prim | ident | ("(", type, [",", type]+ ")")
 // prim := u8 | u16 | u32 | u64 | i8 | i16 | i32 | i64 | str | unit | void
 //
 // ident := (A-Z | a-z | 0-9 | _)+
