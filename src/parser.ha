@@ -2548,6 +2548,10 @@ fn eval_efx(ctxt: *context, tokens: []token, at: size)
 fn validate_efx(ctxt: *context, called: *fn_meta, caller: []tkval)
     (void | COMPERR) = {
     if(len(caller) > 0 && comp_tk(caller[0], keyword::DO)){
+        if(len(called.effects) > 0 && comp_tk(called.effects[0], keyword::DO)){
+            return error(ctxt, "functions tagged with %b`do` effect%r cannot "
+                "call another function also tagged with `do`");
+        };
         return;
     };
     if(called.origin is void || called.origin as str == ctxt.name){
