@@ -344,7 +344,7 @@ fn rt_open(filename str, flags: u32, mode u32) i32 = rt$rt_open;
 // runtime wrapper for the close syscall
 fn rt_close(f_handle u32) unit = rt$rt_close;
 
-type handle = u32;
+type handle = u32@rt_open;
 type error = !i32;
 
 pub type flags = enum u32 {
@@ -361,12 +361,12 @@ fn wrap_file_error(filename str, flags: u32, mode u32) error!handle = rt {
     => if file = rt_open(filename, flags, mode); file < 0 {
         => file !i32;
     } else {
-        => file u32;
+        => file handle;
     };
 };
 
 pub fn open(filename str, flags: u32) error!handle = rt {
-    => wrap_file_error(filename, flags, 0o700)@rt_open;
+    => wrap_file_error(filename, flags, 0o700);
 };
 ```
 
@@ -387,7 +387,7 @@ pub fn main() void = fs & io {
     // implicitly calling rt_close on it
 };
 ```
-if the same cleanup function is manually called on the variable, its refcount is also decreased and the implicit call is dropped. note that after this manual call, the linear object becomes unusable.
+if the same cleanup function is manually called on the variable, its refcount is also decreased and the implicit call is dropped. note that after this manual call, the linear object becomes unusable. those said early cleanups cannot happen on branching code i.e. if-else/match blocks.
 
 ## effect-system
 at bottom level of the language runtime, there lies the OS syscalls implemented with assembly code. these low-level functions are impure by definition and should not be called directly, instead, the standard library provides abstractions for dealing with the file system, operating system, IO operations, etc. each standard module has pure and impure functions that the compiler will match against the type notations of each function. for instance, a function that uses an impure function of the io module should be tagged as `io` (or any given alias), and so on. functions may also be tagged with `do`, which can use any function but other `do` functions. e.g.

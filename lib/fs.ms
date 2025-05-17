@@ -1,5 +1,6 @@
 // the fs module provides all sorts of file system functions
 
+// [fs::open] file flags
 pub READONLY  u32 = 0o0000;
 pub WRITEONLY u32 = 0o0001;
 pub READWRITE u32 = 0o0002;
@@ -20,6 +21,8 @@ pub fn remove(filename str) i32 = rt$rt_unlink;
 // runtime wrapper for the rename syscall
 pub fn rename(oldname str, newname str) i32 = rt$rt_rename;
 
+// opens a file and returns a file handle
+// TODO: wrap negative values as an error type
 pub fn open(filename str, flags u32) i32 = rt {
     => rt_open(filename, flags, 0o7000);
 };
