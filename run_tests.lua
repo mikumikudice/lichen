@@ -57,7 +57,7 @@ local tests = {
 
 local failed = {}
 for _, test in pairs(tests) do
-    local cmd = "mmc " .. flags .. " tests/" .. test.src .. ".lic " .. tmp .. test.src
+    local cmd = "lcc " .. flags .. " tests/" .. test.src .. ".lic " .. tmp .. test.src
     local ok = exe_cmd(cmd)
     if not ok and not test.nocomp then
         failed[#failed + 1] = test.src .. " failed at compilation"
