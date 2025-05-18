@@ -53,7 +53,7 @@ export fn main() void = {
 
     const hlp =
         "\n%gget help on learning how to use lichen in "
-        "%bhttps://git.sr.ht/~mikaela-md/llc/tree/main/doc/tut.md";
+        "%bhttps://git.sr.ht/~mikaela-md/lcc/tree/main/doc/tut.md";
 
     const home = os::getenv("HOME"): str;
 
