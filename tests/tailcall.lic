@@ -1,6 +1,6 @@
 // parsing test for tail-call elimination
 
-io = use "io.ms"; 
+io = use "io.lim"; 
 
 pub fn main() void = io {
     loop(4);

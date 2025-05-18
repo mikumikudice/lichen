@@ -1,6 +1,6 @@
 // parsing test for recursive function call
 
-io = use "io.ms";
+io = use "io.lim";
 
 pub fn main() void = io {
     let x = factorial(4);

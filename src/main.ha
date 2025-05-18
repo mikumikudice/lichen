@@ -9,16 +9,16 @@ use unix::signal;
 
 let silent = true;
 let just_check = false;
-const version = "0.4.0";
+const version = "0.5.0";
 
 const temp = ".tmp/";
 
 let sharedlib = false;
 let staticlib = false;
 export fn main() void = {
-    const abt = "%gmmc is the compiler for the moss programming language.";
+    const abt = "%glcc is the compiler for the lichen programming language.";
     const usg = fmt::asprintf(
-        "%gmmc usage:\n\n %y$ {} "
+        "%glcc usage:\n\n %y$ {} "
         "%b[flags] <main file> [output file name]",
         os::args[0])!;
     defer free(usg);
@@ -52,8 +52,8 @@ export fn main() void = {
         "%y-- keeps temporary files at %g.tmp/%y folder";
 
     const hlp =
-        "\n%gget help on learning how to use moss in "
-        "%bhttps://git.sr.ht/~mikaela-md/mossy/tree/main/doc/tut.md";
+        "\n%gget help on learning how to use lichen in "
+        "%bhttps://git.sr.ht/~mikaela-md/llc/tree/main/doc/tut.md";
 
     const home = os::getenv("HOME"): str;
 
@@ -69,7 +69,7 @@ export fn main() void = {
     } else if(argc == 2){
         // versioning
         if(os::args[1] == "-v" || os::args[1] == "--version"){
-            color("%gmika's moss compiler %yv{}", version);
+            color("%glichen compiler %yv{}", version);
             return;
         // help
         } else if(os::args[1] == "-h" || os::args[1] == "--help"){
@@ -86,7 +86,7 @@ export fn main() void = {
     let outfile = "";
     let srcname = "";
     let libpath = strings::concat(os::getenv("HOME"): str,
-        "/.local/lib/mmclib/")!;
+        "/.local/lib/lcclib/")!;
     defer free(libpath);
 
     // parse command line arguments
@@ -166,14 +166,20 @@ export fn main() void = {
         color_error("%rno input file given");
     };
     if(!outset){
+        const extension =
+            if(strings::hassuffix(srcname, ".lic")){
+                yield ".lic";
+            } else {
+                yield ".lim";
+            };
         if(sharedlib){
             outfile = strings::concat(
-                strings::rcut(srcname, ".ms").0, ".so")!;
+                strings::rcut(srcname, extension).0, ".so")!;
         } else if(staticlib){
             outfile = strings::concat(
-                strings::rcut(srcname, ".ms").0, ".a")!;
+                strings::rcut(srcname, extension).0, ".a")!;
         } else {
-            outfile = strings::rcut(srcname, ".ms").0;
+            outfile = strings::rcut(srcname, extension).0;
         };
     };
     defer if((sharedlib || staticlib) && !outset) free(outfile);
@@ -256,8 +262,13 @@ fn gen_mods(ctxt: *context, args: *[]str, skip: *[]str) (void | COMPERR) = {
         };
         if(finds(*skip, mod.1.ctxt.name) is void){
             append(skip, mod.1.ctxt.name)!;
-            const outfile = strings::rcut(mod.1.ctxt.name, ".ms").0;
-
+            const outfile =
+                if(!strings::hassuffix(mod.1.ctxt.name, ".lim")){
+                    color("%Ywarning:%y modules should use \".lim\" as its extension");
+                    yield strings::rcut(mod.1.ctxt.name, ".lic").0;
+                } else {
+                    yield strings::rcut(mod.1.ctxt.name, ".lim").0;
+                };
             gen_file(mod.1.ctxt, mod.1.tokens, mod.1.buffer, mod.1.ast_head)?;
             append(args, gen_obj(outfile, memio::string(mod.1.buffer)!, temp))!;
 

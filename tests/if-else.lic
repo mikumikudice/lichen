@@ -1,6 +1,6 @@
 // parsing test for branching and lazy expression evaluation
 
-io = use "io.ms";
+io = use "io.lim";
 
 pub fn main() void = io {
     let x = 6 u64;

@@ -496,7 +496,7 @@ fn get_mod(ctxt: *context, bind: token) ((token, comp_obj) | COMPERR) = {
         };
     };
     return error(ctxt, "module bind %b{0}%r not found. try adding "
-        "%p\"%c{0} %d= %puse %y\"{0}.ms\"%d;%p\"", modname.id);
+        "%p\"%c{0} %d= %puse %y\"{0}.lim\"%d;%p\"", modname.id);
 };
 
 // pushes a new module bound to `bind` to the current context. returns an error

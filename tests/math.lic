@@ -1,6 +1,6 @@
 // parsing test for math operations and operators
 
-io = use "io.ms";
+io = use "io.lim";
 
 pub fn main() void = io {
     let x u32 = 1 / 4;

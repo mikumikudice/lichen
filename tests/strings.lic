@@ -1,6 +1,6 @@
 // various tests for string operations
 
-io = use "io.ms";
+io = use "io.lim";
 
 msg str = "mornin' " + "sailor!";
 

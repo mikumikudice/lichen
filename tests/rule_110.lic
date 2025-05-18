@@ -1,4 +1,4 @@
-io = use "io.ms";
+io = use "io.lim";
 
 pub fn main() void = io {
     rule([0, 0, 0, 0, 0, 0, 0, 1], 0);

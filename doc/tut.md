@@ -4,7 +4,7 @@ until the compiler is at 1.0, some of these features might be unavailable, consi
 # functions and variables and values
 
 ## types
-moss has a small type system which includes bare minimal for all common functionalities.
+lichen has a small type system which includes bare minimal for all common functionalities.
 ```rust
 // unsigned integers
 type unsigned = u8 | u16 | u32 | u64;
@@ -21,10 +21,10 @@ type string = str;
 // type "empty" unit, "never" void
 type miscellany = unit | void;
 ```
-moss also has the keyword `todo` which evaluates to the zeroed-value of any given context. normally used for unfinished code, as the name suggests.
+lichen also has the keyword `todo` which evaluates to the zeroed-value of any given context. normally used for unfinished code, as the name suggests.
 
 ## functions
-functions in moss work as any other procedure in other languages, except for effect notations (address for in [effect system](#effect-system)) and by the return syntax, or rather, the map operator (`=>`).
+functions in lichen work as any other procedure in other languages, except for effect notations (address for in [effect system](#effect-system)) and by the return syntax, or rather, the map operator (`=>`).
 ```rust
 // pure function
 fn mul(x u32, y 32) u32 = {
@@ -39,7 +39,7 @@ fn div(x u32, y 32) u32 = {
     };
 };
 
-io = use "io.ms"; // module import
+io = use "io.lim"; // module import
 
 fn meow() unit = io { // impure function that produces side effects from the "io" module
     io::println("meow")!;
@@ -74,7 +74,7 @@ notes:
 - for more on tuples, address in [here](#value-tuples).
 
 ## literals
-moss supports hexadecimal, octal, binary and decimal literals, digit separators and trailing zeros for numeric values, escape sequences for strings and character literals. no decimal notation is allowed in favor of mathematical elegance, instead, it's used ratio notation (i.e. floating division operator).
+lichen supports hexadecimal, octal, binary and decimal literals, digit separators and trailing zeros for numeric values, escape sequences for strings and character literals. no decimal notation is allowed in favor of mathematical elegance, instead, it's used ratio notation (i.e. floating division operator).
 ```rust
 let bin u32 = 0b1_00_00;
 let dec u32 = 016;
@@ -91,9 +91,9 @@ let chr u8  = '\n';
 # statements
 
 ## modules
-moss has a simple module system where files can be "wrapped" inside a variable, which only the public functions, global variables and types can be accessed. no module shall implement a main function, even if it's private. once moss is lazily evaluated, only needed functions are dispatched as generated code.
+lichen has a simple module system where files can be "wrapped" inside a variable, which only the public functions, global variables and types can be accessed. no module shall implement a main function, even if it's private. once lichen is lazily evaluated, only needed functions are dispatched as generated code.
 ```rust
-// mod.ms file
+// mod.lim file
 pub fn foo() u32 = { // can be accessed
     => bar() + 1;
 };
@@ -107,9 +107,9 @@ fn egg() unit = { // not used by the module and cannot be accessed, then it won'
 };
 ```
 ```rust
-// main.ms
+// main.lic
 
-my_mod = use "mod.ms";
+my_mod = use "mod.lim";
 
 pub fn main() void = {
     let x = my_mod::foo();
@@ -117,7 +117,7 @@ pub fn main() void = {
 ```
 
 ## if-else blocks
-if-else blocks in moss can define limited-scope variables available only for the entire if-else block chain. the evaluation expression must be a numerical type, once there is no boolean type or "truthy" and "falsy" values.
+if-else blocks in lichen can define limited-scope variables available only for the entire if-else block chain. the evaluation expression must be a numerical type, once there is no boolean type or "truthy" and "falsy" values.
 ```rust
     let x = foo();
     if y = bar(x); y > 4 {
@@ -144,7 +144,7 @@ let z = if x > y {
 ```
 
 ## for iterator
-moss is a functional language, which means there is no mutable state. anyhow, something alike for-loops is available for iterating over strings and arrays.
+lichen is a functional language, which means there is no mutable state. anyhow, something alike for-loops is available for iterating over strings and arrays.
 ```rust
 let text str = "LoWeR cAsE";
 let lower = for c .. text {
@@ -225,7 +225,7 @@ notes:
 # type system
 
 ## composite types
-moss allow primitive types be used to compose more complex types, such as arrays, value tuples, enumerated values, data records and tagged unions.
+lichen allow primitive types be used to compose more complex types, such as arrays, value tuples, enumerated values, data records and tagged unions.
 
 ### arrays
 arrays are immutable, bound-checked and of fixed size and type. they can be sliced and indexed and multi-dimensional as well.
@@ -309,7 +309,7 @@ let left = vec 2 { x = -1 };
 let upleft = up + left; // results in {x = -1, y = 1 }
 let force = upleft * 33; // results in {x = -33, y = 33 }
 ```
-once records are immutable and many times a copy with a single difference may be very useful, moss also provides a quick syntax to make copies of records with single changes.
+once records are immutable and many times a copy with a single difference may be very useful, lichen also provides a quick syntax to make copies of records with single changes.
 ```rust
 let v = vec2 { x = 1, y = 3 };
 let v' = { v | y = 1 };
@@ -371,8 +371,8 @@ pub fn open(filename str, flags: u32) error!handle = rt {
 ```
 
 ```rust
-fs = use "fs.ms";
-io = use "io.ms";
+fs = use "fs.lim";
+io = use "io.lim";
 
 pub fn main() void = fs & io {
     // instantiate a file handle. on error, io::fatal is called
@@ -392,7 +392,7 @@ if the same cleanup function is manually called on the variable, its refcount is
 ## effect-system
 at bottom level of the language runtime, there lies the OS syscalls implemented with assembly code. these low-level functions are impure by definition and should not be called directly, instead, the standard library provides abstractions for dealing with the file system, operating system, IO operations, etc. each standard module has pure and impure functions that the compiler will match against the type notations of each function. for instance, a function that uses an impure function of the io module should be tagged as `io` (or any given alias), and so on. functions may also be tagged with `do`, which can use any function but other `do` functions. e.g.
 ```rust
-// io.ms
+// io.lim
 
 // runtime wrappers for the std handles
 pub stdin  u32 = $rt_stdin;
@@ -417,9 +417,9 @@ pub fn println(data str) unit = rt {
 };
 ```
 ```rust
-// main.ms
+// main.lic
 
-io = use "io.ms";
+io = use "io.lim";
 
 pub fn main() void = io { // main can only use io impure functions
     let name = io::scanln(256)!;
@@ -428,9 +428,9 @@ pub fn main() void = io { // main can only use io impure functions
 ```
 effect tags can also be chained in order to make multi-effect calls manageable instead of bunches of `do`'s.
 ```rust
-fs = use "fs.ms";
-io = use "io.ms";
-os = use "os.ms";
+fs = use "fs.lim";
+io = use "io.lim";
+os = use "os.lim";
 
 pub fn main() void = fs & io & os {
     let _, args = os::args().pop()!; // pop the first cli argument and take only the copy of the iterator
@@ -452,10 +452,10 @@ notes:
 - the said `pop()` function does not, in fact, return multiple values, instead, it returns a tuple of values.
 
 ## error-handling
-errors in moss are treated just like any other value, usually with tagged unions. theres two ways of using these and two ways of handling them.
+errors in lichen are treated just like any other value, usually with tagged unions. theres two ways of using these and two ways of handling them.
 ```rust
-fs = use "fs.ms";
-io = use "io.ms";
+fs = use "fs.lim";
+io = use "io.lim";
 
 type data = record {
     asset1 fs::handle,
@@ -522,7 +522,7 @@ pub fn main() void = {
 ```
 
 # syntax, operators and expressions
-moss has a stupidly simple operator precedence and expression parsing system. for instance, there's only four levels of precedence (from lowest to highest): boolean and/or, comparison operators, all other kinds of operations, parenthesis. of course, the evaluation of function arguments and unary operators is above all of these. and boolean expressions evaluate to numeric values (i.e. 0 and 1), for instance:
+lichen has a stupidly simple operator precedence and expression parsing system. for instance, there's only four levels of precedence (from lowest to highest): boolean and/or, comparison operators, all other kinds of operations, parenthesis. of course, the evaluation of function arguments and unary operators is above all of these. and boolean expressions evaluate to numeric values (i.e. 0 and 1), for instance:
 ```rust
 let y u32 = 1 + 1 * 2;                      // equivalent to (1 + 1) * 2
 let z u32 = 4 * 5 + 2 / 5;                  // equivalent to ((4 * 5) + 2) / 5
@@ -530,7 +530,7 @@ let a u32 = 4 == 3 + 1 && 5 * 2 + 1 == 11;  // equivalent to (4 == (3 + 1)) && (
 let b u32 = 6 > 1 == 1;                     // equivalent to (6 > 1) == 1
 let c u32 = 8 < 4 == 0;                     // equivalent to (8 < 4) == 0
 ```
-moss consider plus and minus as valid unary operators and can be used as an prefix to any value, except for the plus on the middle of an expression. for instance:
+lichen consider plus and minus as valid unary operators and can be used as an prefix to any value, except for the plus on the middle of an expression. for instance:
 ```rust
 let x = +1;
 let y = -1;
@@ -538,10 +538,8 @@ let z = +x + -y;
 ```
 
 # trivia
-- the official mascot of the moss programming language is the vietnamese mossy frog.
+- the name lichen is an analogy of the nature of the hybrid colony and the language. both are composite of small units of isolated and self-sufficient units, on one side the algae and cyanobacteria, on the other, functions and types, but together compose complex structures that work exceptionally well together.
 
-    ![image credit: Matthijs Kuijpers/Alamy](https://i0.wp.com/www.australiangeographic.com.au/wp-content/uploads/2020/05/moss-frog.jpg?resize=300%)
-    
-    a picture of the said frog. we still lack an official stylized icon. image credit: Matthijs Kuijpers/Alamy
+- previously, the language was called moss, due to similar analogies with the plant.
 
-- the name moss is due to the fact that moss are a simple kind of plant that operate by simple rules and is mostly isolated from their neighbors (execpt when reproducing), but together they make long covers of a beautiful moist green. moss can also integrate with algae and produce lichens. the programming language moss is a small language that operates by simple rules and builds code from small isolated units of functions that can be composed together (sometimes with external, low-level code) and build beautiful mossy code.
+- the lichen language is the result of a series of sequential projects that attempted similar things on the language design field. this story can be found [here](https://mikumikudice.github.io/essays/mossyn-around).

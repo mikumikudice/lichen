@@ -1,5 +1,5 @@
-fs = use "fs.ms";
-io = use "io.ms";
+fs = use "fs.lim";
+io = use "io.lim";
 
 pub fn main() void = fs & io {
     let file = fs::open("foo.txt", fs::CREATE | fs::READWRITE);

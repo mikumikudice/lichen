@@ -2,8 +2,8 @@
 // and if nested function (calls) and modules are
 // working properly.
 
-io  = use "io.ms";
-mem = use "mem.ms";
+io  = use "io.lim";
+mem = use "mem.lim";
 
 pub fn main() void = io & mem {
     io::print("hi! what's your name?\n > ");

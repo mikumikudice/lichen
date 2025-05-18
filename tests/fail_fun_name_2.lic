@@ -1,5 +1,5 @@
 // test for conflict between function
 // and module binding name duplication
 
-io = use "io.ms";
+io = use "io.lim";
 fn io() unit = {};
