@@ -1,3 +1,4 @@
-- added fs module
-- fixed free syscall
-- added test for the fs module
+- fix unary operators codegen for righthand values
+- fix static and dynamic files generation bugs
+- improve FFI library support
+- removal of mold as default linker

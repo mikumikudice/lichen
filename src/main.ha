@@ -30,8 +30,11 @@ export fn main() void = {
         "\n %g-v\t\t"
         "%y-- prints the current version of the compiler"
 
-        "\n %g-l\t%b<path>\t"
+        "\n %g-L\t%b<path>\t"
         "%y-- includes an object file or library in the linking list"
+
+        "\n %g-l%b<libname>\t"
+        "%y-- link against libname"
 
         "\n %g-stb\t%b<path>\t"
         "%y-- sets path for stdlib and runtime"
@@ -93,26 +96,29 @@ export fn main() void = {
     for(let a = 1z; a < argc; a += 1){
         const arg = os::args[a];
         if(strings::hasprefix(arg, "-")){
+            if(strings::hasprefix(arg, "-l")){
+                append(also_link, strings::dup(arg)!)!;
+            };
             switch(arg){
             // std libpath flag
             case "-std" =>
                 a += 1;
                 if(a < argc){
                     libset = true;
-                    free(libpath);
+                    //free(libpath);
                     libpath = strings::dup(os::args[a])!;
                     continue;
                 } else {
                     color("%rmissing lib path for -std flag");
                     color_error(flg);
                 };
-            case "-l" =>
+            case "-L" =>
                 a += 1;
                 if(a < argc){
                     append(also_link, strings::dup(os::args[a])!)!;
                     continue;
                 } else {
-                    color("%rmissing object file for -l flag");
+                    color("%rmissing object file for -L flag");
                     color_error(flg);
                 };
             // verbose mode
@@ -142,23 +148,27 @@ export fn main() void = {
                 };
                 continue;
             case =>
-                color("%runknown flag %g{}", arg);
-                color_error(flg);
+                if(!strings::hasprefix(arg, "-l")){
+                    color("%runknown flag %g{}", arg);
+                    color_error(flg);
+                };
             };
         };
-        // input file
-        if(!infset){
-            infset = true;
-            srcname = arg;
-        // output file
-        } else {
-            // define only once
-            if(!outset){
-                outset = true;
-                outfile = arg;
+        if(!strings::hasprefix(arg, "-")){
+            // input file
+            if(!infset){
+                infset = true;
+                srcname = arg;
+            // output file
             } else {
-                color("%rmultiple output files given");
-                color_error(usg);
+                // define only once
+                if(!outset){
+                    outset = true;
+                    outfile = arg;
+                } else {
+                    color("%rmultiple output files given");
+                    color_error(usg);
+                };
             };
         };
     };
@@ -172,57 +182,56 @@ export fn main() void = {
             } else {
                 yield ".lim";
             };
-        if(sharedlib){
-            outfile = strings::concat(
-                strings::rcut(srcname, extension).0, ".so")!;
-        } else if(staticlib){
-            outfile = strings::concat(
-                strings::rcut(srcname, extension).0, ".a")!;
-        } else {
-            outfile = strings::rcut(srcname, extension).0;
-        };
+        outfile = strings::rcut(srcname, extension).0;
     };
-    defer if((sharedlib || staticlib) && !outset) free(outfile);
+
     libpath =
         if(strings::hassuffix(libpath, "/")){
             yield libpath;
         } else {
             const new = strings::concat(libpath, "/")!;
-            free(libpath);
+            //free(libpath);
             yield new;
         };
     if(!os::exists(libpath)){
         color_error("%rthe given path %y\"{}\"%r does not exists", libpath);
     };
+
     match(compile(srcname, libpath, alloc(memio::dynamic())!,
         !(sharedlib || staticlib))){
     case let obj: comp_obj =>
         defer free_module(obj);
-        const mold_args = []: []str;
-        defer free(mold_args);
-        defer for(let obj ..& mold_args) free(obj);
+        const link_args = []: []str;
+        defer free(link_args);
+        defer for(let obj ..& link_args) free(obj);
 
         if(sharedlib){
-            append(mold_args, strings::dup("-r")!)!;
-            append(mold_args, strings::dup("-s")!)!;
-            append(mold_args, strings::dup("-shared")!)!;
-            append(mold_args, strings::dup("-fPIC")!)!;
+            append(link_args, strings::dup("-r")!)!;
+            append(link_args, strings::dup("-shared")!)!;
+            append(link_args, strings::dup("-fPIC")!)!;
+            append(link_args, strings::dup("--export-dynamic")!)!;
+            append(link_args, strings::dup("--whole-archive")!)!;
+            append(link_args, strings::dup("-o")!)!;
+            append(link_args, fmt::asprintf("{}.o", outfile)!)!;
         } else if(staticlib){
-            append(mold_args, strings::dup("-r")!)!;
-            append(mold_args, strings::dup("-s")!)!;
+            append(link_args, strings::dup("-r")!)!;
+            append(link_args, strings::dup("--whole-archive")!)!;
+            append(link_args, strings::dup("-o")!)!;
+            append(link_args, fmt::asprintf("{}.o", outfile)!)!;
+        } else {
+            append(link_args, strings::dup("-e")!)!;
+            append(link_args, strings::dup("main")!)!;
+            append(link_args, strings::dup("-o")!)!;
+            append(link_args, strings::dup(outfile)!)!;
         };
-
-        append(mold_args, strings::dup("-o")!)!;
-        append(mold_args, strings::dup(outfile)!)!;
-
-        append(mold_args, also_link...)!;
+        append(link_args, also_link...)!;
 
         if(!just_check) run_cmd(silent, "mkdir", "-p", temp);
-        append(mold_args, gen_obj(outfile, memio::string(obj.buffer)!, temp))!;
+        append(link_args, gen_obj(outfile, memio::string(obj.buffer)!, temp))!;
 
         let skip = []: []str;
         defer free(skip);
-        match(gen_mods(obj.ctxt, &mold_args, &skip)){
+        match(gen_mods(obj.ctxt, &link_args, &skip)){
         case let err: COMPERR =>
             defer free(err.1);
             defer io::close(err.1)!;
@@ -239,9 +248,26 @@ export fn main() void = {
         defer free(rt_src);
 
         run_cmd(silent, "nasm", "-felf64", "-o", rt_out, rt_src);
-        append(mold_args, rt_out)!;
+        append(link_args, rt_out)!;
 
-        run_cmd(silent, "mold", mold_args...);
+        for(let l .. ["-z", "noexecstack"]){
+            append(link_args, strings::dup(l)!)!;
+        };
+
+        run_cmd(silent, "ld", link_args...);
+        if(staticlib || sharedlib){
+            const out =
+                if(staticlib){
+                    yield fmt::asprintf("{}.a", outfile)!;
+                } else {
+                    yield fmt::asprintf("{}.so", outfile)!;
+                };
+            defer free(out);
+            const obj = fmt::asprintf("{}.o", outfile)!;
+            defer free(obj);
+            run_cmd(silent, "ar", "-rcs", out, obj);
+            run_cmd(silent, "rm", obj);
+        };
         if(!keeptemps) run_cmd(silent, "rm", "-rf", temp);
 
     case let err: COMPERR =>
@@ -325,15 +351,10 @@ fn run_cmd(noprint: bool, cmd: str, args: str...) void = {
             yield c;
         case let e: exec::error =>
             if(e is exec::nocmd){
-                if(cmd == "mold"){
-                    color("%ymold not found. using ld");
-                    append(args, strings::dup("-nostdlib")!)!;
-                    run_cmd(noprint, "ld", args...);
-                } else {
-                    color_error("%Rmissing dependency:%b {}", cmd);
-                };
+                color_error("%Rmissing dependency:%b {}", cmd);
+            } else {
+                color_error("%r{} failed", cmd);
             };
-            color_error("%r{} failed", cmd);
         };
     const proc = exec::start(&exe)!;
     const stat = exec::wait(&proc)!;

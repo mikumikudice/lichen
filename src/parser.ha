@@ -1184,6 +1184,7 @@ fn compile(filename: str, libpath: str, buffer: *memio::stream,
             };
             return error(ctxt, "no main function was defined");
         };
+        if(sharedlib || staticlib) gen_file(ctxt, tokens, buffer, head)?;
     };
     return comp_obj {
         tokens = tokens,
@@ -1209,9 +1210,7 @@ fn gen_file(ctxt: *context, tokens: []token, buffer: *memio::stream,
             };
             const meta = this.meta as *var_meta;
             if(meta.name.pub){
-                fmt::fprint(buffer, "section \".rod\"\nexport ")!;
-            } else {
-                fmt::fprintfln(buffer, "section \".rod\"")!;
+                fmt::fprint(buffer, "export ")!;
             };
             const name = strings::replace(meta.name.id, "'", ".q")!;
             fmt::fprintf(buffer, "data ${} = {{ ", name)!;
@@ -1339,6 +1338,11 @@ fn gen_file(ctxt: *context, tokens: []token, buffer: *memio::stream,
             const meta = this.meta as *fn_meta;
             if((meta.used || (meta.name.pub && (sharedlib || staticlib)))
                 && meta.ffi is void){
+                const mod = strings::rcut(strings::rcut(ctxt.name, ".lim").0, "/").1;
+                if((sharedlib || staticlib) && !meta.used){
+                    meta.mod = fmt::asprintf("{}.{}",
+                        mod, meta.name.id)!;
+                };
                 gen_fun(ctxt, tokens, buffer, this)?;
             };
         case => void;
@@ -1348,7 +1352,7 @@ fn gen_file(ctxt: *context, tokens: []token, buffer: *memio::stream,
     const lit_c = len(ctxt.literals);
     for(let lit = 0z; lit < lit_c; lit += 1){
         const length = true_size(ctxt.literals[lit]);
-        fmt::fprintfln(buffer, "section \".rod\"\ndata $lit.{} = {{ l {}, l {}, b \"{}\" }}", 
+        fmt::fprintfln(buffer, "data $lit.{} = {{ l {}, l {}, b \"{}\" }}", 
             lit, length + 16, length, ctxt.literals[lit])!;
     };
 };
@@ -1428,8 +1432,8 @@ fn gen_fun(ctxt: *context, tokens: []token, buffer: *memio::stream,
             name)!;
     };
     for(let p = 0z; p < p_max; p += 1){
-        fmt::fprintf(buffer, "{} %{}, ", qbe_t(param_l.names[p].itype),
-            param_l.names[p].id)!;
+        fmt::fprintf(buffer, "{} %{}, ",
+            qbe_t(param_l.names[p].itype, mode::ASSIGN), param_l.names[p].id)!;
     };
     fmt::fprintfln(buffer, "){{\n@start\n\tdbgloc {}, {}\n@body",
         body.path[0].lin + 1, body.path[0].cln + 1)!;
@@ -1439,7 +1443,7 @@ fn gen_fun(ctxt: *context, tokens: []token, buffer: *memio::stream,
     const end = len(this.path) - 2;
     if(meta.fn_type == primitive::VOID){
         fmt::fprintln(buffer, "\tcall $rt_exit(w 0)\n\thlt\n}")!;
-    } else if(meta.fn_type == primitive::UNIT){
+    } else if(meta.fn_type == primitive::UNIT && !ctxt.tailcall){
         fmt::fprintln(buffer, "\tret\n}")!;
     } else {
         fmt::fprintln(buffer, "}")!;
@@ -1800,7 +1804,7 @@ fn tailcall(ctxt: *context, buffer: *memio::stream, call: *funcall_meta) (void |
     defer io::close(&temp)!;
     for(let a = 0z; a < max; a += 1){
         const arg = call.args[a];
-        const arg_t = qbe_t(p_meta.names[a].itype);
+        const arg_t = qbe_t(p_meta.names[a].itype, mode::ASSIGN);
         match(arg.meta){
         case let expr: *expr_meta =>
             const wrap = fmt::asprintf("arg.{}.{}.{}", arg_t,
@@ -1847,7 +1851,7 @@ fn gen_funcall(ctxt: *context, buffer: *memio::stream,
     assert(len(meta.args) == max);
     for(let a = 0z; a < max; a += 1){
         const arg = meta.args[a];
-        const arg_t = qbe_t(p_meta.names[a].itype);
+        const arg_t = qbe_t(p_meta.names[a].itype, mode::ASSIGN);
         match(arg.meta){
         case let expr: *expr_meta =>
             const wrap = fmt::asprintf("arg.{}.{}.{}", arg_t,
@@ -1894,27 +1898,6 @@ fn gen_move(ctxt: *context, header: *memio::stream, buffer: *memio::stream,
                         fmt::fprintfln(header, "\t%{} =l copy ${}", name, sym)!;
                     };
                 };
-                if(m_meta.pre is operator){
-                    switch(m_meta.pre as operator){
-                    case operator::NOT =>
-                        const old_name = name;
-                        name = fmt::asprintf("{}.mod", name)!;
-                        defer free(old_name);
-                        fmt::fprintfln(header, "\t%{} ={} not %{}",
-                            name, move_t, old_name)!;
-                    case operator::BANG =>
-                        const old_name = name;
-                        name = fmt::asprintf("{}.mod", name)!;
-                        defer free(old_name);
-                        fmt::fprintfln(header, "\t%{} ={} xor %{}, 18446744073709551615",
-                            name, move_t, old_name)!;
-                    case operator::LENGTH =>
-                        fmt::fprintfln(buffer, "\t%{0}.len =l add %{0}, 8", name)!;
-                        fmt::fprintfln(buffer, "\t%{0} =l loadl %{0}.len", name)!;
-                    case =>
-                        assert(false, "unreachable");
-                    };
-                };
                 if(var.name.itype == tpe || is_subtype(tpe, var.name.itype) ||
                     type_size(tpe) <= type_size(var.name.itype)){
                     fmt::fprintfln(buffer, "{}\t%{} ={} copy %{}",
@@ -1958,19 +1941,24 @@ fn gen_move(ctxt: *context, header: *memio::stream, buffer: *memio::stream,
         case let num: size =>
             fmt::fprintfln(buffer, "\t%{} ={} copy {}", dest, move_t, num)!;
         case let txt: str =>
-            if(m_meta.pre is operator){
-                switch(m_meta.pre as operator){
-                case operator::LENGTH =>
-                    const id = push_str(ctxt, txt);
-                    fmt::fprintfln(buffer, "\t%{}.len =l add $lit.{}, 8", id)!;
-                    fmt::fprintfln(buffer, "\t%{} =l loadl %{}.len", dest, id)!;
-                case =>
-                    assert(false, "unreachable");
-                };
-            } else {
-                fmt::fprintfln(buffer, "\t%{} =l copy $lit.{}", dest,
-                    push_str(ctxt, txt))!;
-            };
+            fmt::fprintfln(buffer, "\t%{} =l copy $lit.{}", dest,
+                push_str(ctxt, txt))!;
+        case =>
+            assert(false, "unreachable");
+        };
+    };
+    if(m_meta.pre is operator){
+        switch(m_meta.pre as operator){
+        case operator::MIN =>
+            fmt::fprintfln(buffer, "\t%{0} ={1} neg %{0}", dest, move_t)!;
+        case operator::BANG =>
+            fmt::fprintfln(buffer, "\t%{0} ={1} ceq{1} %{0}, 0", dest, move_t)!;    
+        case operator::NOT =>
+            fmt::fprintfln(buffer, "\t%{0} ={1} xor %{0}, 18446744073709551615",
+                dest, move_t)!;
+        case operator::LENGTH =>
+            fmt::fprintfln(buffer, "\t%{0}.len =l add %{0}, 8", dest)!;
+            fmt::fprintfln(buffer, "\t%{0} =l loadl %{0}.len", dest)!;
         case =>
             assert(false, "unreachable");
         };
@@ -2007,12 +1995,13 @@ fn gen_member(ctxt: *context, buffer: *memio::stream,
                 };
                 if(m_meta.pre is operator){
                     switch(m_meta.pre as operator){
-                    case operator::NOT =>
+                    case operator::BANG =>
                         const old_name = name;
                         name = fmt::asprintf("{}.mod", name)!;
                         defer free(old_name);
-                        fmt::fprintfln(buffer, "\t%{} ={} not %{}", name, move_t, old_name)!;
-                    case operator::BANG =>
+                        fmt::fprintfln(buffer, "\t%{0} ={1} ceq{1} %{2}, 0",
+                            name, move_t, old_name)!;
+                    case operator::NOT =>
                         const old_name = name;
                         name = fmt::asprintf("{}.mod", name)!;
                         defer free(old_name);
@@ -2045,15 +2034,28 @@ fn gen_member(ctxt: *context, buffer: *memio::stream,
                 return "";
             };
         case let exp: *expr_meta =>
-            const move_t = qbe_t(exp_type);
+            const move_t = qbe_t(exp_type, mode::ASSIGN);
             const wrap = fmt::asprintf("%exp.{}.{}",
                 node.path[0].lin + 1, node.path[0].cln + 1)!;
             const slice = strings::sub(wrap, 1);
 
             gen_exp(ctxt, buffer, node, slice, exp.tpe)?;
+            if(m_meta.pre is operator){
+                switch(m_meta.pre as operator){
+                case operator::BANG =>
+                fmt::fprintfln(buffer, "\t{0} ={1} ceq{1} {0}, 0", wrap, move_t)!;
+                case operator::NOT =>
+                    fmt::fprintfln(buffer, "\t{0} ={1} xor {0}, 18446744073709551615",
+                        wrap, move_t)!;
+                case operator::LENGTH =>
+                    fmt::fprintfln(buffer, "\t{0}.len =l add {0}, 8", wrap)!;
+                    fmt::fprintfln(buffer, "\t{0} =l loadl {0}.len", wrap)!;
+                case =>
+                    assert(false, "unreachable");
+                };
+            };
             return wrap;
         case let funcall: *funcall_meta =>
-            const move_t = qbe_t(exp_type);
             const f_meta = funcall.fun.meta as *fn_meta;
 
             const wrap = fmt::asprintf("%exp.{}.{}",
@@ -2068,9 +2070,26 @@ fn gen_member(ctxt: *context, buffer: *memio::stream,
             const slice = strings::sub(wrap, 1);
 
             gen_if_else(ctxt, buffer, node, slice)?;
+            if(m_meta.pre is operator && exp_type != primitive::UNIT &&
+                exp_type != primitive::VOID){
+                const move_t = qbe_t(exp_type, mode::ASSIGN);
+                switch(m_meta.pre as operator){
+                case operator::BANG =>
+                    fmt::fprintfln(buffer, "\t{0} ={1} ceq{1} {0}, 0", wrap, move_t)!;
+                case operator::NOT =>
+                    fmt::fprintfln(buffer, "\t{0} ={1} xor {0}, 18446744073709551615",
+                        wrap, move_t)!;
+                case operator::LENGTH =>
+                    fmt::fprintfln(buffer, "\t{0}.len =l add {0}, 8", wrap)!;
+                    fmt::fprintfln(buffer, "\t{0} =l loadl {0}.len", wrap)!;
+                case =>
+                    assert(false, "unreachable");
+                };
+            };
             return wrap;
         };
     case let tok: tkval =>
+        const move_t = qbe_t(exp_type, mode::ASSIGN);
         match(tok){
         case let kwd: keyword =>
             switch(kwd){
@@ -2088,7 +2107,25 @@ fn gen_member(ctxt: *context, buffer: *memio::stream,
                 return "";
             };
         case let num: size =>
-            return fmt::asprint(num)!;
+            const val = fmt::asprint(num)!;
+            if(m_meta.pre is operator){
+                defer free(val);
+                const wrap = fmt::asprintf("%exp.{}.{}",
+                    member.path[0].lin + 1, member.path[0].cln + 1)!;
+                switch(m_meta.pre as operator){
+                case operator::BANG =>
+                    fmt::fprintfln(buffer, "\t{0} ={1} ceq{1} {2}, 0",
+                        wrap, move_t, val)!;
+                case operator::NOT =>
+                    fmt::fprintfln(buffer, "\t{} ={} xor {}, 18446744073709551615",
+                        wrap, move_t, val)!;
+                case =>
+                    assert(false, "unreachable");
+                };
+                return wrap;
+            } else {
+                return val;
+            };
         case let txt: str =>
             if(m_meta.pre is operator){
                 switch(m_meta.pre as operator){
@@ -2158,8 +2195,13 @@ fn eval_use(ctxt: *context, tokens: []token, at: size) ((*ast, size) | COMPERR) 
         if(os::exists(stdpath)){
             yield stdpath;
         } else {
-            yield strings::concat(
-                strings::rcut(ctxt.name, "/").0, "/", path)!;
+            const prepath =
+                if(strings::index(ctxt.name, "/") is size){
+                    yield strings::rcut(ctxt.name, "/").0;
+                } else {
+                    yield ".";
+                };
+            yield strings::concat(prepath, "/", path)!;
         };
 
     if(ctxt.name == file){
@@ -3206,7 +3248,7 @@ fn eval_member(ctxt: *context, tokens: []token, at: size, hint: primitive = prim
                 comp_tk(tokens[end + 1].val, symbol::FIELD)) &&
                 tokens[end + 2].val is ident){
                 const field = tokens[end + 2].val as ident;
-                match(get_mod_var(ctxt, tokens[begin], field)){
+                match(get_mod_var(ctxt, tokens[end], field)){
                 case let var: *ast =>
                     end += 3;
                     const v_meta = var.meta as *var_meta;
