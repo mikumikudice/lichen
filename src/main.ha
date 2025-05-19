@@ -9,7 +9,7 @@ use unix::signal;
 
 let silent = true;
 let just_check = false;
-const version = "0.5.0";
+const version = "0.5.1";
 
 const temp = ".tmp/";
 
