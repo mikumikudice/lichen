@@ -10,19 +10,27 @@ pub TRUNCATE  u32 = 0o1000;
 pub APPEND    u32 = 0o2000;
 
 // runtime wrapper for the open syscall
-fn rt_open(filename str, flags u32, mode u32) i32 = rt$rt_open;
+fn rt_open(filename cstr, flags u32, mode u32) i32 = rt$rt_open;
 
 // runtime wrapper for the close syscall
 pub fn close(handle u32) unit = rt$rt_close;
 
 // runtime wrapper for the unlink syscall
-pub fn remove(filename str) i32 = rt$rt_unlink;
+fn rt_unlink(filename cstr) i32 = rt$rt_unlink;
 
 // runtime wrapper for the rename syscall
-pub fn rename(oldname str, newname str) i32 = rt$rt_rename;
+fn rt_rename(oldname cstr, newname cstr) i32 = rt$rt_rename;
 
 // opens a file and returns a file handle
 // TODO: wrap negative values as an error type
 pub fn open(filename str, flags u32) i32 = rt {
-    => rt_open(filename, flags, 0o7000);
+    => rt_open(filename cstr, flags, 0o7000);
+};
+
+pub fn remove(filename str) unit = rt {
+    rt_unlink(filename cstr);
+};
+
+pub fn rename(oldname str, newname str) i32 = rt {
+    => rt_rename(oldname cstr, newname cstr);
 };

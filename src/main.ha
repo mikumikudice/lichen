@@ -9,7 +9,7 @@ use unix::signal;
 
 let silent = true;
 let just_check = false;
-const version = "0.5.1";
+const version = "0.6.0";
 
 const temp = ".tmp/";
 
@@ -44,12 +44,6 @@ export fn main() void = {
 
         "\n %g-vb\t\t"
         "%y-- prompts each substep. if %g-c%y is also set, dumps qbe IR instead"
-
-        "\n %g-static\t"
-        "%y-- produces a static library"
-
-        "\n %g-shared\t"
-        "%y-- produces a shared library"
         
         "\n %g-t\t\t"
         "%y-- keeps temporary files at %g.tmp/%y folder";
@@ -210,28 +204,13 @@ export fn main() void = {
         for(let l .. ["-z", "noexecstack"]){
             append(link_args, strings::dup(l)!)!;
         };
-        if(sharedlib){
-            append(link_args, strings::dup("-r")!)!;
-            append(link_args, strings::dup("-shared")!)!;
-            append(link_args, strings::dup("-fPIC")!)!;
-            append(link_args, strings::dup("--export-dynamic")!)!;
-            append(link_args, strings::dup("--whole-archive")!)!;
-            append(link_args, strings::dup("-o")!)!;
-            append(link_args, fmt::asprintf("{}.o", outfile)!)!;
-        } else if(staticlib){
-            append(link_args, strings::dup("-r")!)!;
-            append(link_args, strings::dup("--whole-archive")!)!;
-            append(link_args, strings::dup("-o")!)!;
-            append(link_args, fmt::asprintf("{}.o", outfile)!)!;
-        } else {
-            if(shared){
-                append(link_args, strings::dup("--dynamic-linker=/lib64/ld-linux-x86-64.so.2")!)!;
-            };
-            append(link_args, strings::dup("-e")!)!;
-            append(link_args, strings::dup("main")!)!;
-            append(link_args, strings::dup("-o")!)!;
-            append(link_args, strings::dup(outfile)!)!;
+        if(shared){
+            append(link_args, strings::dup("--dynamic-linker=/lib64/ld-linux-x86-64.so.2")!)!;
         };
+        append(link_args, strings::dup("-e")!)!;
+        append(link_args, strings::dup("main")!)!;
+        append(link_args, strings::dup("-o")!)!;
+        append(link_args, strings::dup(outfile)!)!;
         append(link_args, also_link...)!;
 
         if(!just_check) run_cmd(silent, "mkdir", "-p", temp);
@@ -259,19 +238,6 @@ export fn main() void = {
         append(link_args, rt_out)!;
 
         run_cmd(silent, "ld", link_args...);
-        if(staticlib || sharedlib){
-            const out =
-                if(staticlib){
-                    yield fmt::asprintf("{}.a", outfile)!;
-                } else {
-                    yield fmt::asprintf("{}.so", outfile)!;
-                };
-            defer free(out);
-            const obj = fmt::asprintf("{}.o", outfile)!;
-            defer free(obj);
-            run_cmd(silent, "ar", "-rcs", out, obj);
-            run_cmd(silent, "rm", obj);
-        };
         if(!keeptemps) run_cmd(silent, "rm", "-rf", temp);
 
     case let err: COMPERR =>

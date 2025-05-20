@@ -1,3 +1,4 @@
-- updated some qbe IR dispatch
-- added cstr type
-- added missing string type (literals) type casting
+- updated runtime to expect c strings
+- updated fs module to use c strings
+- temporary remove support to library generation
+- runtime assembly file cleanup
