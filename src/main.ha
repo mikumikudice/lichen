@@ -30,20 +30,20 @@ export fn main() void = {
         "\n %g-v\t\t"
         "%y-- prints the current version of the compiler"
 
-        "\n %g-L\t%b<path>\t"
+        "\n %g-L %b<path>\t"
         "%y-- includes an object file or library in the linking list"
 
-        "\n %g-l%b<libname>\t"
-        "%y-- link against libname"
+        "\n %g-l%blibname\t"
+        "%y-- searches for %glib%blibname%g.so%y or %glib%blibname%g.a%y and links against it"
 
-        "\n %g-stb\t%b<path>\t"
+        "\n %g-stb %b<path>\t"
         "%y-- sets path for stdlib and runtime"
 
         "\n %g-c\t\t"
         "%y-- only checks for compile errors and generates no output files"
 
         "\n %g-vb\t\t"
-        "%y-- prompts each substep. if %g-c%y is also set, dumps qbe IR"
+        "%y-- prompts each substep. if %g-c%y is also set, dumps qbe IR instead"
 
         "\n %g-static\t"
         "%y-- produces a static library"
@@ -81,6 +81,7 @@ export fn main() void = {
             return;
         };
     };
+    let shared = false;
     let libset = false;
     let outset = false;
     let infset = false;
@@ -97,6 +98,7 @@ export fn main() void = {
         const arg = os::args[a];
         if(strings::hasprefix(arg, "-")){
             if(strings::hasprefix(arg, "-l")){
+                shared = true;
                 append(also_link, strings::dup(arg)!)!;
             };
             switch(arg){
@@ -205,6 +207,9 @@ export fn main() void = {
         defer free(link_args);
         defer for(let obj ..& link_args) free(obj);
 
+        for(let l .. ["-z", "noexecstack"]){
+            append(link_args, strings::dup(l)!)!;
+        };
         if(sharedlib){
             append(link_args, strings::dup("-r")!)!;
             append(link_args, strings::dup("-shared")!)!;
@@ -219,6 +224,9 @@ export fn main() void = {
             append(link_args, strings::dup("-o")!)!;
             append(link_args, fmt::asprintf("{}.o", outfile)!)!;
         } else {
+            if(shared){
+                append(link_args, strings::dup("--dynamic-linker=/lib64/ld-linux-x86-64.so.2")!)!;
+            };
             append(link_args, strings::dup("-e")!)!;
             append(link_args, strings::dup("main")!)!;
             append(link_args, strings::dup("-o")!)!;
@@ -249,10 +257,6 @@ export fn main() void = {
 
         run_cmd(silent, "nasm", "-felf64", "-o", rt_out, rt_src);
         append(link_args, rt_out)!;
-
-        for(let l .. ["-z", "noexecstack"]){
-            append(link_args, strings::dup(l)!)!;
-        };
 
         run_cmd(silent, "ld", link_args...);
         if(staticlib || sharedlib){
@@ -437,9 +441,18 @@ fn color_error(fmt: str, args: fmt::field...) never = {
 
 fn error_line(ctxt: *context, buffer: *memio::stream) void = {
     const max = len(ctxt.src);
-    const index = strings::index(
+    let index = strings::index(
         u8tostr(ctxt.src[ctxt.lst .. max]), "\n") as size + ctxt.lst;
-    assert(index > ctxt.lst);
+    if(index <= ctxt.lst){
+        const idx =
+            if(ctxt.lst > 0){
+                yield ctxt.lst - 1;
+            } else {
+                yield 0z;
+            };
+        index = strings::index(
+            u8tostr(ctxt.src[idx .. max]), "\n") as size + ctxt.lst;
+    };
 
     const line = fmt::asprint(ctxt.lin + 1)!;
     defer free(line);

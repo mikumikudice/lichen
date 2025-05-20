@@ -92,7 +92,8 @@ type primitive = enum u8 {
     U8, U16, U32, U64,
     I8, I16, I32, I64,
     F32, F64,
-    STR, UNIT, VOID,
+    STR, CSTR,
+    UNIT, VOID,
     ANY, NUMBER, RATIO,
     ARR_U8, ARR_U16, ARR_U32, ARR_U64,
     ARR_I8, ARR_I16, ARR_I32, ARR_I64,
@@ -103,7 +104,8 @@ const prm_value = [
     "u8", "u16", "u32", "u64",
     "i8", "i16", "i32", "i64",
     "f32", "f64",
-    "str", "unit", "void",
+    "str", "cstr",
+    "unit", "void",
     "", "", ""
 ];
 

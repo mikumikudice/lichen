@@ -586,7 +586,8 @@ fn qbe_t(tpe: primitive, md: mode = mode::REAL) str = {
     case primitive::I32 =>
         if(md == mode::LOAD) return "sw";
         return "w";
-    case primitive::U64, primitive::I64, primitive::STR =>
+    case primitive::U64, primitive::I64, primitive::STR,
+        primitive::CSTR =>
         return "l";
     case primitive::UNIT, primitive::VOID =>
         assert(md != mode::ASSIGN);
@@ -605,7 +606,8 @@ fn type_size(tpe: primitive) size = {
     case primitive::U32, primitive::I32, 
         primitive::F32 => return 4;
     case primitive::U64, primitive::I64,
-        primitive::F64, primitive::STR => return 8;
+        primitive::F64, primitive::STR,
+        primitive::CSTR => return 8;
     case =>
         assert(false, "unreachable");
         return 0;
@@ -1213,7 +1215,7 @@ fn gen_file(ctxt: *context, tokens: []token, buffer: *memio::stream,
                 fmt::fprint(buffer, "export ")!;
             };
             const name = strings::replace(meta.name.id, "'", ".q")!;
-            fmt::fprintf(buffer, "data ${} = {{ ", name)!;
+            fmt::fprintf(buffer, "data ${} = align 16 {{ ", name)!;
 
             assert(!untyped(meta.name.itype));
             const tpe = meta.name.itype;
@@ -1352,7 +1354,8 @@ fn gen_file(ctxt: *context, tokens: []token, buffer: *memio::stream,
     const lit_c = len(ctxt.literals);
     for(let lit = 0z; lit < lit_c; lit += 1){
         const length = true_size(ctxt.literals[lit]);
-        fmt::fprintfln(buffer, "data $lit.{} = {{ l {}, l {}, b \"{}\" }}", 
+        fmt::fprintfln(buffer,
+            "section \".rodata\"\ndata $lit.{} = align 16 {{ l {}, l {}, b \"{}\" }}", 
             lit, length + 16, length, ctxt.literals[lit])!;
     };
 };
@@ -1416,12 +1419,14 @@ fn gen_fun(ctxt: *context, tokens: []token, buffer: *memio::stream,
     ctxt.scp = &ctxt.glob;
     this.inner = body;
 
-    if(meta.name.pub){
-        fmt::fprintf(buffer, "export ")!;
-    };
-
     const name = strings::replace(fix_global(meta), "'", ".q")!;
     defer free(name);
+
+    if(meta.name.pub){
+        fmt::fprintf(buffer, "section \".text.{}\" \"ax\"\nexport ", name)!;
+    } else {
+        fmt::fprintfln(buffer, "section \".text.{}\" \"ax\"", name)!;
+    };
 
     fmt::fprintf(buffer, "function ")!;
     if(meta.fn_type == primitive::VOID ||
@@ -1435,16 +1440,16 @@ fn gen_fun(ctxt: *context, tokens: []token, buffer: *memio::stream,
         fmt::fprintf(buffer, "{} %{}, ",
             qbe_t(param_l.names[p].itype, mode::ASSIGN), param_l.names[p].id)!;
     };
-    fmt::fprintfln(buffer, "){{\n@start\n\tdbgloc {}, {}\n@body",
+    fmt::fprintf(buffer, "){{\n@start\n\tdbgloc {}, {}\n@body",
         body.path[0].lin + 1, body.path[0].cln + 1)!;
     gen_scope(ctxt, buffer, body)?;
     ctxt.scope_owner = void;
 
     const end = len(this.path) - 2;
     if(meta.fn_type == primitive::VOID){
-        fmt::fprintln(buffer, "\tcall $rt_exit(w 0)\n\thlt\n}")!;
+        fmt::fprintln(buffer, "\n\tcall $rt_exit(w 0)\n\thlt\n}")!;
     } else if(meta.fn_type == primitive::UNIT && !ctxt.tailcall){
-        fmt::fprintln(buffer, "\tret\n}")!;
+        fmt::fprintln(buffer, "\n\tret\n}")!;
     } else {
         fmt::fprintln(buffer, "}")!;
     };
@@ -1907,7 +1912,8 @@ fn gen_move(ctxt: *context, header: *memio::stream, buffer: *memio::stream,
                         memio::string(header)!, dest, move_t,
                         qbe_t(var.name.itype, mode::LOAD), name)!;
                 };
-            } else if(var.name.itype == primitive::STR){
+            } else if(var.name.itype == primitive::STR ||
+                (var.name.itype == primitive::CSTR && is_subtype(tpe, primitive::STR))){
                 if(var.glob){
                     fmt::fprintfln(buffer, "{}\t%{} ={} copy ${}",
                         memio::string(header)!, dest, move_t, name)!;
@@ -1915,6 +1921,16 @@ fn gen_move(ctxt: *context, header: *memio::stream, buffer: *memio::stream,
                     fmt::fprintfln(buffer, "{}\t%{} ={} copy %{}",
                         memio::string(header)!, dest, move_t, name)!;
                 };
+            } else if(var.name.itype == primitive::CSTR){
+                if(var.glob){
+                    fmt::fprintfln(buffer, "{}\t%{} ={} add ${}, 16",
+                        memio::string(header)!, dest, move_t, name)!;
+                } else {
+                    fmt::fprintfln(buffer, "{}\t%{} ={} add %{}, 16",
+                        memio::string(header)!, dest, move_t, name)!;
+                };
+            } else {
+                assert(false, "TODO: ratios");
             };
         case *if_else_meta =>
             gen_if_else(ctxt, buffer, node, dest)?;
@@ -1941,8 +1957,13 @@ fn gen_move(ctxt: *context, header: *memio::stream, buffer: *memio::stream,
         case let num: size =>
             fmt::fprintfln(buffer, "\t%{} ={} copy {}", dest, move_t, num)!;
         case let txt: str =>
-            fmt::fprintfln(buffer, "\t%{} =l copy $lit.{}", dest,
-                push_str(ctxt, txt))!;
+            if(tpe == primitive::CSTR){
+                fmt::fprintfln(buffer, "\t%{} =l add $lit.{}, 16", dest,
+                    push_str(ctxt, txt))!;
+            } else {
+                fmt::fprintfln(buffer, "\t%{} =l copy $lit.{}", dest,
+                    push_str(ctxt, txt))!;
+            };
         case =>
             assert(false, "unreachable");
         };
@@ -2140,7 +2161,14 @@ fn gen_member(ctxt: *context, buffer: *memio::stream,
                     return "";
                 };
             } else {
-                return fmt::asprintf("$lit.{}", push_str(ctxt, txt))!;
+                if(exp_type == primitive::CSTR){
+                    const id = push_str(ctxt, txt);
+                    const out = fmt::asprintf("%cstr.{}", id)!;
+                    fmt::fprintfln(buffer, "\t{} =l add $lit.{}, 16", out, id)!;
+                    return out;
+                } else {
+                    return fmt::asprintf("$lit.{}", push_str(ctxt, txt))!;
+                };
             };
         case =>
             assert(false, "unreachable");
@@ -2625,21 +2653,25 @@ fn validate_efx(ctxt: *context, called: *fn_meta, caller: []tkval)
             };
         };
     } else {
-        const mod = (called.origin as str);
-        const bind = strings::rcut(strings::rcut(mod, "/").1, ".").0;
+        const origin = called.origin as str;
+        const default = strings::rcut(
+            strings::rcut(origin, "/").1, ".").0;
         for(let lr_tag .. caller){
-            if(bind == (lr_tag as ident).id) return;
+            const tag = new_tk(ctxt, lr_tag);
+            const mod = get_mod(ctxt, tag)!;
+            const bind = mod.1.ctxt.name;
+            if(bind == origin) return;
         };
         const help = fmt::asprintf(
             "%gtry doing %p\"%d= %b{} %y{{%p\""
             "%g in the function scope definition",
-            bind)!;
+            default)!;
         defer free(help);
         return error(ctxt,
             "the function %b{}%r is from the module "
             "%g{}%r, but the caller function doesn't "
             "implement this effect tag\n{}",
-            called.name.id, bind, help);
+            called.name.id, default, help);
     };
 };
 
@@ -3312,6 +3344,14 @@ fn eval_member(ctxt: *context, tokens: []token, at: size, hint: primitive = prim
             meta.tpe = primitive::STR;
         };
         end += 1;
+        tk = next_tk(ctxt, tokens, end, "expected %btype casting%r or "
+            "%bexpression continuation%r, but got %y{}")?;
+        if(tk.val is primitive){ // TODO: composite types
+            pos = tk;
+            const new = tk.val as primitive;
+            meta.tpe = cast(ctxt, meta.tpe, new, tk)?;
+            end += 1;
+        };
         meta.val = txt: tkval;
         // TODO: casting to composite types
     case let kwd: keyword =>
@@ -3612,7 +3652,11 @@ fn is_castable(this: primitive, that: primitive) bool = {
     case primitive::F32, primitive::F64 =>
         return this == primitive::NUMBER || is_subtype(this, primitive::RATIO) ||
             (is_subtype(this, primitive::NUMBER) && type_size(this) == type_size(that));
-    case primitive::STR, primitive::UNIT, primitive::VOID =>
+    case primitive::STR =>
+        return this == primitive::STR || this == primitive::CSTR;
+    case primitive::CSTR =>
+        return this == primitive::CSTR || this == primitive::STR;
+    case primitive::UNIT, primitive::VOID =>
         return this == that;
     case =>
         assert(false, "unreachable");
