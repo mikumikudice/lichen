@@ -1439,15 +1439,15 @@ fn gen_fun(ctxt: *context, this: *ast) (void | COMPERR) = {
         fmt::fprintf(ctxt.buffer, "{} %{}, ",
             qbe_t(param_l.names[p].itype, mode::ASSIGN), param_l.names[p].id)!;
     };
-    fmt::fprintf(ctxt.buffer, "){{\n@start\n\tdbgloc {}, {}\n@body",
+    fmt::fprintfln(ctxt.buffer, "){{\n@start\n\tdbgloc {}, {}\n@body",
         body.path[0].lin + 1, body.path[0].cln + 1)!;
     gen_scope(ctxt, body)?;
 
     const end = len(this.path) - 2;
     if(meta.fn_type == primitive::VOID){
-        fmt::fprintln(ctxt.buffer, "\n\tcall $rt_exit(w 0)\n\thlt\n}")!;
+        fmt::fprintln(ctxt.buffer, "\tcall $rt_exit(w 0)\n\thlt\n}")!;
     } else if(meta.fn_type == primitive::UNIT && !ctxt.tailcall){
-        fmt::fprintln(ctxt.buffer, "\n\tret\n}")!;
+        fmt::fprintln(ctxt.buffer, "\tret\n}")!;
     } else {
         fmt::fprintln(ctxt.buffer, "}")!;
     };
@@ -1469,7 +1469,7 @@ fn gen_scope(ctxt: *context, node: nullable *ast, stt_dest: (void | str) = void)
         switch(this.kind){
         case path_t::DECL, path_t::CONST_DEF =>
             const meta = this.meta as *var_meta;
-            fmt::fprintfln(ctxt.buffer, "\n\tdbgloc {}, {}",
+            fmt::fprintfln(ctxt.buffer, "\tdbgloc {}, {}",
                 this.path[0].lin + 1, this.path[0].cln + 1)!;
 
             const name = strings::replace(meta.name.id, "'", ".q")!;
@@ -1480,7 +1480,7 @@ fn gen_scope(ctxt: *context, node: nullable *ast, stt_dest: (void | str) = void)
         case path_t::EXPR =>
             const meta = this.meta as *expr_meta;
             if(meta.tpe == primitive::VOID || meta.tpe == primitive::UNIT){
-                fmt::fprintfln(ctxt.buffer, "\n\tdbgloc {}, {}",
+                fmt::fprintfln(ctxt.buffer, "\tdbgloc {}, {}",
                     this.path[0].lin + 1, this.path[0].cln + 1)!;
                 for(let m ..& meta.members){
                     if(m is operator) continue;
@@ -1515,12 +1515,12 @@ fn gen_scope(ctxt: *context, node: nullable *ast, stt_dest: (void | str) = void)
                 };
             defer free(dest);
 
-            fmt::fprintfln(ctxt.buffer, "\n\tdbgloc {}, {}",
+            fmt::fprintfln(ctxt.buffer, "\tdbgloc {}, {}",
                 this.path[0].lin + 1, this.path[0].cln + 1)!;
 
             gen_exp(ctxt, this, dest, meta.tpe)?;
         case path_t::FUN_CALL =>
-            fmt::fprintfln(ctxt.buffer, "\n\tdbgloc {}, {}",
+            fmt::fprintfln(ctxt.buffer, "\tdbgloc {}, {}",
                 this.path[0].lin + 1, this.path[0].cln + 1)!;
             gen_funcall(ctxt, this)?;
         case path_t::STATEMENT =>
@@ -1532,7 +1532,7 @@ fn gen_scope(ctxt: *context, node: nullable *ast, stt_dest: (void | str) = void)
             case keyword::MATCH =>
                 assert(false, "TODO");
             case keyword::TEST =>
-                fmt::fprintfln(ctxt.buffer, "\n\tdbgloc {}, {}",
+                fmt::fprintfln(ctxt.buffer, "\tdbgloc {}, {}",
                     this.path[0].lin + 1, this.path[0].cln + 1)!;
 
                 const meta = this.meta as *test_meta;
