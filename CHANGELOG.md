@@ -1,4 +1,5 @@
-- updated runtime to expect c strings
-- updated fs module to use c strings
-- temporary remove support to library generation
-- runtime assembly file cleanup
+- fused com_obj and context types
+- merge all buffers from all modules into a single ssa file
+- append runtime to the qbe output
+- simplify runtime code and convert it to gnu assembly
+- update compiler flags usage

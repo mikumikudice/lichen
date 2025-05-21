@@ -167,26 +167,26 @@ type scope = struct {
 type context = struct {
     name: str,
     libpath: str,
+
     lin: size,
     cln: size,
     ptr: size,
     lst: size,
     src: []u8,
+
     glob: scope,
     scp: (void | *scope),
-    literals: []str,
+    literals: *[]str,
     fun_defs: []*ast,
-    modules: [](token, comp_obj),
+    modules: [](token, *context),
     scope_owner: (void | *fn_meta),
-    eval: bool,
-    tailcall: bool,
-};
 
-type comp_obj = struct {
+    head: nullable *ast,
     tokens: []token,
     buffer: *memio::stream,
-    ast_head: nullable *ast,
-    ctxt: *context,
+
+    eval: bool,
+    tailcall: bool,
 };
 
 type path_t = enum u8 {
@@ -215,8 +215,9 @@ type fn_meta = struct {
     ffi: (void | str),
     mod: (void | str),
     used: bool,
+    generated: bool,
     name: ident,
-    origin: (void | str),
+    origin: str,
     params: nullable *ast,
     fn_type: primitive,
     effects: []tkval,
