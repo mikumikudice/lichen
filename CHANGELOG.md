@@ -1,5 +1,3 @@
-- fused com_obj and context types
-- merge all buffers from all modules into a single ssa file
-- append runtime to the qbe output
-- simplify runtime code and convert it to gnu assembly
-- update compiler flags usage
+- implemented arrays, array indexing and array return
+- implemented type notation parsing
+- fixed some error messages

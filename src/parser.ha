@@ -52,6 +52,7 @@ fn load(fname: str, libpath: str, strlits: *[]str) (context | COMPERR) = {
         head = null,
         buffer = alloc(memio::dynamic())!,
         literals = strlits,
+        l_arrays = [],
         fun_defs = [],
         modules = [],
         glob = scope {
@@ -95,14 +96,14 @@ fn strtoken(tok: tkval) str = {
         return fmt::asprintf("keyword \"{}\"", kwd_value[kwd])!;
     case let prm: primitive =>
         switch(prm){
-        case primitive::NUMBER =>
-            return strings::dup("number literal")!;
-        case primitive::RATIO =>
-            return strings::dup("ratio literal")!;
-        case primitive::ANY =>
-            return strings::dup("untyped")!;
+        case primitive::NUMBER, primitive::RATIO, primitive::ANY =>
+            return strings::dup(prm_value[prm])!;
         case =>
-            return fmt::asprintf("primitive type \"{}\"", prm_value[prm])!;
+            if(prm > primitive::RATIO){
+                return fmt::asprintf("type \"{}\"", prm_value[prm])!;
+            } else {
+                return fmt::asprintf("primitive type \"{}\"", prm_value[prm])!;
+            };
         };
     case let opr: operator =>
         return fmt::asprintf("\"{}\" operator", opr_value[opr: int])!;
@@ -310,6 +311,12 @@ fn free_nodes(_node: nullable *ast) void = {
             free_nodes(arg);
         };
         free(fncall.args);
+        if(fncall.dest is str) free(fncall.dest as str);
+    case let array: *array_meta =>
+        for(let item ..& array.items){
+            free_nodes(item);
+        };
+        free(array.items);
     case let ifel_block: *if_else_meta =>
         defer free(ifel_block);
         defer free(ifel_block.conds);
@@ -604,7 +611,11 @@ fn qbe_t(tpe: primitive, md: mode = mode::REAL) str = {
         if(md == mode::LOAD) return "sw";
         return "w";
     case primitive::U64, primitive::I64, primitive::STR,
-        primitive::CSTR =>
+        primitive::CSTR, primitive::ARR_U8, primitive::ARR_U16,
+        primitive::ARR_U32, primitive::ARR_U64, primitive::ARR_I8,
+        primitive::ARR_I16, primitive::ARR_I32, primitive::ARR_I64,
+        primitive::ARR_F32, primitive::ARR_F64, primitive::ARR_STR,
+        primitive::ARR_CSTR =>
         return "l";
     case primitive::UNIT, primitive::VOID =>
         assert(md != mode::ASSIGN);
@@ -1611,8 +1622,10 @@ fn gen_exp(ctxt: *context, exp: *ast, dest: str, exp_type: primitive)
         if(exp_meta.rets && !ctxt.eval){
             fmt::fprintfln(ctxt.buffer, "\tret %{}", dest)!;
         };
+    case let array: *array_meta =>
+        gen_stack_array(ctxt, array, dest)?;
     case =>
-        assert(false, "unreachabla");
+        assert(false, "unreachable");
     };
 };
 
@@ -1846,7 +1859,13 @@ fn gen_funcall(ctxt: *context, this: *ast, dest: (void | str) = void)
             fmt::fprintf(&temp, "\tcall ${}(", name)!;    
         };
     case void =>
-        fmt::fprintf(&temp, "\tcall ${}(", name)!;
+        match(meta.dest){
+        case let wrap: str =>
+            fmt::fprintf(&temp, "\t%{} ={} call ${}(",
+                wrap, qbe_t(tpe, mode::ASSIGN), name)!;
+        case void =>
+            fmt::fprintf(&temp, "\tcall ${}(", name)!;
+        };
     };
     const max = len(p_meta.names);
     assert(len(meta.args) == max);
@@ -1925,9 +1944,19 @@ fn gen_move(ctxt: *context, header: *memio::stream, dest: str,
                     fmt::fprintfln(ctxt.buffer, "{}\t%{} ={} add %{}, 16",
                         memio::string(header)!, dest, move_t, name)!;
                 };
-            } else {
+            } else if(is_subtype(var.name.itype, primitive::RATIO)){
                 assert(false, "TODO: ratios");
+            } else if(is_subtype(var.name.itype, primitive::ARRAY)){
+                fmt::fprintfln(ctxt.buffer, "{}\t%{} =l copy %{}",
+                    memio::string(header)!, dest, name)!;
+            } else {
+                assert(false, "unexpected type");
+                fmt::fatalf("unexpected type {}", strtoken(var.name.itype));
             };
+        case let array: *array_meta =>
+            gen_stack_array(ctxt, array, dest)?;
+        case let index: *index_meta =>
+            gen_array_index(ctxt, index, dest)?;
         case *if_else_meta =>
             gen_if_else(ctxt, node, dest)?;
         case let exp: *expr_meta =>
@@ -1980,6 +2009,57 @@ fn gen_move(ctxt: *context, header: *memio::stream, dest: str,
             assert(false, "unreachable");
         };
     };
+};
+
+fn gen_stack_array(ctxt: *context, array: *array_meta, dest: str) (void | COMPERR) = {
+    const item_size = type_size(array.itm_tpe);
+    const array_size = len(array.items) * item_size + 8;
+    fmt::fprintfln(ctxt.buffer, "\t%{0} =l alloc8 {1}\n\t%{0}.ptr =l copy %{0}",
+        dest, array_size)!;
+    fmt::fprintfln(ctxt.buffer, "\tstorel {}, %{}", array_size, dest)!;
+    fmt::fprintfln(ctxt.buffer, "\t%{0}.ptr =l add %{0}.ptr, 8", dest)!;
+
+    let count = 0z;
+    for(let item .. array.items){
+        const index = fmt::asprintf("{}.{}", dest, count)!;
+        defer free(index);
+        gen_exp(ctxt, item, index, array.itm_tpe)?;
+
+        fmt::fprintfln(ctxt.buffer, "\tstore{} %{}, %{}.ptr", qbe_t(array.itm_tpe), index, dest)!;
+        fmt::fprintfln(ctxt.buffer, "\t%{0}.ptr =l add %{0}.ptr, {1}",
+            dest, item_size)!;
+        count += 1;
+    };
+};
+
+fn gen_array_index(ctxt: *context, index: *index_meta, dest: str) (void | COMPERR) = {
+    const array_name = 
+        match(index.array.meta){
+        case let var: *var_meta =>
+            yield var.name.id;
+        case let funcall: *funcall_meta =>
+            gen_funcall(ctxt, index.array)?;
+            yield funcall.dest as str;
+        case =>
+            assert(false, "unreachable");
+        };
+    fmt::fprintfln(ctxt.buffer, "\t%{0}.ptr =l copy %{0}", array_name)!;
+
+    const index_id = fmt::asprintf("{}.item", array_name)!;
+    defer free(index_id);
+
+    const i_meta = index.index.meta as *expr_meta;
+    const index_t = qbe_t(i_meta.tpe);
+
+    gen_exp(ctxt, index.index, index_id, i_meta.tpe)?;
+    fmt::fprintfln(ctxt.buffer, "\t%{0} ={1} mul %{0}, {2}",
+        index_id, index_t, type_size(index.tpe))!;
+    fmt::fprintfln(ctxt.buffer, "\t%{0} ={1} add %{0}, 8", index_id, index_t)!;
+
+    fmt::fprintfln(ctxt.buffer, "\t%{0}.ptr =l add %{0}.ptr, %{1}",
+        array_name, index_id)!;
+    fmt::fprintfln(ctxt.buffer, "\t%{} =l load{} %{}.ptr",
+        dest, qbe_t(index.tpe, mode::LOAD), array_name)!;
 };
 
 fn gen_member(ctxt: *context, member: *ast, exp_type: primitive)
@@ -2486,21 +2566,17 @@ fn eval_fun_def(ctxt: *context, at: size, pub: bool = false)
     const name = tk.val as ident;
     name.pub = pub;
     const (param, _end) = eval_param_l(ctxt, end + 1)?;
-    end = _end;
 
     // function type
-    tk = next_tk(ctxt, end,
-        "expected %bvalid function type notation%r, but got %y{}")?;
-    if(!((tk.val) is primitive)){ // TODO: agregate types (i.e. "|| is ident")
-        move_ptr(ctxt, tk);
+    const (tpe, _end) = eval_type(ctxt, _end)?;
+    if(tpe is void){
+        move_ptr(ctxt, ctxt.tokens[_end]);
         return error(ctxt, "expected %bvalid function type%r, but got %y{}",
             strtoken(tk.val));
     };
-    const tpe = tk.val as primitive;
-    end += 1;
 
     // function assignment
-    end = pop_assert(ctxt, end, operator::ASG,
+    end = pop_assert(ctxt, _end, operator::ASG,
         "expected %bfunction body assignment%r, but got %y{}")?;
 
     const (efx, ffi, _end) = eval_efx(ctxt, end)?;
@@ -2524,7 +2600,7 @@ fn eval_fun_def(ctxt: *context, at: size, pub: bool = false)
         name = name,
         origin = ctxt.name,
         params = param,
-        fn_type = tpe,
+        fn_type = tpe as primitive,
         effects = efx,
         scope_begin = s_begin,
     })!;
@@ -2692,15 +2768,14 @@ fn eval_param_l(ctxt: *context, at: size) ((*ast, size) | COMPERR) = {
         append(meta.names, tk.val as ident)!;
         
         end += 1;
-        tk = next_tk(ctxt, end,
-            "expected %bvalid parameter type%r, but got %y{}")?;
-        if(!(tk.val is primitive)){ // TODO: composite types
+        const (tpe, _end) = eval_type(ctxt, end)?;
+        end = _end;
+        if(tpe is void){
             move_ptr(ctxt, tk);
             return error(ctxt, "expected %bvalid parameter type%r, but got %y{}",
                 strtoken(tk.val));
         };
-        end += 1;
-        meta.names[idx].itype = tk.val as primitive;
+        meta.names[idx].itype = tpe as primitive;
         idx += 1;
         tk = next_tk(ctxt, end,
             "expected %bparameter list continuation%r or %bend of list%r, but got %y{}")?;
@@ -2841,6 +2916,13 @@ fn eval_expression(ctxt: *context, at: size, hint: primitive = primitive::ANY,
             move_ptr(ctxt, tk);
             return error(ctxt, "invalid statement");
         };
+    case let sym: symbol =>
+        switch(sym){
+        case symbol::LFT_SQUARE =>
+            return eval_array_lit(ctxt, at, hint)?;
+        case =>
+            return eval_abbs_exp(ctxt, at, hint, msg_kind)?;
+        };
     case =>
         return eval_abbs_exp(ctxt, at, hint, msg_kind)?;
     };
@@ -2896,21 +2978,19 @@ fn eval_decl(ctxt: *context, at: size) ((*ast, size) | COMPERR) = {
             strtoken(tk.val));
     };
     const name = tk.val as ident;
-
-    tk = next_tk(ctxt, end + 1, "expected %btype notation%r or "
-        "%bvalue assignment%r, but got %y{}")?;
-    end += 1;
+    const (tpe, _end) = eval_type(ctxt, end + 1)?;
+    end = _end;
 
     const node = new_node();
     node.kind = path_t::DECL;
-    match(tk.val){
+    match(tpe){
     case let prim: primitive =>
         if(prim == primitive::VOID || prim == primitive::UNIT){
             move_ptr(ctxt, tk);
             return error(ctxt, "cannot define a variable as %b{}",
                 prm_value[prim]);
         };
-        end = pop_assert(ctxt, end + 1, operator::ASG,
+        end = pop_assert(ctxt, end, operator::ASG,
             "exprected %bvalue assignment%r, but got %y{}")?;
         const eq = end;
         const (exp, _end) = eval_expression(ctxt, end, prim)?;
@@ -2933,12 +3013,12 @@ fn eval_decl(ctxt: *context, at: size) ((*ast, size) | COMPERR) = {
         case let meta: *var_meta =>
             name.itype = push_type(ctxt, meta.name.itype, prim, ctxt.tokens[eq])?;
         };
-    case let ctpe: ident =>
-        assert(false, "TODO: composite types");
-    case let oper: operator =>
-        if(oper != operator::ASG){
+    case void =>
+        tk = next_tk(ctxt, end, "expected %bvalue assignment%r, but got %y{}")?;
+        if(!comp_tk(tk.val, operator::ASG)){
             move_ptr(ctxt, tk);
-            return error(ctxt, "expected %value bassignment%r, but got %y{}");
+            return error(ctxt, "expected %bvalue assignment%r, but got %y{}",
+                strtoken(tk.val));
         };
         const eq = end;
         const (exp, _end) = eval_expression(ctxt, end + 1)?;
@@ -2958,6 +3038,14 @@ fn eval_decl(ctxt: *context, at: size) ((*ast, size) | COMPERR) = {
             name.itype = meta.tpe;
         case let meta: *var_meta =>
             name.itype = meta.name.itype;
+        case let meta: *array_meta =>
+            if(untyped(meta.tpe)){
+                move_ptr(ctxt, tk);
+                return error(ctxt, "cannot infer expression type");
+            };
+            name.itype = meta.tpe;
+        case =>
+            fmt::fatalf("missing match for {} kind", exp.kind: u8);
         };
     };
     node.path = ctxt.tokens[begin..end];
@@ -3006,8 +3094,9 @@ fn eval_abbs_exp(ctxt: *context, at: size, hint: primitive = primitive::ANY,
         "expected %boperator%r or %bend of line%r, but got %y{}")?;
 
     // keep parsing expression
-    for(!(comp_tk(tk.val, symbol::RGT_PAR) || comp_tk(tk.val, symbol::LFT_CURLY) ||
-        comp_tk(tk.val, symbol::COMMA) || comp_tk(tk.val, symbol::EOL)) && end < max){
+    for(!(comp_tk(tk.val, symbol::RGT_PAR) || comp_tk(tk.val, symbol::RGT_SQUARE) ||
+        comp_tk(tk.val, symbol::LFT_CURLY) || comp_tk(tk.val, symbol::COMMA) ||
+        comp_tk(tk.val, symbol::EOL)) && end < max){
         const oper =
             if(!(tk.val is operator)){
                 move_ptr(ctxt, tk);
@@ -3204,14 +3293,13 @@ fn eval_member(ctxt: *context, at: size, hint: primitive = primitive::ANY)
             const (exp, _end) = eval_expression(ctxt, end + 1)?;
             end = pop_assert(ctxt, _end, symbol::RGT_PAR,
                 "expected %bclosing parenthesis%r, but got %y{}")?;
-            tk = next_tk(ctxt, end,
-                "expected %btype casting%r or %bexpression continuation%r, "
-                "but got %y{}")?;
             const e_meta = exp.meta as *expr_meta;
-            if(tk.val is primitive){ // TODO: composite types
+
+            const (new_tpe, _end) = eval_type(ctxt, end)?;
+            end = _end;
+            if(new_tpe is primitive){
                 pos = tk;
-                e_meta.tpe = cast(ctxt, e_meta.tpe, tk.val as primitive, tk)?;
-                end += 1;
+                e_meta.tpe = cast(ctxt, e_meta.tpe, new_tpe as primitive, tk)?;
             };
             meta.tpe = push_type(ctxt, meta.tpe, e_meta.tpe, pos)?;
             meta.val = exp;
@@ -3222,14 +3310,12 @@ fn eval_member(ctxt: *context, at: size, hint: primitive = primitive::ANY)
         };
     case let num: size =>
         end += 1;
-        tk = next_tk(ctxt, end, "expected %btype casting%r or "
-            "%bexpression continuation%r, but got %y{}")?;
         let tpe = primitive::NUMBER;
-        if(tk.val is primitive){ // TODO: composite types
+        const (new_tpe, _end) = eval_type(ctxt, end)?;
+        end = _end;
+        if(new_tpe is primitive){
             pos = tk;
-            const new = tk.val as primitive;
-            tpe = cast(ctxt, tpe, new, tk)?;
-            end += 1;
+            tpe = cast(ctxt, tpe, new_tpe as primitive, tk)?;
         };
         meta.tpe = push_type(ctxt, meta.tpe, tpe, pos)?;
         meta.val = num: tkval; 
@@ -3241,12 +3327,15 @@ fn eval_member(ctxt: *context, at: size, hint: primitive = primitive::ANY)
             const v_meta = var.meta as *var_meta;
             tk = next_tk(ctxt, end, "expected %btype casting%r or "
                 "%bexpression continuation%r, but got %y{}")?;
-            let tpe = v_meta.name.itype;
-            if(tk.val is primitive){ // TODO: composite types
+            let tpe = unary_fix_type(ctxt, pos, meta.pre, v_meta.name.itype)?;
+
+            const (new_tpe, _end) = eval_type(ctxt, end)?;
+            end = _end;
+            if(new_tpe is primitive){
                 pos = tk;
-                const new = tk.val as primitive;
-                tpe = cast(ctxt, tpe, new, tk)?;
-                end += 1;
+                tpe = cast(ctxt, tpe, new_tpe as primitive, tk)?;
+            } else if(comp_tk(tk.val, symbol::LFT_SQUARE)){
+                return eval_array_index(ctxt, end, var);
             };
             meta.tpe = push_type(ctxt, meta.tpe, tpe, pos)?;
             meta.val = var;
@@ -3257,16 +3346,22 @@ fn eval_member(ctxt: *context, at: size, hint: primitive = primitive::ANY)
             if(comp_tk(tk.val, symbol::LFT_PAR)){
                 const (exp, _end) = eval_funcall(ctxt, end)?;
                 end = _end;
-                const fun = (exp.meta as *funcall_meta).fun;
-                const f_meta = fun.meta as *fn_meta;
-                let tpe = f_meta.fn_type;
+
+                const call = exp.meta as *funcall_meta;
                 tk = next_tk(ctxt, end, "expected %btype casting%r or "
                     "%bexpression continuation%r, but got %y{}")?;
-                if(tk.val is primitive){ // TODO: composite types
+                const fun = call.fun;
+                const f_meta = fun.meta as *fn_meta;
+
+                let tpe = unary_fix_type(ctxt, pos, meta.pre, f_meta.fn_type)?;
+                const (new_tpe, _end) = eval_type(ctxt, end)?;
+                end = _end;
+                if(new_tpe is primitive){
                     pos = tk;
-                    const new = tk.val as primitive;
-                    tpe = cast(ctxt, tpe, new, tk)?;
-                    end += 1;
+                    tpe = cast(ctxt, tpe, new_tpe as primitive, tk)?;
+                } else if(comp_tk(tk.val, symbol::LFT_SQUARE)){
+                    call.dest = fmt::asprintf("{}.call", f_meta.name.id)!;
+                    return eval_array_index(ctxt, end, exp);
                 };
                 meta.tpe = push_type(ctxt, meta.tpe, tpe, pos)?;
                 meta.val = exp;
@@ -3281,12 +3376,14 @@ fn eval_member(ctxt: *context, at: size, hint: primitive = primitive::ANY)
                     const v_meta = var.meta as *var_meta;
                     tk = next_tk(ctxt, end, "expected %btype casting%r or "
                         "%bexpression continuation%r, but got %y{}")?;
-                    let tpe = v_meta.name.itype;
-                    if(tk.val is primitive){ // TODO: composite types
+                    let tpe = unary_fix_type(ctxt, pos, meta.pre, v_meta.name.itype)?;
+                    const (new_tpe, _end) = eval_type(ctxt, end)?;
+                    end = _end;
+                    if(new_tpe is primitive){
                         pos = tk;
-                        const new = tk.val as primitive;
-                        tpe = cast(ctxt, v_meta.name.itype, new, tk)?;
-                        end += 1;
+                        tpe = cast(ctxt, v_meta.name.itype, new_tpe as primitive, tk)?;
+                    } else if(comp_tk(tk.val, symbol::LFT_SQUARE)){
+                        return eval_array_index(ctxt, end, var);
                     };
                     meta.tpe = push_type(ctxt, meta.tpe, tpe, pos)?;
                     meta.val = var;
@@ -3296,16 +3393,22 @@ fn eval_member(ctxt: *context, at: size, hint: primitive = primitive::ANY)
                     if(comp_tk(tk.val, symbol::LFT_PAR)){
                         const (exp, _end) = eval_funcall(ctxt, end)?;
                         end = _end;
-                        const fun = (exp.meta as *funcall_meta).fun;
-                        const f_meta = fun.meta as *fn_meta;
-                        let tpe = f_meta.fn_type;
+
+                        const call = exp.meta as *funcall_meta;
                         tk = next_tk(ctxt, end, "expected %btype casting%r or "
                             "%bexpression continuation%r, but got %y{}")?;
-                        if(tk.val is primitive){ // TODO: composite types
+                        const fun = call.fun;
+                        const f_meta = fun.meta as *fn_meta;
+
+                        let tpe = unary_fix_type(ctxt, pos, meta.pre, f_meta.fn_type)?;
+                        const (new_tpe, _end) = eval_type(ctxt, end)?;
+                        end = _end;
+                        if(new_tpe is primitive){
                             pos = tk;
-                            const new = tk.val as primitive;
-                            tpe = cast(ctxt, tpe, new, tk)?;
-                            end += 1;
+                            tpe = cast(ctxt, tpe, new_tpe as primitive, tk)?;
+                        } else if(comp_tk(tk.val, symbol::LFT_SQUARE)){
+                            call.dest = fmt::asprintf("{}.call", f_meta.name.id)!;
+                            return eval_array_index(ctxt, end, exp);
                         };
                         meta.tpe = push_type(ctxt, meta.tpe, tpe, pos)?;
                         meta.val = exp;
@@ -3319,14 +3422,6 @@ fn eval_member(ctxt: *context, at: size, hint: primitive = primitive::ANY)
                     idt.id);
             };
         };
-        if(meta.pre is operator && is_subtype(meta.tpe, primitive::STR)){
-            if(meta.pre as operator != operator::LENGTH){
-                move_ptr(ctxt, pos);
-                return error(ctxt, "invalid unary operator for %y{}",
-                    strtoken(primitive::STR));
-            };
-            meta.tpe = primitive::U64;
-        };
     case let txt: str =>
         if(meta.pre is operator){
             if(meta.pre as operator != operator::LENGTH){
@@ -3339,13 +3434,11 @@ fn eval_member(ctxt: *context, at: size, hint: primitive = primitive::ANY)
             meta.tpe = primitive::STR;
         };
         end += 1;
-        tk = next_tk(ctxt, end, "expected %btype casting%r or "
-            "%bexpression continuation%r, but got %y{}")?;
-        if(tk.val is primitive){ // TODO: composite types
+        const (new_tpe, _end) = eval_type(ctxt, end)?;
+        end = _end;
+        if(new_tpe is primitive){
             pos = tk;
-            const new = tk.val as primitive;
-            meta.tpe = cast(ctxt, meta.tpe, new, tk)?;
-            end += 1;
+            meta.tpe = cast(ctxt, meta.tpe, new_tpe as primitive, tk)?;
         };
         meta.val = txt: tkval;
         // TODO: casting to composite types
@@ -3366,12 +3459,11 @@ fn eval_member(ctxt: *context, at: size, hint: primitive = primitive::ANY)
             end = _end;
             const stt_meta = exp.meta as *if_else_meta;
             let tpe = stt_meta.tpe;
-            tk = next_tk(ctxt, end, "expected %btype casting%r or "
-                "%bexpression continuation%r, but got %y{}")?;
-            if(tk.val is primitive){ // TODO: composite types
+            const (new_tpe, _end) = eval_type(ctxt, end)?;
+            end = _end;
+            if(new_tpe is primitive){
                 pos = tk;
-                const new = tk.val as primitive;
-                tpe = cast(ctxt, tpe, new, tk)?;
+                tpe = cast(ctxt, tpe, new_tpe as primitive, tk)?;
                 end += 1;
             };
             meta.tpe = push_type(ctxt, meta.tpe, tpe, pos)?;
@@ -3396,6 +3488,118 @@ fn eval_member(ctxt: *context, at: size, hint: primitive = primitive::ANY)
     node.kind = path_t::MEMBER;
     node.path = ctxt.tokens[begin..end];
     node.meta = alloc(meta)!;
+    return (node, end);
+};
+
+fn eval_array_lit(ctxt: *context, at: size, hint: primitive)
+    ((*ast, size) | COMPERR) = {
+    assert(comp_tk(ctxt.tokens[at].val, symbol::LFT_SQUARE));
+    const begin = at;
+    let end = at;
+    let tk = next_tk(ctxt, end + 1,
+        "expected %bnext item%r or %bend or array literal%r, but got %y{}")?;
+    end += 1;
+
+    let items = []: []*ast;
+    let tpe = hint;
+    for(!comp_tk(tk.val, symbol::RGT_SQUARE)){
+        // TODO: array rules
+        const (item, _end) = eval_expression(ctxt, end, hint, tpe_msg::ARRAY)?;
+        append(items, item)!;
+
+        const meta = item.meta as *expr_meta;
+        tpe = push_type(ctxt, tpe, meta.tpe, ctxt.tokens[end], tpe_msg::ARRAY)?;
+        end = _end;
+        tk = next_tk(ctxt, end,
+            "expected %bnext item%r or %bend or array literal%r, but got %y{}")?;
+        if(!comp_tk(tk.val, symbol::COMMA) && !comp_tk(tk.val, symbol::RGT_SQUARE)){
+            move_ptr(ctxt, tk);
+            return error(ctxt, "expected %bnext item%r or %bend or array literal%r, but got %y{}",
+                strtoken(tk.val));
+        };
+        if(comp_tk(tk.val, symbol::COMMA)){
+            end += 1;
+            tk = next_tk(ctxt, end,
+                "expected %bnext item%r or %bend or array literal%r, but got %y{}")?;
+        };
+    };
+    end = pop_assert(ctxt, end, symbol::RGT_SQUARE,
+        "expected %bend of array declaration%r, but got %y{}")?;
+
+    tk = next_tk(ctxt, end,
+        "expected %bnext item%r or %bend or array literal%r, but got %y{}")?;
+    if(tk.val is primitive){
+        const new = tk.val as primitive;
+        tpe = cast(ctxt, tpe, new, tk)?;
+        end += 1;
+    };
+
+    const arr_tpe =
+        if(untyped(tpe)){
+            yield primitive::ARRAY;
+        }  else {
+            yield as_array(tpe);
+        };
+
+    const node = new_node();
+    node.kind = path_t::ARRAY;
+    node.path = ctxt.tokens[begin..end];
+    node.meta = alloc(array_meta {
+        tpe = arr_tpe,
+        itm_tpe = tpe,
+        items = items,
+    })!;
+    return (node, end);
+};
+
+fn eval_array_index(ctxt: *context, at: size, array: *ast) ((*ast, size) | COMPERR) = {
+    assert(comp_tk(ctxt.tokens[at].val, symbol::LFT_SQUARE));
+    const begin = at;
+
+    let val_tpe = primitive::ANY;
+    match(array.meta){
+    case let var: *var_meta =>
+        if(!is_subtype(var.name.itype, primitive::ARRAY)){
+            move_ptr(ctxt, ctxt.tokens[begin]);
+            return error(ctxt, "%g{}%r is not indexable", strtoken(var.name.itype));
+        };
+        val_tpe = var.name.itype - primitive::ARRAY - 1;
+    case let funcall: *funcall_meta =>
+        const fn_meta = funcall.fun.meta as *fn_meta;
+        if(!is_subtype(fn_meta.fn_type, primitive::ARRAY)){
+            move_ptr(ctxt, ctxt.tokens[begin]);
+            return error(ctxt, "%g{}%r is not indexable", strtoken(fn_meta.fn_type));
+        };
+        val_tpe = fn_meta.fn_type - primitive::ARRAY - 1;
+    case =>
+        move_ptr(ctxt, ctxt.tokens[begin]);
+        return error(ctxt, "value not indexable");
+    };
+
+    let (index, end) = eval_expression(ctxt, at + 1, primitive::NUMBER, tpe_msg::BOOL)?;
+    const meta = index.meta as *expr_meta;
+    if(untyped(meta.tpe)) meta.tpe = primitive::U64;
+
+    end = pop_assert(ctxt, end, symbol::RGT_SQUARE,
+        "expected %bend of indexing%r, but got %y{}")?;
+
+    const indexing = new_node();
+    indexing.kind = path_t::INDEXING;
+    indexing.path = ctxt.tokens[begin..end];
+    indexing.meta = alloc(index_meta {
+        tpe = val_tpe,
+        array = array,
+        index = index,
+    })!;
+
+    const node = new_node();
+    node.kind = path_t::MEMBER;
+    node.path = ctxt.tokens[begin..end];
+    node.meta = alloc(member_meta {
+        pre = void,
+        val = indexing,
+        tpe = val_tpe,
+    })!;
     return (node, end);
 };
 
@@ -3556,6 +3760,7 @@ fn eval_funcall(ctxt: *context, at: size) ((*ast, size) | COMPERR) = {
     end += 1;
     node.path = ctxt.tokens[begin..end];
     node.meta = alloc(funcall_meta {
+        dest = void,
         fun = fun,
         args = list,
     })!;
@@ -3582,8 +3787,55 @@ fn fix_global(meta: (*fn_meta | *var_meta)) str = {
     };
 };
 
+fn unary_fix_type(ctxt: *context, pos: token, unary: (operator | void), tpe: primitive)
+    (primitive | COMPERR) = {
+    if(unary is operator && unary as operator == operator::LENGTH){
+        if(!is_subtype(tpe, primitive::STR) &&
+            !is_subtype(tpe, primitive::ARRAY)){
+            move_ptr(ctxt, pos);
+            return error(ctxt, "invalid unary operator for %y{}",
+                strtoken(tpe));
+        };
+        return primitive::U64;
+    } else if(unary is operator){
+        if((is_subtype(tpe, primitive::STR) ||
+            is_subtype(tpe, primitive::ARRAY)) &&
+            unary as operator != operator::LENGTH){
+            move_ptr(ctxt, pos);
+            return error(ctxt, "invalid unary operator for %y{}",
+                strtoken(tpe));
+        };
+    };
+    return tpe;
+};
+
+fn eval_type(ctxt: *context, at: size) (((primitive | void), size) | COMPERR) = {
+    const begin = at;
+    let end = at;
+    let tk = next_tk(ctxt, end,
+        "expected %bvalid type notation%r, but got %y{}")?;
+    if(comp_tk(tk.val, symbol::LFT_SQUARE)){
+        end += 1;
+        tk = next_tk(ctxt, end, "expected %bclosing square brackets%r, but got %y{}")?;
+
+        if(!comp_tk(tk.val, symbol::RGT_SQUARE)){
+            return (void, at);
+        };
+        end += 1;
+        tk = next_tk(ctxt, end, "expected %barray item type%r, but got %y{}")?;
+        if(tk.val is primitive){
+            return (as_array(tk.val as primitive), end + 1);
+        };
+    } else if(tk.val is primitive){
+        return (tk.val as primitive, end + 1);
+    } else if(tk.val is ident){
+        assert(false, "TODO: composite types");
+    };
+    return (void, end);
+};
+
 // message modde for type error
-type tpe_msg = enum u8 { FN_RT, LT_RT, ASSIG, BRANCH, BOOL };
+type tpe_msg = enum u8 { FN_RT, LT_RT, ASSIG, BRANCH, BOOL, ARRAY };
 
 // attempts to update a given current type to a new one, returning an error if
 // not possible. if exp is set to true, the error refers to left anf right hands,
@@ -3615,6 +3867,9 @@ fn push_type(ctxt: *context, current: primitive, new: primitive, pos: token,
         case tpe_msg::BOOL =>
             return error(ctxt,
                 "statement expected %b{}%r, but got %y{}", strtoken(current), strtoken(new));
+        case tpe_msg::ARRAY =>
+            return error(ctxt,
+                "array of %b{}%r cannot hold item of %y{}", strtoken(current), strtoken(new));
         };
     };
 };
@@ -3632,9 +3887,47 @@ fn cast(ctxt: *context, current: primitive, new: primitive, pos: token)
     };
 };
 
+fn as_array(tpe: primitive) primitive = {
+    switch(tpe){
+    case primitive::U8 =>
+        return primitive::ARR_U8;
+    case primitive::U16 =>
+        return primitive::ARR_U16;
+    case primitive::U32 =>
+        return primitive::ARR_U32;
+    case primitive::U64 =>
+        return primitive::ARR_U64;
+    case primitive::I8 =>
+        return primitive::ARR_I8;
+    case primitive::I16 =>
+        return primitive::ARR_I16;
+    case primitive::I32 =>
+        return primitive::ARR_I32;
+    case primitive::I64 =>
+        return primitive::ARR_I64;
+    case primitive::F32 =>
+        return primitive::ARR_F32;
+    case primitive::F64 =>
+        return primitive::ARR_F64;
+    case primitive::STR =>
+        return primitive::ARR_STR;
+    case primitive::CSTR =>
+        return primitive::ARR_CSTR;
+    case primitive::NUMBER =>
+        return primitive::ARR_NUMBER;
+    case primitive::RATIO =>
+        return primitive::ARR_RATIO;
+    case =>
+        assert(false);
+        fmt::fatalf("TODO: arrays of {}", strtoken(tpe));
+    };
+};
+
 // checks is a given type is not a solid type
 fn untyped(tpe: primitive) bool = {
-    return tpe == primitive::ANY || tpe == primitive::NUMBER || tpe == primitive::RATIO;
+    return tpe == primitive::ANY || tpe == primitive::NUMBER ||
+        tpe == primitive::RATIO || tpe == primitive::ARRAY ||
+        tpe == primitive::ARR_NUMBER || tpe == primitive::ARR_RATIO;
 };
 
 // checks if a given type is castable in another
@@ -3680,6 +3973,10 @@ fn is_subtype(this: primitive, that: primitive) bool = {
             is_subtype(that, this);
     case primitive::VOID =>
         return this == primitive::UNIT || this == primitive::VOID;
+    case primitive::ARRAY =>
+        return this >= primitive::ARR_U8;
+    case primitive::ARR_NUMBER =>
+        return this > primitive::ARRAY && is_subtype(this - primitive::ARRAY - 1, primitive::NUMBER);
     case =>
         return this == that;
     };

@@ -38,6 +38,7 @@ local tests = {
     { src = "oper", input = "", output = "", code = 0, nocomp = false },
     { src = "bool", input = "", output = "", code = 0, nocomp = false },
     { src = "math", input = "", output = "test ok\n", code = 0, nocomp = false },
+    { src = "arrays", input = "", output = "test ok!\n", code = 0, nocomp = false },
 
     -- io and effects --
     { src = "hello", input = "", output = "mornin' sailor!\n", code = 0, nocomp = false },

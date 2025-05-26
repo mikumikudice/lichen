@@ -94,10 +94,11 @@ type primitive = enum u8 {
     F32, F64,
     STR, CSTR,
     UNIT, VOID,
-    ANY, NUMBER, RATIO,
+    NUMBER, RATIO, ARRAY,
     ARR_U8, ARR_U16, ARR_U32, ARR_U64,
     ARR_I8, ARR_I16, ARR_I32, ARR_I64,
-    ARR_F32, ARR_F64, ARR_STR,
+    ARR_F32, ARR_F64, ARR_STR, ARR_CSTR,
+    ARR_NUMBER, ARR_RATIO, ANY,
 };
 
 const prm_value = [
@@ -106,7 +107,11 @@ const prm_value = [
     "f32", "f64",
     "str", "cstr",
     "unit", "void",
-    "", "", ""
+    "numeric literal", "ratio literal", "array",
+    "u8 array", "u16 array", "u32 array", "u64 array",
+    "i8 array", "i16 array", "i32 array", "i64 array",
+    "f32 array", "f64 array", "str array", "cstr array",
+    "numeric array", "ratio array", "untyped value", 
 ];
 
 const opr_value = [
@@ -177,6 +182,7 @@ type context = struct {
     glob: scope,
     scp: (void | *scope),
     literals: *[]str,
+    l_arrays: []str,
     fun_defs: []*ast,
     modules: [](token, *context),
     scope_owner: (void | *fn_meta),
@@ -225,6 +231,7 @@ type fn_meta = struct {
 };
 
 type funcall_meta = struct {
+    dest: (str | void),
     fun: *ast,
     args: []*ast,
 };
@@ -248,6 +255,19 @@ type scope_meta = struct {
     members: []*ast,
 };
 
+type array_meta = struct {
+    tpe: primitive,
+    itm_tpe: primitive,
+    items: [] *ast,
+};
+
+type index_meta = struct {
+    tpe: primitive,
+    array: *ast,
+    index: *ast,
+};
+
+
 type if_else_meta = struct {
     rets: bool,
     tpe: primitive,
@@ -269,8 +289,8 @@ type member_meta = struct {
 
 type node_meta = (*var_meta | *fn_meta | *param_meta |
     *scope_meta | *expr_meta | *funcall_meta |
-    *member_meta | *if_else_meta | *test_meta |
-    primitive);
+    *member_meta | *array_meta | * index_meta |
+    *if_else_meta | *test_meta | primitive);
 
 type ast = struct {
     kind: path_t,
