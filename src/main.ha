@@ -11,7 +11,7 @@ use unix::signal;
 let silent = true;
 let just_check = false;
 
-const version = "0.7.2";
+const version = "0.7.3";
 const temp = ".tmp/";
 
 let sharedlib = false;
@@ -178,9 +178,11 @@ export fn main() void = {
         color_error("%rthe given path %y\"{}\"%r does not exists", libpath);
     };
 
+    const module_checking = strings::hassuffix(srcname, ".lim") && just_check;
+
     const literals = []: []str;
     defer free(literals);
-    match(compile(srcname, libpath, &literals, !(sharedlib || staticlib))){
+    match(compile(srcname, libpath, &literals, !(sharedlib || staticlib || module_checking))){
     case let obj: *context =>
         defer free_module(obj);
         const link_args = []: []str;

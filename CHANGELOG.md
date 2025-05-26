@@ -1,3 +1,1 @@
-- implemented arrays, array indexing and array return
-- implemented type notation parsing
-- fixed some error messages
+- now -E flags ignores missing main file for modules
