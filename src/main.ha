@@ -11,7 +11,7 @@ use unix::signal;
 let silent = true;
 let just_check = false;
 
-const version = "0.7.3";
+const version = "0.9.0";
 const temp = ".tmp/";
 
 let sharedlib = false;

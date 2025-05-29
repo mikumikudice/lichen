@@ -267,12 +267,24 @@ type index_meta = struct {
     index: *ast,
 };
 
-
 type if_else_meta = struct {
     rets: bool,
     tpe: primitive,
     conds: []*ast,
     bodies: []*ast,
+};
+
+type for_meta = struct {
+    rets: bool,
+    tpe: primitive,
+    item: *expr_meta,
+    item_tpe: primitive,
+    element_tpe: primitive,
+    out_size: size,
+    pairs: []token,
+    acc: []*ast,
+    out_acc: []token,
+    body: *ast,
 };
 
 type test_meta = struct {
@@ -290,7 +302,8 @@ type member_meta = struct {
 type node_meta = (*var_meta | *fn_meta | *param_meta |
     *scope_meta | *expr_meta | *funcall_meta |
     *member_meta | *array_meta | * index_meta |
-    *if_else_meta | *test_meta | primitive);
+    *if_else_meta | *for_meta | *test_meta | 
+    primitive);
 
 type ast = struct {
     kind: path_t,

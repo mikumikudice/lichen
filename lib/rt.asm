@@ -3,6 +3,7 @@
 .globl rt_zero
 rt_zero:
 	.quad 0
+    .quad 0
 
 .data
 .balign 16
@@ -21,6 +22,15 @@ rt_stdout:
 .globl rt_stderr
 rt_stderr:
 	.int 2
+
+.section ".text.dummy", "ax"
+.balign 16
+.globl dummy
+dummy:
+    ret
+
+.type dummy, @function
+.size dummy, .-dummy
 
 .section ".text.rt_gets", "ax"
 .balign 16

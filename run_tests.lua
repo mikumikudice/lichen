@@ -51,6 +51,11 @@ local tests = {
         "test 4 ok\ntest 5 ok\ntest 6 ok\n", code = 0, nocomp = false },
     { src = "recursive", input = "", output = "worked!\n", code = 0, nocomp = false },
     { src = "tailcall", input = "", output = "loop!\nloop!\nloop!\nloop!\n", code = 0, nocomp = false },
+    { src = "map", input = "", output = "hello, mia!\nhello, maya!\nhello, mei!\n" ..
+        "no one is on the left\nmia is at the middle\nand maya is at right of mia\n"..
+        "mia is at left of maya\nmaya is at the middle\nand mei is at right of maya\n"..
+        "maya is at left of mei\nmei is at the middle\nand no one is on the right\n", code = 0, nocomp = false },
+    { src = "reduce", input = "", output = "test ok!\n", code = 0, nocomp = false },
 
     -- miscellany --
     { src = "test-block", input = "", output = "", code = 0, nocomp = false },

@@ -1,7 +1,9 @@
-- implement arrays
+- implement iterators with more than one accumulator
+- fix (#foo > 0) && (#bar > 0) != (#foo > 0 && #bar > 0)
+- fix unconditional tailcall invalid gencode
+- assert for void statement followed by additional code
 - implement empty assignments
 - implement match block
-- implement iterators
 - implement global test block
 - fix memory leaks
 - string concatenation at runtime

@@ -1,0 +1,23 @@
+io = use "io.lim";
+
+fn dummy(n u32) unit = io$dummy;
+
+pub fn main() void = io {
+    let nums  = [1, 2, 3, 4] u32;
+
+    let nums' =
+        for n .. nums; [4]u32 {
+            => n * 3;
+        };
+
+    let sum =
+        for s u32 = 0; n .. nums'; s {
+            => s + n;
+        };
+    
+    if sum == 30 {
+        io::println("test ok!");
+    } else {
+        io::println("test failed :c");
+    };
+};
