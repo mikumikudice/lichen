@@ -1,3 +1,4 @@
+- define how one should allocate strings on the stack with for iterators
 - implement iterators with more than one accumulator
 - fix (#foo > 0) && (#bar > 0) != (#foo > 0 && #bar > 0)
 - fix unconditional tailcall invalid gencode

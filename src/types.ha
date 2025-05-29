@@ -46,7 +46,7 @@ use memio;
 // if_block := "if", [statement_declaration], expression, scope
 // else_block := "else", (if_block | scope)
 //
-// for_block := "for", [statement_declaration], expression, [ident], scope
+// for_block := "for", [statement_declaration], expression, eol, ident | type, scope
 // match_block := "match", [statement_declaration], expression, "{",
 //      (([ident], type) | "else", scope)+, "}"
 //

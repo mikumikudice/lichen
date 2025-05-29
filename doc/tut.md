@@ -147,7 +147,7 @@ let z = if x > y {
 lichen is a functional language, which means there is no mutable state. anyhow, something alike for-loops is available for iterating over strings and arrays.
 ```rust
 let text str = "LoWeR cAsE";
-let lower = for c .. text {
+let lower = for c .. text; str {
     => if 'A' <= c <= 'Z' { // chained comparisons
         => c + 32;
     } else {
@@ -162,7 +162,7 @@ this iterator can also have accumulators, so you can evaluate to a mapped/reduce
 ```rust
 let nums = [1, 2, 3, 4, 5, 6] u32;
 let sum  =
-    for c u32 = 0; i .. nums {
+    for c u32 = 0; i .. nums; c {
         => c + i;
     };
 
