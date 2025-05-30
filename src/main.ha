@@ -408,30 +408,24 @@ fn color_error(fmt: str, args: fmt::field...) never = {
 };
 
 fn error_line(ctxt: *context, buffer: *memio::stream) void = {
-    const max = len(ctxt.src);
-    let index = strings::index(
-        u8tostr(ctxt.src[ctxt.lst .. max]), "\n") as size + ctxt.lst;
-    if(index <= ctxt.lst){
-        const idx =
-            if(ctxt.lst > 0){
-                yield ctxt.lst - 1;
-            } else {
-                yield 0z;
-            };
-        index = strings::index(
-            u8tostr(ctxt.src[idx .. max]), "\n") as size + ctxt.lst;
-    };
+    const index =
+        match(strings::index(strings::sub(u8tostr(ctxt.src), ctxt.begin), "\n")){
+        case let i: size => yield i + ctxt.begin;
+        case => yield len(ctxt.src);
+        };
+    const line = ctxt.src[ctxt.begin .. index];
+    const (lin, col) = get_pos(ctxt);
 
-    const line = fmt::asprint(ctxt.lin + 1)!;
-    defer free(line);
+    const lin_num = fmt::asprint(lin)!;
+    defer free(lin_num);
 
-    fmt::fprintfln(buffer, "\n%b{} %d{}", line,
-        u8tostr(ctxt.src[ctxt.lst .. index]))!;
+    fmt::fprintfln(buffer, "\n%b{} %d{}", lin_num,
+        u8tostr(line))!;
 
-    for(let c = 0z; c < len(line) + 1; c += 1){
+    for(let c = 0z; c < len(lin_num) + 1; c += 1){
         fmt::fprint(buffer, " ")!;
     };
-    const arrow = strings::lpad("^", '~', ctxt.cln + 1)!;
+    const arrow = strings::lpad("^", '~', col)!;
     defer free(arrow);
     fmt::fprintfln(buffer, "%r{}", arrow)!;
 };

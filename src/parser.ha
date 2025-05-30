@@ -21,8 +21,34 @@ fn is_whitespace(char: u8) bool = {
 // extracts a formatted version of the current
 // parser position in the file
 fn gen_pos(ctxt: *context) str = {
-    return fmt::asprintf("{}:{}:{}", ctxt.name,
-        ctxt.lin + 1, ctxt.cln + 1)!;
+    const (l, c) = get_pos(ctxt);
+    return fmt::asprintf("{}:{}:{}", ctxt.name, l, c)!;
+};
+
+// calculates token coordinates from source pointer
+fn get_pos(ctxt: *context) (size, size) = {
+    const max = len(ctxt.src);
+    let l = 0z;
+    let c = 0z;
+    let i = 0z;
+    for(i < ctxt.ptr; i += 1){
+        c += 1;
+        if(ctxt.src[i] == '\n'){
+            c = 0;
+            l += 1;
+        };
+    };
+    return (l + 1, c + 1);
+};
+
+fn inc_ptr(ctxt: *context, amount: size = 1) void = {
+    const max = len(ctxt.src);
+    for(let i = 0z; i < amount && ctxt.ptr < max; i += 1){
+        if(ctxt.src[ctxt.ptr] == '\n'){
+            ctxt.begin = ctxt.ptr + 1;
+        };
+        ctxt.ptr += 1;
+    };
 };
 
 // function shortcut
@@ -43,10 +69,8 @@ fn load(fname: str, libpath: str, strlits: *[]str) (context | COMPERR) = {
     defer io::close(fsrc)!;
 
     const file = context {
-        name = fname,
-        libpath = libpath,
-        lin = 0, cln = 0,
-        ptr = 0, lst = 0,
+        name = fname, libpath = libpath,
+        ptr = 0, last = 0, begin = 0,
         src = [], scp = void,
         tokens = [],
         head = null,
@@ -149,32 +173,18 @@ fn comp_tk(lft: tkval, rgt: tkval) bool = {
 // returns a new token with given `val` as value at the
 // current context position.
 fn new_tk(ctxt: *context, val: tkval) token = {
-    assert(ctxt.lst != len(ctxt.src));
     return token {
-        lin = ctxt.lin,
-        cln = ctxt.cln,
-        lst = ctxt.lst,
+        pos = ctxt.last,
+        begin = ctxt.begin,
         val = val,
-    };
-};
-
-// move virtual column and adjust line count accordingly
-fn move_cln(ctxt: *context, amount: size = 1) void = {
-    const max = len(ctxt.src);
-    ctxt.cln += amount;
-    if(ctxt.ptr < max && ctxt.src[ctxt.ptr] == '\n'){
-        ctxt.lin += 1;
-        ctxt.cln = 0;
-        if(ctxt.ptr + 1 != max) ctxt.lst = ctxt.ptr + 1;
     };
 };
 
 // forcefully moves the context to the position of the
 // given token.
 fn move_ptr(ctxt: *context, tk: token) void = {
-    ctxt.lin = tk.lin;
-    ctxt.cln = tk.cln;
-    ctxt.lst = tk.lst;
+    ctxt.ptr = tk.pos;
+    ctxt.begin = tk.begin;
 };
 
 // checks if a given operator is unary
@@ -201,9 +211,8 @@ fn next_tk(ctxt: *context, at: size, msg: str)
     (token | COMPERR) = {
     if(at == len(ctxt.tokens)){
         const tk = ctxt.tokens[at - 1];
-        ctxt.lin = tk.lin;
-        ctxt.cln = tk.cln;
-        ctxt.lst = tk.lst;
+        ctxt.ptr = tk.pos;
+        ctxt.begin = tk.begin;
         return error(ctxt, msg, strtoken(eof));
     };
     return ctxt.tokens[at];
@@ -608,12 +617,12 @@ fn compile(filename: str, libpath: str, strlits: *[]str, main: bool = false)
     // tokenize
     let max = len(ctxt.src);
     for(ctxt.ptr < max){
+        ctxt.last = ctxt.ptr;
         // remove comments
         if(ctxt.src[ctxt.ptr] == '/' && ctxt.ptr < max - 1){
             if(strings::fromutf8(ctxt.src[ctxt.ptr .. ctxt.ptr + 2])! == "//"){
                 for(ctxt.ptr < max && ctxt.src[ctxt.ptr] != '\n'){
-                    ctxt.ptr += 1;
-                    move_cln(ctxt);
+                    inc_ptr(ctxt);
                 };
             };
         };
@@ -622,15 +631,12 @@ fn compile(filename: str, libpath: str, strlits: *[]str, main: bool = false)
             const start = ctxt.ptr;
             for(ctxt.ptr < max && is_alnum(ctxt.src[ctxt.ptr]) ||
                 ctxt.src[ctxt.ptr] == '_'){
-                ctxt.ptr += 1;
-                move_cln(ctxt);
+                inc_ptr(ctxt);
             };
             let matched = false;
             let path = u8tostr(ctxt.src[start..ctxt.ptr]);
             const check = strings::replace(path, "_", "")!;
             defer free(check);
-
-            ctxt.cln = start - ctxt.lst;
 
             // check for reserved keywords
             for(let i = 0z; i < len(kwd_value); i += 1){
@@ -696,7 +702,7 @@ fn compile(filename: str, libpath: str, strlits: *[]str, main: bool = false)
                         "64-bit literal overflow");
                 case =>
                     for(ctxt.ptr < max && ctxt.src[ctxt.ptr] == '\''){
-                        ctxt.ptr += 1;
+                        inc_ptr(ctxt);
                     };
                     path = u8tostr(ctxt.src[start..ctxt.ptr]);
                     append(ctxt.tokens, new_tk(ctxt, ident {
@@ -709,7 +715,6 @@ fn compile(filename: str, libpath: str, strlits: *[]str, main: bool = false)
             };
         // symbol, operator or string/character literal
         } else if(!(is_alnum(ctxt.src[ctxt.ptr]) || is_whitespace(ctxt.src[ctxt.ptr]))){
-            move_cln(ctxt);
             let start = ctxt.ptr;
             let end = start;
             for(end < max && !(is_alnum(ctxt.src[end]) ||
@@ -719,8 +724,7 @@ fn compile(filename: str, libpath: str, strlits: *[]str, main: bool = false)
             // string literal
             if(ctxt.src[start] == '\"'){
                 start += 1;
-                move_cln(ctxt, start - ctxt.ptr + 2);
-                ctxt.ptr = start;
+                inc_ptr(ctxt, start - ctxt.ptr);
                 const dup = ctxt;
 
                 let escape = false;
@@ -763,26 +767,24 @@ fn compile(filename: str, libpath: str, strlits: *[]str, main: bool = false)
                             escape = false;
                         };
                     case '\n' =>
-                        ctxt.ptr += 1;
-                        move_cln(ctxt);
+                        inc_ptr(ctxt);
                         break;
                     case =>
                         if(escape){
-                            dup.cln = ctxt.ptr - ctxt.lst;
                             return error(dup, "invalid escape sequence \"\\{}\"",
                                 ctxt.src[ctxt.ptr]: rune);
                         };
                     };
-                    ctxt.ptr += 1;
+                    inc_ptr(ctxt);
                 };
                 if(!closed) return error(dup, "unclosed string found here");
                 assert(!escape);
                 append(ctxt.tokens, new_tk(dup,
                     u8tostr(ctxt.src[start..(ctxt.ptr - 1)])))!;
-                move_cln(ctxt, ctxt.ptr - start + 1);
                 continue;
             // character literal
             } else if(ctxt.src[start] == '\''){
+                start += 1;
                 let val: u64 = 0;
                 switch(ctxt.src[start]){
                 case '\\' =>
@@ -818,236 +820,194 @@ fn compile(filename: str, libpath: str, strlits: *[]str, main: bool = false)
                 if(start >= max){
                     return error(ctxt, "invalid character literal found here");
                 };
+                inc_ptr(ctxt, end - start + 1);
                 append(ctxt.tokens, new_tk(ctxt, val: size))!;
-                const dif = end - start;
-                ctxt.ptr = end + 1;
-                move_cln(ctxt, dif);
                 continue;
             };
             for(start < end) switch(ctxt.src[start]){
             case ';' =>
                 append(ctxt.tokens, new_tk(ctxt, symbol::EOL))!;
                 start += 1;
-                ctxt.ptr += 1;
-                move_cln(ctxt);
+                inc_ptr(ctxt);
             case ',' =>
                 append(ctxt.tokens, new_tk(ctxt, symbol::COMMA))!;
                 start += 1;
-                ctxt.ptr += 1;
-                move_cln(ctxt);
+                inc_ptr(ctxt);
             case '(' =>
                 append(ctxt.tokens, new_tk(ctxt, symbol::LFT_PAR))!;
                 start += 1;
-                ctxt.ptr += 1;
-                move_cln(ctxt);
+                inc_ptr(ctxt);
             case ')' =>
                 append(ctxt.tokens, new_tk(ctxt, symbol::RGT_PAR))!;
                 start += 1;
-                ctxt.ptr += 1;
-                move_cln(ctxt);
+                inc_ptr(ctxt);
             case '{' =>
                 append(ctxt.tokens, new_tk(ctxt, symbol::LFT_CURLY))!;
                 start += 1;
-                ctxt.ptr += 1;
-                move_cln(ctxt);
+                inc_ptr(ctxt);
             case '}' =>
                 append(ctxt.tokens, new_tk(ctxt, symbol::RGT_CURLY))!;
                 start += 1;
-                ctxt.ptr += 1;
-                move_cln(ctxt);
+                inc_ptr(ctxt);
             case '[' =>
                 append(ctxt.tokens, new_tk(ctxt, symbol::LFT_SQUARE))!;
                 start += 1;
-                ctxt.ptr += 1;
-                move_cln(ctxt);
+                inc_ptr(ctxt);
             case ']' =>
                 append(ctxt.tokens, new_tk(ctxt, symbol::RGT_SQUARE))!;
                 start += 1;
-                ctxt.ptr += 1;
-                move_cln(ctxt);
+                inc_ptr(ctxt);
             case '#' =>
                 append(ctxt.tokens, new_tk(ctxt, operator::LENGTH))!;
                 start += 1;
-                ctxt.ptr += 1;
-                move_cln(ctxt);
+                inc_ptr(ctxt);
             case '@' =>
                 append(ctxt.tokens, new_tk(ctxt, operator::HEAP))!;
                 start += 1;
-                ctxt.ptr += 1;
-                move_cln(ctxt);
+                inc_ptr(ctxt);
             case '$' =>
                 append(ctxt.tokens, new_tk(ctxt, symbol::FFI))!;
                 start += 1;
-                ctxt.ptr += 1;
-                move_cln(ctxt);
+                inc_ptr(ctxt);
             case '.' =>
                 if(start < end - 1 && ctxt.src[start + 1] == '.'){
                     append(ctxt.tokens, new_tk(ctxt, operator::RANGE))!;
                     start += 2;
-                    ctxt.ptr += 2;
-                    move_cln(ctxt, 2);
+                    inc_ptr(ctxt, 2);
                 } else {
                     append(ctxt.tokens, new_tk(ctxt, symbol::DOT))!;
                     start += 1;
-                    ctxt.ptr += 1;
-                    move_cln(ctxt);
+                    inc_ptr(ctxt);
                 };
             case '=' =>
                 if(start < end - 1 && ctxt.src[start + 1] == '='){
                     append(ctxt.tokens, new_tk(ctxt, operator::EQL))!;
                     start += 2;
-                    ctxt.ptr += 2;
-                    move_cln(ctxt, 2);
+                    inc_ptr(ctxt, 2);
                 } else if(start < end - 1 && ctxt.src[start + 1] == '>'){
                     append(ctxt.tokens, new_tk(ctxt, operator::MAP))!;
                     start += 2;
-                    ctxt.ptr += 2;
-                    move_cln(ctxt, 2);
+                    inc_ptr(ctxt, 2);
                 } else {
                     append(ctxt.tokens, new_tk(ctxt, operator::ASG))!;
                     start += 1;
-                    ctxt.ptr += 1;
-                    move_cln(ctxt);
+                    inc_ptr(ctxt);
                 };
             case '<' =>
                 if(start < end - 1){
                     if(ctxt.src[start + 1] == '='){
                         append(ctxt.tokens, new_tk(ctxt, operator::LEQ))!;
                         start += 2;
-                        ctxt.ptr += 2;
-                        move_cln(ctxt, 2);
+                        inc_ptr(ctxt, 2);
                     } else if(ctxt.src[start + 1] == '<'){
                         append(ctxt.tokens, new_tk(ctxt, operator::SHL))!;
                         start += 2;
-                        ctxt.ptr += 2;
-                        move_cln(ctxt, 2);
+                        inc_ptr(ctxt, 2);
                     } else {
                         append(ctxt.tokens, new_tk(ctxt, operator::LST))!;
                         start += 1;
-                        ctxt.ptr += 1;
-                        move_cln(ctxt);
+                        inc_ptr(ctxt);
                     };
                 } else {
                     append(ctxt.tokens, new_tk(ctxt, operator::LST))!;
                     start += 1;
-                    ctxt.ptr += 1;
-                    move_cln(ctxt);
+                    inc_ptr(ctxt);
                 };
             case '>' =>
                 if(start < end - 1){
                     if(ctxt.src[start + 1] == '='){
                         append(ctxt.tokens, new_tk(ctxt, operator::GEQ))!;
                         start += 2;
-                        ctxt.ptr += 2;
-                        move_cln(ctxt, 2);
+                        inc_ptr(ctxt, 2);
                     } else if(ctxt.src[start + 1] == '>'){
                         append(ctxt.tokens, new_tk(ctxt, operator::SHR))!;
                         start += 2;
-                        ctxt.ptr += 2;
-                        move_cln(ctxt, 2);
+                        inc_ptr(ctxt, 2);
                     } else {
                         append(ctxt.tokens, new_tk(ctxt, operator::GTT))!;
                         start += 1;
-                        ctxt.ptr += 1;
-                        move_cln(ctxt);
+                        inc_ptr(ctxt);
                     };
                 } else {
                     append(ctxt.tokens, new_tk(ctxt, operator::GTT))!;
                     start += 1;
-                    ctxt.ptr += 1;
-                    move_cln(ctxt);
+                    inc_ptr(ctxt);
                 };
             case '|' =>
                 if(start < end - 1 && ctxt.src[start + 1] == '|'){
                     append(ctxt.tokens, new_tk(ctxt, operator::LOR))!;
                     start += 2;
-                    ctxt.ptr += 2;
-                    move_cln(ctxt, 2);
+                    inc_ptr(ctxt, 2);
                 } else {
                     append(ctxt.tokens, new_tk(ctxt, operator::BOR))!;
                     start += 1;
-                    ctxt.ptr += 1;
-                    move_cln(ctxt);
+                    inc_ptr(ctxt);
                 };
             case '&' =>
                 if(start < end - 1 && ctxt.src[start + 1] == '&'){
                     append(ctxt.tokens, new_tk(ctxt, operator::LAND))!;
                     start += 2;
-                    ctxt.ptr += 2;
-                    move_cln(ctxt, 2);
+                    inc_ptr(ctxt, 2);
                 } else {
                     append(ctxt.tokens, new_tk(ctxt, operator::BAND))!;
                     start += 1;
-                    ctxt.ptr += 1;
-                    move_cln(ctxt);
+                    inc_ptr(ctxt);
                 };
             case ':' =>
                 if(start < end - 1 && ctxt.src[start + 1] == ':'){
                     append(ctxt.tokens, new_tk(ctxt, symbol::FIELD))!;
                     start += 2;
-                    ctxt.ptr += 2;
-                    move_cln(ctxt, 2);
+                    inc_ptr(ctxt, 2);
                 } else {
                     append(ctxt.tokens, new_tk(ctxt, operator::FDIV))!;
                     start += 1;
-                    ctxt.ptr += 1;
-                    move_cln(ctxt);
+                    inc_ptr(ctxt);
                 };
             case '!' =>
                 if(start < end - 1 && ctxt.src[start + 1] == '='){
                     append(ctxt.tokens, new_tk(ctxt, operator::NEQ))!;
                     start += 2;
-                    ctxt.ptr += 2;
-                    move_cln(ctxt, 2);
+                    inc_ptr(ctxt, 2);
                 } else {
                     append(ctxt.tokens, new_tk(ctxt, operator::BANG))!;
                     start += 1;
-                    ctxt.ptr += 1;
-                    move_cln(ctxt);
+                    inc_ptr(ctxt);
                 };
             case '~' =>
                 append(ctxt.tokens, new_tk(ctxt, operator::NOT))!;
                 start += 1;
-                ctxt.ptr += 1;
-                move_cln(ctxt);
+                inc_ptr(ctxt);
             case '+' =>
                 append(ctxt.tokens, new_tk(ctxt, operator::PLS))!;
                 start += 1;
-                ctxt.ptr += 1;
-                move_cln(ctxt);
+                inc_ptr(ctxt);
             case '-' =>
                 append(ctxt.tokens, new_tk(ctxt, operator::MIN))!;
                 start += 1;
-                ctxt.ptr += 1;
-                move_cln(ctxt);
+                inc_ptr(ctxt);
             case '*' =>
                 append(ctxt.tokens, new_tk(ctxt, operator::MUL))!;
                 start += 1;
-                ctxt.ptr += 1;
-                move_cln(ctxt);
+                inc_ptr(ctxt);
             case '/' =>
                 if(start < end - 1 && ctxt.src[start + 1] == '/'){
                     for(start < max && ctxt.src[start] != '\n'){
                         start += 1;
-                        ctxt.ptr += 1;
-                        move_cln(ctxt);
+                        inc_ptr(ctxt);
                     };
                 } else {
                     append(ctxt.tokens, new_tk(ctxt, operator::IDIV))!;
-                    move_cln(ctxt);
-                    ctxt.ptr += 1;
+                    inc_ptr(ctxt);
                     start += 1;
                 };
             case '%' =>
                 append(ctxt.tokens, new_tk(ctxt, operator::MOD))!;
                 start += 1;
-                ctxt.ptr += 1;
-                move_cln(ctxt);
+                inc_ptr(ctxt);
             case '?' =>
                 append(ctxt.tokens, new_tk(ctxt, operator::PROP))!;
                 start += 1;
-                ctxt.ptr += 1;
-                move_cln(ctxt);
+                inc_ptr(ctxt);
             case '\"' =>
                 ctxt.ptr = start;
                 break;
@@ -1059,8 +1019,7 @@ fn compile(filename: str, libpath: str, strlits: *[]str, main: bool = false)
             };
         // just whitespace
         } else {
-            ctxt.ptr += 1;
-            move_cln(ctxt);
+            inc_ptr(ctxt);
         };
     };
     append(ctxt.tokens, new_tk(ctxt, eof))!;
@@ -1352,8 +1311,7 @@ fn gen_fun(ctxt: *context, this: *ast) (void | COMPERR) = {
         const pdef = new_node();
         pdef.kind = path_t::DECL;
         pdef.meta = alloc(var_meta {
-            lin = param_l.pos[p].lin,
-            cln = param_l.pos[p].cln,
+            pos = param_l.pos[p],
             ffi = void,
             mod = void,
             rets = false,
@@ -1404,8 +1362,9 @@ fn gen_fun(ctxt: *context, this: *ast) (void | COMPERR) = {
         fmt::fprintf(ctxt.buffer, "{} %{}, ",
             qbe_t(param_l.names[p].itype, mode::ASSIGN), param_l.names[p].id)!;
     };
-    fmt::fprintfln(ctxt.buffer, "){{\n@start\n\tdbgloc {}, {}\n@body",
-        body.path[0].lin + 1, body.path[0].cln + 1)!;
+    move_ptr(ctxt, body.path[0]);
+    const (l, c) = get_pos(ctxt);
+    fmt::fprintfln(ctxt.buffer, "){{\n@start\n\tdbgloc {}, {}\n@body", l, c)!;
     gen_scope(ctxt, body)?;
 
     const end = len(this.path) - 2;
@@ -1434,8 +1393,9 @@ fn gen_scope(ctxt: *context, node: nullable *ast, stt_dest: (void | str) = void)
         switch(this.kind){
         case path_t::DECL, path_t::CONST_DEF =>
             const meta = this.meta as *var_meta;
-            fmt::fprintfln(ctxt.buffer, "\tdbgloc {}, {}",
-                this.path[0].lin + 1, this.path[0].cln + 1)!;
+            move_ptr(ctxt, this.path[0]);
+            const (l, c) = get_pos(ctxt);
+            fmt::fprintfln(ctxt.buffer, "\tdbgloc {}, {}", l, c)!;
 
             const name = strings::replace(meta.name.id, "'", ".q")!;
             defer free(name);
@@ -1446,8 +1406,9 @@ fn gen_scope(ctxt: *context, node: nullable *ast, stt_dest: (void | str) = void)
         case path_t::EXPR =>
             const meta = this.meta as *expr_meta;
             if(meta.tpe == primitive::VOID || meta.tpe == primitive::UNIT){
-                fmt::fprintfln(ctxt.buffer, "\tdbgloc {}, {}",
-                    this.path[0].lin + 1, this.path[0].cln + 1)!;
+                move_ptr(ctxt, this.path[0]);
+                const (l, c) = get_pos(ctxt);
+                fmt::fprintfln(ctxt.buffer, "\tdbgloc {}, {}", l, c)!;
                 for(let m ..& meta.members){
                     if(m is operator) continue;
                     const member = m as *ast;
@@ -1476,18 +1437,18 @@ fn gen_scope(ctxt: *context, node: nullable *ast, stt_dest: (void | str) = void)
                 match(stt_dest){
                 case let d: str => yield strings::dup(d)!;
                 case void =>
-                    yield fmt::asprintf("exp.{}.{}",
-                        this.path[0].lin + 1, this.path[0].cln + 1)!;
+                    yield fmt::asprintf("exp.{}", this.path[0].pos)!;
                 };
             defer free(dest);
 
-            fmt::fprintfln(ctxt.buffer, "\tdbgloc {}, {}",
-                this.path[0].lin + 1, this.path[0].cln + 1)!;
-
+            move_ptr(ctxt, this.path[0]);
+            const (l, c) = get_pos(ctxt);
+            fmt::fprintfln(ctxt.buffer, "\tdbgloc {}, {}", l, c)!;
             gen_exp(ctxt, this, dest, meta.tpe)?;
         case path_t::FUN_CALL =>
-            fmt::fprintfln(ctxt.buffer, "\tdbgloc {}, {}",
-                this.path[0].lin + 1, this.path[0].cln + 1)!;
+            move_ptr(ctxt, this.path[0]);
+            const (l, c) = get_pos(ctxt);
+            fmt::fprintfln(ctxt.buffer, "\tdbgloc {}, {}", l, c)!;
             gen_funcall(ctxt, this)?;
         case path_t::STATEMENT =>
             switch(this.path[0].val as keyword){
@@ -1498,12 +1459,12 @@ fn gen_scope(ctxt: *context, node: nullable *ast, stt_dest: (void | str) = void)
             case keyword::MATCH =>
                 assert(false, "TODO");
             case keyword::TEST =>
-                fmt::fprintfln(ctxt.buffer, "\tdbgloc {}, {}",
-                    this.path[0].lin + 1, this.path[0].cln + 1)!;
+                move_ptr(ctxt, this.path[0]);
+                const (l, c) = get_pos(ctxt);
+                fmt::fprintfln(ctxt.buffer, "\tdbgloc {}, {}", l, c)!;
 
                 const meta = this.meta as *test_meta;
-                const name = fmt::asprintf("test.{}.{}",
-                    this.path[0].lin + 1, this.path[0].cln + 1)!;
+                const name = fmt::asprintf("test.{}", this.path[0].pos)!;
                 defer free(name);
                 gen_exp(ctxt, meta.cond, name, (meta.cond.meta as *expr_meta).tpe)?;
 
@@ -1526,8 +1487,7 @@ fn gen_if_else(ctxt: *context, this: *ast, stt_dest: (void | str) = void)
     const meta = this.meta as *if_else_meta;
     const cond_max = len(meta.conds);
     const body_max = len(meta.bodies);
-    const c_dest = fmt::asprintf("cond.{}.{}",
-        this.path[0].lin + 1, this.path[0].cln + 1)!;
+    const c_dest = fmt::asprintf("cond.{}", this.path[0].pos)!;
     defer free(c_dest);
 
     for(let b = 0z; b < body_max; b += 1){
@@ -1568,8 +1528,10 @@ fn gen_for_iterator(ctxt: *context, this: *ast, dest: str) (void | COMPERR) = {
     const elem_z = type_size(f_meta.element_tpe);
 
     const exp_t = qbe_t(f_meta.element_tpe, mode::ASSIGN);
-    fmt::fprintfln(ctxt.buffer, "\tdbgloc {}, {}",
-        this.path[0].lin + 1, this.path[0].cln + 1)!;
+
+    move_ptr(ctxt, this.path[0]);
+    const (l, c) = get_pos(ctxt);
+    fmt::fprintfln(ctxt.buffer, "\tdbgloc {}, {}", l, c)!;
 
     const old_eval = ctxt.eval;
     ctxt.eval = true;
@@ -1595,15 +1557,12 @@ fn gen_for_iterator(ctxt: *context, this: *ast, dest: str) (void | COMPERR) = {
         gen_exp(ctxt, f_meta.acc[0].inner as *ast, wrap, f_meta.tpe)?;
         ctxt.eval = old_eval;
     };
-    fmt::fprintfln(ctxt.buffer, "@iter.{}.{}.rep",
-        this.path[0].lin + 1, this.path[0].cln + 1)!;
-
+    fmt::fprintfln(ctxt.buffer, "@iter.{}.rep", this.path[0].pos)!;
     fmt::fprintfln(ctxt.buffer,
         "\t%iter.over =l cultl %iter.acc, %{0}.len\n"
-        "\tjnz %iter.over, @iter.{1}.{2}.body, @iter.{1}.{2}.end",
-        iter_item, this.path[0].lin + 1, this.path[0].cln + 1)!;
-    fmt::fprintfln(ctxt.buffer, "@iter.{0}.{1}.body",
-        this.path[0].lin + 1, this.path[0].cln + 1)!;
+        "\tjnz %iter.over, @iter.{1}.body, @iter.{1}.end",
+        iter_item, this.path[0].pos)!;
+    fmt::fprintfln(ctxt.buffer, "@iter.{}.body", this.path[0].pos)!;
 
     switch(len(f_meta.pairs)){
     case 3 =>
@@ -1619,48 +1578,46 @@ fn gen_for_iterator(ctxt: *context, this: *ast, dest: str) (void | COMPERR) = {
             "\t%iter.last =l ceql %iter.acc, %iter.last.c")!;
 
         fmt::fprintfln(ctxt.buffer,
-            "\tjnz %iter.first, @iter.{0}.{1}.first, @iter.{0}.{1}.normal",
-            this.path[0].lin + 1, this.path[0].cln + 1)!;
+            "\tjnz %iter.first, @iter.{0}.first, @iter.{0}.normal",
+            this.path[0].pos)!;
         
         if(is_subtype(f_meta.element_tpe, primitive::STR) ||
             is_subtype(f_meta.element_tpe, primitive::CSTR)){ // TODO: make is_ptr_tpe
             fmt::fprintfln(ctxt.buffer,
-            "@iter.{2}.{3}.first\n\t%{0} ={1} copy $rt_zero", pair_0, exp_t,
-                this.path[0].lin + 1, this.path[0].cln + 1)!;
+            "@iter.{2}.first\n\t%{0} ={1} copy $rt_zero", pair_0, exp_t,
+                this.path[0].pos)!;
         } else {
             fmt::fprintfln(ctxt.buffer,
-            "@iter.{2}.{3}.first\n\t%{0} ={1} copy 0", pair_0, exp_t,
-                this.path[0].lin + 1, this.path[0].cln + 1)!;
+            "@iter.{2}.first\n\t%{0} ={1} copy 0", pair_0, exp_t, this.path[0].pos)!;
         };
         fmt::fprintfln(ctxt.buffer,
-            "\tjmp @iter.{3}.{4}.over.0\n@iter.{3}.{4}.normal\n"
-            "\t%{0} ={1} copy %{2}\n@iter.{3}.{4}.over.0",
-            pair_0, exp_t, pair_1, this.path[0].lin + 1, this.path[0].cln + 1)!;
+            "\tjmp @iter.{3}.over.0\n@iter.{3}.normal\n"
+            "\t%{0} ={1} copy %{2}\n@iter.{3}.over.0",
+            pair_0, exp_t, pair_1, this.path[0].pos)!;
 
         fmt::fprintfln(ctxt.buffer, "\t%{} ={} load{} %{}.ptr",
             pair_1, exp_t, elem_l, iter_item)!;
         fmt::fprintfln(ctxt.buffer, "\t%{0}.ptr =l add %{0}.ptr, {1}", iter_item, elem_z)!;
         
         fmt::fprintfln(ctxt.buffer,
-            "jnz %iter.last, @iter.{0}.{1}.last, @iter.{0}.{1}.notlast",
-            this.path[0].lin + 1, this.path[0].cln + 1)!;
+            "\tjnz %iter.last, @iter.{0}.last, @iter.{0}.notlast",
+            this.path[0].pos)!;
 
         if(is_subtype(f_meta.element_tpe, primitive::STR) ||
             is_subtype(f_meta.element_tpe, primitive::CSTR)){ // TODO: make is_ptr_tpe
             fmt::fprintfln(ctxt.buffer,
-                "@iter.{2}.{3}.last\n\t%{0} ={1} copy $rt_zero",
-                pair_2, exp_t, this.path[0].lin + 1, this.path[0].cln + 1)!;
+                "@iter.{2}.last\n\t%{0} ={1} copy $rt_zero",
+                pair_2, exp_t, this.path[0].pos)!;
         } else {
             fmt::fprintfln(ctxt.buffer,
-                "@iter.{2}.{3}.last\n\t%{0} ={1} copy 0",
-                pair_2, exp_t, this.path[0].lin + 1, this.path[0].cln + 1)!;
+                "@iter.{2}.last\n\t%{0} ={1} copy 0",
+                pair_2, exp_t, this.path[0].pos)!;
         };
         fmt::fprintfln(ctxt.buffer,
-            "\tjmp @iter.{4}.{5}.over.1\n"
-            "@iter.{4}.{5}.notlast\n"
-            "\t%{0} ={1} load{2} %{3}.ptr\n@iter.{4}.{5}.over.1",
-            pair_2, exp_t, elem_l, iter_item,
-            this.path[0].lin + 1, this.path[0].cln + 1)!;
+            "\tjmp @iter.{4}.over.1\n"
+            "@iter.{4}.notlast\n"
+            "\t%{0} ={1} load{2} %{3}.ptr\n@iter.{4}.over.1",
+            pair_2, exp_t, elem_l, iter_item, this.path[0].pos)!;
     case 1 =>
         const pair = strings::replace((f_meta.pairs[0].val as ident).id, "'", ".q")!;
         defer free(pair);
@@ -1689,8 +1646,8 @@ fn gen_for_iterator(ctxt: *context, this: *ast, dest: str) (void | COMPERR) = {
     };
 
     fmt::fprintfln(ctxt.buffer,
-        "\t%iter.acc =l add %iter.acc, 1\n\tjmp @iter.{0}.{1}.rep\n@iter.{0}.{1}.end",
-        this.path[0].lin + 1, this.path[0].cln + 1)!;
+        "\t%iter.acc =l add %iter.acc, 1\n\tjmp @iter.{0}.rep\n@iter.{0}.end",
+        this.path[0].pos)!;
 
     if(len(f_meta.out_acc) > 0){
         const wrap = strings::replace((f_meta.out_acc[0].val as ident).id, "'", ".q")!;
@@ -1843,8 +1800,7 @@ fn gen_exp_steps(ctxt: *context, members: [](*ast | operator), dest: str,
                 };
             const pos = members[m - 1] as *ast;
             const memb_meta = pos.meta as *member_meta;
-            const right = fmt::asprintf("rght.{}.{}",
-                pos.path[0].lin + 1, pos.path[0].cln + 1)!;
+            const right = fmt::asprintf("rght.{}", pos.path[0].pos)!;
             defer free(right);
 
             m += gen_exp_steps(ctxt, members[m .. max], right,
@@ -1866,15 +1822,13 @@ fn gen_exp_steps(ctxt: *context, members: [](*ast | operator), dest: str,
         case operator::LAND =>
             if(stop_logic) return m;
             const pos = members[m - 1] as *ast;
-            const label = fmt::asprintf("lazy.{}.{}",
-                pos.path[0].lin + 1, pos.path[0].cln + 1)!;
+            const label = fmt::asprintf("lazy.{}", pos.path[0].pos)!;
             defer free(label);
 
             fmt::fprintfln(ctxt.buffer, "\tjnz %{0}, @{1}.m, @{1}.f\n@{1}.m",
                 dest, label)!;
 
-            const right = fmt::asprintf("rght.{}.{}",
-                pos.path[0].lin + 1, pos.path[0].cln + 1)!;
+            const right = fmt::asprintf("rght.{}", pos.path[0].pos)!;
             defer free(right);
             m += gen_exp_steps(ctxt, members[m .. max], right,
                 exp_type, true)?;
@@ -1888,15 +1842,13 @@ fn gen_exp_steps(ctxt: *context, members: [](*ast | operator), dest: str,
         case operator::LOR =>
             if(stop_logic) return m;
             const pos = members[m - 1] as *ast;
-            const label = fmt::asprintf("lazy.{}.{}",
-                pos.path[0].lin + 1, pos.path[0].cln + 1)!;
+            const label = fmt::asprintf("lazy.{}", pos.path[0].pos)!;
             defer free(label);
 
             fmt::fprintfln(ctxt.buffer, "\tjnz %{0}, @{1}.t, @{1}.m\n@{1}.m",
                 dest, label)!;
 
-            const right = fmt::asprintf("rght.{}.{}",
-                pos.path[0].lin + 1, pos.path[0].cln + 1)!;
+            const right = fmt::asprintf("rght.{}", pos.path[0].pos)!;
             defer free(right);
             m += gen_exp_steps(ctxt, members[m .. max], right,
                 exp_type, true)?;
@@ -1933,8 +1885,7 @@ fn tailcall(ctxt: *context, call: *funcall_meta) (void | COMPERR) = {
         const arg_t = qbe_t(p_meta.names[a].itype, mode::ASSIGN);
         match(arg.meta){
         case let expr: *expr_meta =>
-            const wrap = fmt::asprintf("arg.{}.{}.{}", arg_t,
-                arg.path[0].lin, arg.path[0].cln)!;
+            const wrap = fmt::asprintf("arg.{}.{}", arg_t, arg.path[0].pos)!;
             defer free(wrap);
 
             gen_exp(ctxt, arg, wrap, p_meta.names[a].itype)?;
@@ -1986,8 +1937,7 @@ fn gen_funcall(ctxt: *context, this: *ast, dest: (void | str) = void)
         const arg_t = qbe_t(p_meta.names[a].itype, mode::ASSIGN);
         match(arg.meta){
         case let expr: *expr_meta =>
-            const wrap = fmt::asprintf("arg.{}.{}.{}", arg_t,
-                arg.path[0].lin, arg.path[0].cln)!;
+            const wrap = fmt::asprintf("arg.{}.{}", arg_t, arg.path[0].pos)!;
             defer free(wrap);
 
             gen_exp(ctxt, arg, wrap, p_meta.names[a].itype)?;
@@ -2257,8 +2207,7 @@ fn gen_member(ctxt: *context, member: *ast, exp_type: primitive)
             };
         case let exp: *expr_meta =>
             const move_t = qbe_t(exp_type, mode::ASSIGN);
-            const wrap = fmt::asprintf("%exp.{}.{}",
-                node.path[0].lin + 1, node.path[0].cln + 1)!;
+            const wrap = fmt::asprintf("%exp.{}", node.path[0].pos)!;
             const slice = strings::sub(wrap, 1);
 
             gen_exp(ctxt, node, slice, exp.tpe)?;
@@ -2280,22 +2229,19 @@ fn gen_member(ctxt: *context, member: *ast, exp_type: primitive)
         case let funcall: *funcall_meta =>
             const f_meta = funcall.fun.meta as *fn_meta;
 
-            const wrap = fmt::asprintf("%exp.{}.{}",
-                node.path[0].lin + 1, node.path[0].cln + 1)!;
+            const wrap = fmt::asprintf("%exp.{}", node.path[0].pos)!;
             const slice = strings::sub(wrap, 1);
 
             gen_funcall(ctxt, node, slice)?;
             return wrap;
         case *for_meta =>
-            const wrap = fmt::asprintf("%exp.{}.{}",
-                node.path[0].lin + 1, node.path[0].cln + 1)!;
+            const wrap = fmt::asprintf("%exp.{}", node.path[0].pos)!;
             const slice = strings::sub(wrap, 1);
 
             gen_for_iterator(ctxt, node, slice)?;
             return wrap;
         case *if_else_meta =>
-            const wrap = fmt::asprintf("%exp.{}.{}",
-                node.path[0].lin + 1, node.path[0].cln + 1)!;
+            const wrap = fmt::asprintf("%exp.{}", node.path[0].pos)!;
             const slice = strings::sub(wrap, 1);
 
             gen_if_else(ctxt, node, slice)?;
@@ -2339,8 +2285,7 @@ fn gen_member(ctxt: *context, member: *ast, exp_type: primitive)
             const val = fmt::asprint(num)!;
             if(m_meta.pre is operator){
                 defer free(val);
-                const wrap = fmt::asprintf("%exp.{}.{}",
-                    member.path[0].lin + 1, member.path[0].cln + 1)!;
+                const wrap = fmt::asprintf("%exp.{}", member.path[0].pos)!;
                 switch(m_meta.pre as operator){
                 case operator::BANG =>
                     fmt::fprintfln(ctxt.buffer, "\t{0} ={1} ceq{1} {2}, 0",
@@ -2510,8 +2455,7 @@ fn eval_c_def(ctxt: *context, at: size, pub: bool = false)
     const node = new_node();
     node.kind = path_t::CONST_DEF;
     node.meta = alloc(var_meta {
-        lin = ctxt.tokens[begin].lin,
-        cln = ctxt.tokens[begin].cln,
+        pos = ctxt.tokens[begin],
         ffi = ffi,
         mod = void,
         rets = false,
@@ -2723,8 +2667,7 @@ fn eval_fun_def(ctxt: *context, at: size, pub: bool = false)
     const node = new_node();
     node.kind = path_t::FUN_DEF;
     node.meta = alloc(fn_meta {
-        lin = ctxt.tokens[begin].lin,
-        cln = ctxt.tokens[begin].cln,
+        pos = ctxt.tokens[begin],
         ffi = ffi,
         mod = void,
         used = false,
@@ -3175,8 +3118,7 @@ fn eval_decl(ctxt: *context, at: size) ((*ast, size) | COMPERR) = {
     };
     node.path = ctxt.tokens[begin..end];
     node.meta = alloc(var_meta {
-        lin = ctxt.tokens[begin].lin,
-        cln = ctxt.tokens[begin].cln,
+        pos = ctxt.tokens[begin],
         ffi = void,
         mod = void,
         rets = false,
@@ -4001,8 +3943,7 @@ fn eval_for_iterator(ctxt: *context, at: size, hint: primitive) ((*ast, size) | 
         const pdef = new_node();
         pdef.kind = path_t::DECL;
         const meta = var_meta {
-            lin = p.lin,
-            cln = p.cln,
+            pos = p,
             ffi = void,
             mod = void,
             rets = false,
@@ -4082,8 +4023,7 @@ fn eval_statement_decl(ctxt: *context, at: size) ((*ast, size) | COMPERR) = {
     node.kind = path_t::STT_DECL;
     node.path = ctxt.tokens[begin..end];
     node.meta = alloc(var_meta {
-        lin = ctxt.tokens[begin].lin,
-        cln = ctxt.tokens[begin].cln,
+        pos = ctxt.tokens[begin],
         ffi = void,
         mod = void,
         glob = false,

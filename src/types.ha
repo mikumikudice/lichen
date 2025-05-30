@@ -158,9 +158,8 @@ type tkval = (ident | size | str | keyword | primitive |
     operator | symbol | eof);
 
 type token = struct {
-    lin: size,
-    cln: size,
-    lst: size,
+    pos: size,
+    begin: size,
     val: tkval,
 };
 type scope = struct {
@@ -173,10 +172,9 @@ type context = struct {
     name: str,
     libpath: str,
 
-    lin: size,
-    cln: size,
     ptr: size,
-    lst: size,
+    last: size,
+    begin: size,
     src: []u8,
 
     glob: scope,
@@ -206,8 +204,7 @@ type path_t = enum u8 {
 };
 
 type var_meta = struct {
-    lin: size,
-    cln: size,
+    pos: token,
     ffi: (void | str),
     mod: (void | str),
     glob: bool,
@@ -216,8 +213,7 @@ type var_meta = struct {
 };
 
 type fn_meta = struct {
-    lin: size,
-    cln: size,
+    pos: token,
     ffi: (void | str),
     mod: (void | str),
     used: bool,
