@@ -26,11 +26,11 @@ rt_stderr:
 .section ".text.dummy", "ax"
 .balign 16
 .globl dummy
-dummy:
+rt_dummy:
     ret
 
-.type dummy, @function
-.size dummy, .-dummy
+.type rt_dummy, @function
+.size rt_dummy, .-rt_dummy
 
 .section ".text.rt_gets", "ax"
 .balign 16
