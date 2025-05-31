@@ -1,6 +1,8 @@
-- define how one should allocate strings on the stack with for iterators
+- implement records
+- tagged unions
+- error type
+- implement complete operator precedence
 - implement iterators with more than one accumulator
-- fix (#foo > 0) && (#bar > 0) != (#foo > 0 && #bar > 0)
 - fix unconditional tailcall invalid gencode
 - assert for void statement followed by additional code
 - implement empty assignments
@@ -8,8 +10,6 @@
 - implement global test block
 - fix memory leaks
 - string concatenation at runtime
-- tagged unions
 - tuples
-- error type
 - implement dynamic types
-- update io module for dynamic types
+- update io module for dynamic types and deprecate mem module

@@ -11,7 +11,7 @@ use unix::signal;
 let silent = true;
 let just_check = false;
 
-const version = "0.9.0";
+const version = "0.9.1";
 const temp = ".tmp/";
 
 let sharedlib = false;
@@ -36,6 +36,12 @@ export fn main() void = {
 
         "\n %g-l%blibname\t"
         "%y-- searches for %glib%blibname%g.so%y or %glib%blibname%g.a%y and links against it"
+
+        "\n %g-static\t"
+        "%y-- generates a static archive from module"
+
+        "\n %g-shared\t"
+        "%y-- generates a shared library from module"
 
         "\n %g-stb %b<path>\t"
         "%y-- sets path for stdlib and runtime"
@@ -76,7 +82,7 @@ export fn main() void = {
             return;
         };
     };
-    let shared = false;
+    let onlibc = false;
     let libset = false;
     let outset = false;
     let infset = false;
@@ -93,8 +99,11 @@ export fn main() void = {
         const arg = os::args[a];
         if(strings::hasprefix(arg, "-")){
             if(strings::hasprefix(arg, "-l")){
-                shared = true;
-                append(also_link, strings::dup(arg)!)!;
+                if(arg == "-lc"){
+                    onlibc = true;
+                } else {
+                    append(also_link, strings::dup(arg)!)!;
+                };
             };
             switch(arg){
             // std libpath flag
@@ -118,13 +127,27 @@ export fn main() void = {
                     color("%rmissing object file for -L flag");
                     color_error(flg);
                 };
+            case "-static" =>
+                if(sharedlib){
+                    color("%rcannot set both static and shared flags");
+                    color_error(flg);
+                };
+                staticlib = true;
+            case "-shared" =>
+                if(staticlib){
+                    color("%rcannot set both static and shared flags");
+                    color_error(flg);
+                };
+                sharedlib = true;
             // verbose mode
             case "-vb" =>
                 silent = false;
                 continue;
+            // parse-only mode
             case "-E" =>
                 just_check = true;
                 continue;
+            // keep temps mode
             case "-t" =>
                 keeptemps = true;
                 continue;
@@ -189,14 +212,39 @@ export fn main() void = {
         defer free(link_args);
         defer for(let obj ..& link_args) free(obj);
 
-        for(let l .. ["-z", "noexecstack", "-e", "main"]){
-            append(link_args, strings::dup(l)!)!;
+        const objname =
+            if(strings::index(outfile, "/") is size){
+                const (_, r) = strings::rcut(outfile, "/");
+                yield r;
+            } else {
+                yield outfile;
+            };
+        const qbe_out = fmt::asprintf("{}{}.ssa", temp, objname)!;
+        defer free(qbe_out);
+        const asm_src = fmt::asprintf("{}{}.asm", temp, objname)!;
+        defer free(asm_src);
+        const obj_out = fmt::asprintf("{}{}.o", temp, objname)!;
+        append(link_args, obj_out)!;
+
+        if(!onlibc){
+            if(!staticlib && !sharedlib){
+                for(let l .. ["-e", "main", "-o", outfile]){
+                    append(link_args, strings::dup(l)!)!;
+                };
+            } else if(staticlib){
+                for(let l .. ["-r", "-o"]){
+                    append(link_args, strings::dup(l)!)!;
+                };
+                append(link_args, fmt::asprintf("{}.o", outfile)!)!;
+            } else {
+                for(let l .. ["-shared", "-fPIC", "--export-dynamic", "-o"]){
+                    append(link_args, strings::dup(l)!)!;
+                };
+                append(link_args, fmt::asprintf("{}.so", outfile)!)!;
+            };
+        } else if(staticlib || sharedlib){
+            append(link_args, strings::dup("-lc")!)!;
         };
-        if(shared){
-            append(link_args, strings::dup("--dynamic-linker=/lib64/ld-linux-x86-64.so.2")!)!;
-        };
-        append(link_args, strings::dup("-o")!)!;
-        append(link_args, strings::dup(outfile)!)!;
         append(link_args, also_link...)!;
 
         const file = &memio::dynamic();
@@ -227,21 +275,6 @@ export fn main() void = {
             if(!silent) fmt::println(memio::string(file)!)!;
             return;
         };
-
-        const objname =
-            if(strings::index(outfile, "/") is size){
-                const (_, r) = strings::rcut(outfile, "/");
-                yield r;
-            } else {
-                yield outfile;
-            };
-        const qbe_out = fmt::asprintf("{}{}.ssa", temp, objname)!;
-        defer free(qbe_out);
-        const asm_src = fmt::asprintf("{}{}.asm", temp, objname)!;
-        defer free(asm_src);
-        const obj_out = fmt::asprintf("{}{}.o", temp, objname)!;
-        append(link_args, obj_out)!;
-
         run_cmd(silent, "mkdir", "-p", temp);
         const object =
             match(os::create(qbe_out, fs::mode::USER_RWX)){
@@ -277,7 +310,19 @@ export fn main() void = {
         io::close(asm_file)!;
 
         run_cmd(silent, "as" , "-o", obj_out, asm_src);
-        run_cmd(silent, "ld", link_args...);
+        if(!onlibc){
+            run_cmd(silent, "ld", link_args...);
+        } else {
+            run_cmd(silent, "cc", link_args...);
+        };
+        if(staticlib){
+            const out = fmt::asprintf("{}.a", outfile)!;
+            defer free(out);
+            const obj = fmt::asprintf("{}.o", outfile)!;
+            defer free(obj);
+            run_cmd(silent, "ar", "rcs", out, obj);
+            run_cmd(silent, "rm", obj);
+        };
         if(!keeptemps) run_cmd(silent, "rm", "-rf", temp);
 
     case let err: COMPERR =>

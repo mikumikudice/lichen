@@ -2097,7 +2097,7 @@ fn stack_allocate_array(ctxt: *context, dest: str, array_size: size, length: siz
     const name = strings::replace(dest, "'", ".q")!;
     defer free(name);
 
-    fmt::fprintfln(ctxt.buffer, "\t%{0} =l alloc8 {1}\n\t%{0}.ptr =l copy %{0}",
+    fmt::fprintfln(ctxt.buffer, "\t%{0} =l alloc16 {1}\n\t%{0}.ptr =l copy %{0}",
         name, array_size)!;
     fmt::fprintfln(ctxt.buffer, "\tstorel {}, %{}", array_size, name)!;
     fmt::fprintfln(ctxt.buffer, "\t%{0}.ptr =l add %{0}.ptr, 8", name)!;
@@ -4311,6 +4311,8 @@ fn is_subtype(this: primitive, that: primitive) bool = {
         return (this <= that && this >= primitive::I8) || this == primitive::NUMBER;
     case primitive::F32, primitive::F64 =>
         return (this <= that && this >= primitive::F32) || this == primitive::RATIO;
+    case primitive::STR =>
+        return this == that || this == primitive::ARR_U8;
     case primitive::NUMBER =>
         return this == primitive::NUMBER || is_subtype(that, this);
     case primitive::RATIO =>
@@ -4329,7 +4331,8 @@ fn is_subtype(this: primitive, that: primitive) bool = {
     case primitive::ARR_U8, primitive::ARR_U16, primitive::ARR_U32, primitive::ARR_U64,
         primitive::ARR_I8, primitive::ARR_I16, primitive::ARR_I32, primitive::ARR_I64,
         primitive::ARR_F32, primitive::ARR_F64, primitive::ARR_STR, primitive::ARR_CSTR =>
-        return this == that || this == primitive::ARRAY;
+        return this == that || this == primitive::ARRAY ||
+            (that == primitive::ARR_U8 && this == primitive::STR);
     case =>
         return this == that;
     };

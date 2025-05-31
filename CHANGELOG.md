@@ -1,1 +1,4 @@
-- refactor on line/column calculation/generation
+- readd static and shared library generation
+- implement libc linking of main files with CC to include c prelude
+- make array stack allocation 16-byte aligned
+- make strings as subtype of []u8 and update docs accordingly
