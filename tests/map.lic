@@ -1,33 +1,35 @@
+// parsing test for iterators
+
 io = use "io.lim";
 
 pub fn main() void = io {
     let friends = ["mia", "maya", "mei"];
 
     for friend .. friends {
-        io::print("hello, ");
-        io::print(friend);
-        io::println("!");
+        io::print("hello, ")!;
+        io::print(friend)!;
+        io::println("!")!;
     };
 
     for before, current, after .. friends {
         if #before > 0 {
-            io::print(before);
-            io::print(" is at left of ");
-            io::println(current);
+            io::print(before)!;
+            io::print(" is at left of ")!;
+            io::println(current)!;
         } else {
-            io::println("no one is on the left");
+            io::println("no one is on the left")!;
         };
 
-        io::print(current);
-        io::println(" is at the middle");
+        io::print(current)!;
+        io::println(" is at the middle")!;
 
         if #after > 0 {
-            io::print("and ");
-            io::print(after);
-            io::print(" is at right of ");
-            io::println(current);
+            io::print("and ")!;
+            io::print(after)!;
+            io::print(" is at right of ")!;
+            io::println(current)!;
         } else {
-            io::println("and no one is on the right");
+            io::println("and no one is on the right")!;
         };
     };
 };

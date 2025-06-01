@@ -1,15 +1,17 @@
+// compilation test for filesystem io
+
 fs = use "fs.lim";
 io = use "io.lim";
 
 pub fn main() void = fs & io {
-    let file = fs::open("foo.txt", fs::CREATE | fs::READWRITE);
+    let file = fs::open("foo.txt", fs::CREATE | fs::READWRITE)!;
     if file > 0 {
-        io::fprint(file u32, "mornin' sailor!\n");
-        fs::close(file u32);
-        fs::remove("foo.txt");
+        io::fprint(file u32, "mornin' sailor!\n")!;
+        fs::close(file u32)!;
+        fs::remove("foo.txt")!;
 
-        io::println("working!");
+        io::println("working!")!;
     } else {
-        io::fatal("failed :c");
+        io::fatal("failed :c")!;
     };
 };

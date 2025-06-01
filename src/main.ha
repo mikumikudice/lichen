@@ -11,7 +11,7 @@ use unix::signal;
 let silent = true;
 let just_check = false;
 
-const version = "0.9.1";
+const version = "0.10.0";
 const temp = ".tmp/";
 
 let sharedlib = false;
@@ -204,8 +204,10 @@ export fn main() void = {
     const module_checking = strings::hassuffix(srcname, ".lim") && just_check;
 
     const literals = []: []str;
+    const typedefs = []: [](*aggregated | *ext_array);
     defer free(literals);
-    match(compile(srcname, libpath, &literals, !(sharedlib || staticlib || module_checking))){
+    match(compile(srcname, libpath, &literals, &typedefs,
+        !(sharedlib || staticlib || module_checking))){
     case let obj: *context =>
         defer free_module(obj);
         const link_args = []: []str;
@@ -338,6 +340,12 @@ fn gen_mods(file: *memio::stream, ctxt: *context, args: *[]str, skip: *[]str)
     for(let mod ..& ctxt.modules){
         for(let fun_def ..& mod.1.fun_defs){
             const meta = fun_def.meta as *fn_meta;
+            const name = strings::replace(meta.name.id, "'", ".q")!;
+            defer free(name);
+            meta.mod = fmt::asprintf("{}.{}", (mod.0.val as ident).id, name)!;
+        };
+        for(let var_def ..& mod.1.glob.vars){
+            const meta = var_def.meta as *var_meta;
             const name = strings::replace(meta.name.id, "'", ".q")!;
             defer free(name);
             meta.mod = fmt::asprintf("{}.{}", (mod.0.val as ident).id, name)!;

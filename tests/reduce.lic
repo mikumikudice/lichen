@@ -1,6 +1,6 @@
-io = use "io.lim";
+// parsing test for iterators with accumulators
 
-fn dummy(n u32) unit = io$dummy;
+io = use "io.lim";
 
 pub fn main() void = io {
     let nums  = [1, 2, 3, 4] u32;
@@ -16,8 +16,8 @@ pub fn main() void = io {
         };
     
     if sum == 30 {
-        io::println("test ok!");
+        io::println("test ok!")!;
     } else {
-        io::println("test failed :c");
+        io::println("test failed :c")!;
     };
 };

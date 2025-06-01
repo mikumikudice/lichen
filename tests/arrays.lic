@@ -4,9 +4,9 @@ pub fn main() void = io {
     let arr = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29 ] u32;
 
     if index(arr, 1) + 10 == wrap(arr)[5] {
-        io::println("test ok!");
+        io::println("test ok!")!;
     } else {
-        io::println("test failed :c");
+        io::println("test failed :c")!;
     };
 };
 

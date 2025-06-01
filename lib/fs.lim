@@ -13,7 +13,7 @@ pub APPEND    u32 = 0o2000;
 fn rt_open(filename cstr, flags u32, mode u32) i32 = rt$rt_open;
 
 // runtime wrapper for the close syscall
-pub fn close(handle u32) unit = rt$rt_close;
+fn rt_close(handle u32) i32 = rt$rt_close;
 
 // runtime wrapper for the unlink syscall
 fn rt_unlink(filename cstr) i32 = rt$rt_unlink;
@@ -23,14 +23,29 @@ fn rt_rename(oldname cstr, newname cstr) i32 = rt$rt_rename;
 
 // opens a file and returns a file handle
 // TODO: wrap negative values as an error type
-pub fn open(filename str, flags u32) i32 = rt {
-    => rt_open(filename cstr, flags, 0o7000);
+pub fn open(filename str, flags u32) !u32 = rt {
+    let handle = rt_open(filename cstr, flags, 0o7000);
+    => if handle > 0 {
+        => handle u32;
+    } else {
+        => fail;
+    };
 };
 
-pub fn remove(filename str) unit = rt {
-    rt_unlink(filename cstr);
+pub fn close(handle u32) !unit = rt {
+    if rt_close(handle) < 0 {
+        => fail;
+    };
 };
 
-pub fn rename(oldname str, newname str) i32 = rt {
-    => rt_rename(oldname cstr, newname cstr);
+pub fn remove(filename str) !unit = rt {
+    if rt_unlink(filename cstr) < 0 {
+        => fail;
+    };
+};
+
+pub fn rename(oldname str, newname str) !unit = rt {
+    if rt_rename(oldname cstr, newname cstr) < 0 {
+        => fail;
+    };
 };

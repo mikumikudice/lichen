@@ -1,10 +1,7 @@
+- assert for bubble operators having a valid upper stack
 - implement records
-- tagged unions
-- error type
 - implement complete operator precedence
 - implement iterators with more than one accumulator
-- fix unconditional tailcall invalid gencode
-- assert for void statement followed by additional code
 - implement empty assignments
 - implement match block
 - implement global test block

@@ -7,8 +7,8 @@ pub fn main() void = io {
     let y = (x - 1) i32;
 
     if (x == 0) && (y == -1) {
-        io::println("test ok");
+        io::println("test ok")!;
     } else {
-        io::println("test fail");
+        io::println("test fail")!;
     };
 };

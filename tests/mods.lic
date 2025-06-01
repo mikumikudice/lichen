@@ -4,5 +4,5 @@
 io = use "io.lim";
 
 pub fn main() void = io {
-    io::fprint(io::stdout, "mornin' sailor!\n");
+    io::fprint(io::stdout, "mornin' sailor!\n")!;
 };

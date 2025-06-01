@@ -1,4 +1,4 @@
-- readd static and shared library generation
-- implement libc linking of main files with CC to include c prelude
-- make array stack allocation 16-byte aligned
-- make strings as subtype of []u8 and update docs accordingly
+- implemented tagged unions and error types
+- implemented assertion for additional code after halt statement
+- implemented new runtime stuff for error handling
+- fix global variables from modules not having module prefixes

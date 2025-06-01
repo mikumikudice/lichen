@@ -10,8 +10,8 @@ pub fn main() void = io {
     let comp u64 = msg == text;
 
     if comp {
-        io::print("ok\n");
+        io::print("ok\n")!;
     } else {
-        io::print("fail\n");
+        io::print("fail\n")!;
     };
 };

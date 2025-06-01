@@ -27,6 +27,7 @@ local tests = {
     { src = "fail_var_name_1", input = "", output = "", code = 1, nocomp = true },
     { src = "fail_var_name_2", input = "", output = "", code = 1, nocomp = true },
     { src = "self-import", input = "", output = "", code = 1, nocomp = true },
+    { src = "prop_error", input = "", output = "", code = 1, nocomp = true },
 
     -- syntax and type checking --
     { src = "vars", input = "", output = "", code = 0, nocomp = false },
@@ -45,6 +46,7 @@ local tests = {
     { src = "mods", input = "", output = "mornin' sailor!\n", code = 0, nocomp = false },
     { src = "reply", input = "mika", output = "hi! what's your name?\n > hello, mika", code = 0, nocomp = false },
     { src = "files", input = "", output = "working!\n", code = 0, nocomp = false },
+    { src = "error", input = "", output = "", code = 1, nocomp = false },
 
     -- branching and recursion --
     { src = "if-else", input = "", output = "test 0 ok\ntest 1 ok\ntest 2 ok\ntest 3 ok\n" ..
@@ -80,8 +82,11 @@ for _, test in pairs(tests) do
                 " > " .. tmp .. test.src .. ".log"
         end
         local ran, _, sig = exe_cmd(cmd)
-        if not ran then
+        if not ran and test.code == 0 then
             failed[#failed + 1] = "test \""  .. test.src .. "\" exit code: " .. (sig)
+        elseif ran and test.code ~= 0 then
+            failed[#failed + 1] = "test \""  .. test.src .. "\" had an exit code of 0 (should be " 
+                .. (test.code) .. ")"
         else
             local log = io.open(tmp .. test.src .. ".log") or os.exit(1)
             local res = log:read("a")

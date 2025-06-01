@@ -19,7 +19,7 @@ use memio;
 // const_def := ident, type, "=", const_exp
 // const_exp := [unary_operator], const_val, (binary_operator, const_val)*
 // binary_operator := "+" | "-" | "*" | "/" | ":" | "%" | "<<" | ">>" | "==" |
-//      "!=" | "<" | ">" | "<=" | ">=" | "&&" | "||" | "&" | "|" | "^" | ".."
+//      "!=" | "<" | ">" | "<=" | ">=" | "&&" | "||" | "&" | "|" | "^" | ".." | "..."
 //
 // unary_operator :=  "~" | "#" | "!"
 //
@@ -71,21 +71,21 @@ type ident = struct {
     pub: bool,
     glob: bool,
     id: str,
-    itype: primitive,
+    itype: lichen_t,
 };
 
 type keyword = enum u8 {
     USE, PUB, LET, FN, TYPE,
     FOR, MATCH, IF, ELSE,
     TODO, FAIL, DO, TEST,
-    RECORD, ENUM,
+    RECORD, ENUM, UNION
 };
 
 const kwd_value = [
     "use", "pub", "let", "fn", "type",
     "for", "match", "if", "else",
     "todo", "fail", "do", "test",
-    "record", "enum"
+    "record", "enum", ""
 ];
 
 type primitive = enum u8 {
@@ -114,6 +114,21 @@ const prm_value = [
     "numeric array", "ratio array", "untyped value", 
 ];
 
+type lichen_t = (primitive | *aggregated | *ext_array);
+
+type aggregated = struct {
+    name: (void | str),
+    error: bool,
+    kind: keyword,
+    base: []lichen_t,
+    error_val: (void | lichen_t),
+};
+
+type ext_array = struct {
+    length: (size | void),
+    base: (primitive | *aggregated | *ext_array),
+};
+
 const opr_value = [
     "assignment", "eq", "neq", "leq", "geq",
     "lt", "gt", "shl", "shr",
@@ -122,7 +137,7 @@ const opr_value = [
     "not", "plus", "minus", "multiply",
     "integer division", "ratio division",
     "modulo", "bubble error", "bang",
-    "heap-alloc", "map", "range", "length"
+    "heap-alloc", "map", "range", "spread", "length"
 ];
 
 type operator = enum u8 {
@@ -132,7 +147,7 @@ type operator = enum u8 {
     NOT, PLS, MIN, MUL,
     IDIV, FDIV, MOD,
     PROP, BANG, HEAP,
-    MAP, RANGE, LENGTH,
+    MAP, RANGE, SPREAD, LENGTH,
 };
 
 const sym_value = [
@@ -168,6 +183,8 @@ type scope = struct {
     effects: []tkval,
 };
 
+type eval_kind = enum u8 { RET, MOV, NONE };
+
 type context = struct {
     name: str,
     libpath: str,
@@ -182,6 +199,7 @@ type context = struct {
     literals: *[]str,
     l_arrays: []str,
     fun_defs: []*ast,
+    typedefs: *[](*aggregated | *ext_array),
     modules: [](token, *context),
     scope_owner: (void | *fn_meta),
 
@@ -189,7 +207,8 @@ type context = struct {
     tokens: []token,
     buffer: *memio::stream,
 
-    eval: bool,
+    eval_t: eval_kind,
+    fail: bool,
     tailcall: bool,
 };
 
@@ -208,7 +227,7 @@ type var_meta = struct {
     ffi: (void | str),
     mod: (void | str),
     glob: bool,
-    rets: bool,
+    rets: eval_kind,
     name: ident,
 };
 
@@ -221,12 +240,14 @@ type fn_meta = struct {
     name: ident,
     origin: str,
     params: nullable *ast,
-    fn_type: primitive,
+    variadic: bool,
+    fn_type: lichen_t,
     effects: []tkval,
     scope_begin: size,
 };
 
 type funcall_meta = struct {
+    prop: (void | operator),
     dest: (str | void),
     fun: *ast,
     args: []*ast,
@@ -239,43 +260,44 @@ type param_meta = struct {
 };
 
 type expr_meta = struct {
-    rets: bool,
-    tpe: primitive,
+    rets: eval_kind,
+    tpe: lichen_t,
     members: [](*ast | operator),
 };
 
 type scope_meta = struct {
-    rets: bool,
-    tpe: primitive,
+    rets: eval_kind,
+    eval: bool,
+    tpe: lichen_t,
     scp: (void | *scope),
     members: []*ast,
 };
 
 type array_meta = struct {
-    tpe: primitive,
-    itm_tpe: primitive,
+    tpe: lichen_t,
+    itm_tpe: lichen_t,
     items: [] *ast,
 };
 
 type index_meta = struct {
-    tpe: primitive,
+    tpe: lichen_t,
     array: *ast,
     index: *ast,
 };
 
 type if_else_meta = struct {
-    rets: bool,
-    tpe: primitive,
+    rets: eval_kind,
+    tpe: lichen_t,
     conds: []*ast,
     bodies: []*ast,
 };
 
 type for_meta = struct {
-    rets: bool,
-    tpe: primitive,
+    rets: eval_kind,
+    tpe: lichen_t,
     item: *expr_meta,
-    item_tpe: primitive,
-    element_tpe: primitive,
+    item_tpe: lichen_t,
+    element_tpe: lichen_t,
     out_size: size,
     pairs: []token,
     acc: []*ast,
@@ -292,14 +314,14 @@ type test_meta = struct {
 type member_meta = struct {
     pre: (void | operator),
     val: (tkval | *ast),
-    tpe: primitive,
+    tpe: lichen_t,
 };
 
 type node_meta = (*var_meta | *fn_meta | *param_meta |
     *scope_meta | *expr_meta | *funcall_meta |
     *member_meta | *array_meta | * index_meta |
     *if_else_meta | *for_meta | *test_meta | 
-    primitive);
+    lichen_t);
 
 type ast = struct {
     kind: path_t,

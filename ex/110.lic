@@ -26,13 +26,13 @@ fn rule(state []u8, gen u64) unit = io {
                     => 0;
                 };
             if i {
-                io::print("# ");
+                io::print("# ")!;
             } else {
-                io::print(". ");
+                io::print(". ")!;
             };
             => i;
         };
-        io::print("\n");
+        io::print("\n")!;
     
     if #state' - 1 > gen {
         rule(state', gen + 1);

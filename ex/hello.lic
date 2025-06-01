@@ -1,5 +1,5 @@
 io = use "io.lim";
 
 pub fn main() void = io {
-    io::println("mornin' sailor!");
+    io::println("mornin' sailor!")!;
 };

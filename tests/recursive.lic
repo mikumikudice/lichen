@@ -5,9 +5,9 @@ io = use "io.lim";
 pub fn main() void = io {
     let x = factorial(4);
     if x == 24 {
-        io::print("worked!\n");
+        io::print("worked!\n")!;
     } else {
-        io::print("failed :c\n");
+        io::print("failed :c\n")!;
     };
 };
 

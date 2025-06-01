@@ -8,7 +8,7 @@ pub fn main() void = io {
 
 fn loop(times u32) unit = io {
     if times {
-        io::println("loop!");
+        io::println("loop!")!;
         loop(times - 1);
     };
 };
