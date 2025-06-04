@@ -279,7 +279,7 @@ type constant = enum f64 {
 type keyword = enum str {
     TYPE = "type",
     ENUM = "enum",
-    STR = "str",  
+    STR = "str",
 };
 ```
 

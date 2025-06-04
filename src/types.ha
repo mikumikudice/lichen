@@ -12,7 +12,7 @@ use memio;
 // prim := u8 | u16 | u32 | u64 | i8 | i16 | i32 | i64 | str | unit | void
 //
 // ident := (A-Z | a-z | 0-9 | _)+
-// const_val := ([unary_operator],  number | string) | FFI_literal
+// const_val := ([unary_operator], number | string) | FFI_literal
 // number := (["0x" | "0o" | "0b"] (0-9)+) | char_lit
 // FFI_literal := "$", ident
 //
@@ -117,7 +117,7 @@ const prm_value = [
 type lichen_t = (primitive | *aggregated | *ext_array);
 
 type aggregated = struct {
-    name: (void | str),
+    name: str,
     error: bool,
     kind: keyword,
     base: []lichen_t,
@@ -249,6 +249,7 @@ type fn_meta = struct {
 type funcall_meta = struct {
     prop: (void | operator),
     dest: (str | void),
+    tpe: lichen_t,
     fun: *ast,
     args: []*ast,
 };
@@ -267,6 +268,7 @@ type expr_meta = struct {
 
 type scope_meta = struct {
     rets: eval_kind,
+    ret_exp: nullable *ast,
     eval: bool,
     tpe: lichen_t,
     scp: (void | *scope),

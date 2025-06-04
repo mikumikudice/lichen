@@ -1,4 +1,5 @@
-- implemented tagged unions and error types
-- implemented assertion for additional code after halt statement
-- implemented new runtime stuff for error handling
-- fix global variables from modules not having module prefixes
+- improved tagged union types processing and code dispatch
+- implemented actual tagged union types
+- added semantic assert for valid bubble/propagation error operator
+- removed runtime set/reset error type flag
+- added new test cases

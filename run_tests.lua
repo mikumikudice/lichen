@@ -46,7 +46,6 @@ local tests = {
     { src = "mods", input = "", output = "mornin' sailor!\n", code = 0, nocomp = false },
     { src = "reply", input = "mika", output = "hi! what's your name?\n > hello, mika", code = 0, nocomp = false },
     { src = "files", input = "", output = "working!\n", code = 0, nocomp = false },
-    { src = "error", input = "", output = "", code = 1, nocomp = false },
 
     -- branching and recursion --
     { src = "if-else", input = "", output = "test 0 ok\ntest 1 ok\ntest 2 ok\ntest 3 ok\n" ..
@@ -58,6 +57,11 @@ local tests = {
         "mia is at left of maya\nmaya is at the middle\nand mei is at right of maya\n"..
         "maya is at left of mei\nmei is at the middle\nand no one is on the right\n", code = 0, nocomp = false },
     { src = "reduce", input = "", output = "test ok!\n", code = 0, nocomp = false },
+
+    -- tagged unions and error types --
+    { src = "error", input = "", output = "", code = 1, nocomp = false },
+    { src = "fail_fs", input = "", output = "", code = 1, nocomp = false },
+    { src = "fail_io", input = "", output = "", code = 1, nocomp = false },
 
     -- miscellany --
     { src = "test-block", input = "", output = "", code = 0, nocomp = false },

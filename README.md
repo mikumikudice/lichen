@@ -7,7 +7,7 @@ this is a demo code for printing a hello world (in a lichenous way):
 io = use "io.lim";
 
 pub fn main() void = io {
-    io::println("mornin' sailor!");
+    io::println("mornin' sailor!")!;
 };
 ```
 ## special features

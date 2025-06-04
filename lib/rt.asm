@@ -23,29 +23,6 @@ rt_stdout:
 rt_stderr:
 	.int 2
 
-rt_on_fail:
-    .int 0
-
-.section ".text.rt_set_error", "ax"
-.balign 16
-.globl rt_set_error
-rt_set_error:
-    movw $1, rt_on_fail(%rip)
-    ret
-
-.type rt_set_error, @function
-.size rt_set_error, .-rt_set_error
-
-.section ".text.rt_reset_error", "ax"
-.balign 16
-.globl rt_reset_error
-rt_reset_error:
-    movw $0, rt_on_fail(%rip)
-    ret
-
-.type rt_reset_error, @function
-.size rt_reset_error, .-rt_reset_error
-
 .section ".text.dummy", "ax"
 .balign 16
 .globl dummy

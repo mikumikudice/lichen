@@ -33,19 +33,19 @@ pub fn open(filename str, flags u32) !u32 = rt {
 };
 
 pub fn close(handle u32) !unit = rt {
-    if rt_close(handle) < 0 {
+    => if rt_close(handle) < 0 {
         => fail;
     };
 };
 
 pub fn remove(filename str) !unit = rt {
-    if rt_unlink(filename cstr) < 0 {
+    => if rt_unlink(filename cstr) < 0 {
         => fail;
     };
 };
 
 pub fn rename(oldname str, newname str) !unit = rt {
-    if rt_rename(oldname cstr, newname cstr) < 0 {
+    => if rt_rename(oldname cstr, newname cstr) < 0 {
         => fail;
     };
 };

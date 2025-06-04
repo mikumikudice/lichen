@@ -1,4 +1,6 @@
-- assert for bubble operators having a valid upper stack
+- convert error union types to primitives when asserting errors
+- move value to union when type is such instead of extending
+- composite type arrays
 - implement records
 - implement complete operator precedence
 - implement iterators with more than one accumulator
