@@ -229,21 +229,44 @@ type var_meta = struct {
     glob: bool,
     rets: eval_kind,
     name: ident,
+    value: nullable *ast,
 };
 
 type fn_meta = struct {
     pos: token,
     ffi: (void | str),
     mod: (void | str),
-    used: bool,
-    generated: bool,
     name: ident,
-    origin: str,
-    params: nullable *ast,
-    variadic: bool,
     fn_type: lichen_t,
-    effects: []tkval,
+    params: nullable *ast,
+    body: nullable *ast,
     scope_begin: size,
+    used: bool,
+    origin: str,
+    generated: bool,
+    variadic: bool,
+    effects: []tkval,
+};
+
+type param_meta = struct {
+    names: []ident,
+    pos: []token,
+    at: []size,
+};
+
+type scope_meta = struct {
+    rets: eval_kind,
+    ret_exp: nullable *ast,
+    eval: bool,
+    tpe: lichen_t,
+    scp: (void | *scope),
+    members: []*ast,
+};
+
+type expr_meta = struct {
+    rets: eval_kind,
+    tpe: lichen_t,
+    members: [](*ast | operator),
 };
 
 type funcall_meta = struct {
@@ -254,25 +277,10 @@ type funcall_meta = struct {
     args: []*ast,
 };
 
-type param_meta = struct {
-    names: []ident,
-    pos: []token,
-    at: []size,
-};
-
-type expr_meta = struct {
-    rets: eval_kind,
+type member_meta = struct {
+    pre: (void | operator),
+    val: (tkval | *ast),
     tpe: lichen_t,
-    members: [](*ast | operator),
-};
-
-type scope_meta = struct {
-    rets: eval_kind,
-    ret_exp: nullable *ast,
-    eval: bool,
-    tpe: lichen_t,
-    scp: (void | *scope),
-    members: []*ast,
 };
 
 type array_meta = struct {
@@ -313,12 +321,6 @@ type test_meta = struct {
     line_msg: *memio::stream,
 };
 
-type member_meta = struct {
-    pre: (void | operator),
-    val: (tkval | *ast),
-    tpe: lichen_t,
-};
-
 type node_meta = (*var_meta | *fn_meta | *param_meta |
     *scope_meta | *expr_meta | *funcall_meta |
     *member_meta | *array_meta | * index_meta |
@@ -329,7 +331,6 @@ type ast = struct {
     kind: path_t,
     path: []token,
     meta: (void | node_meta),
-    inner: nullable *ast,
     next: nullable *ast,
     last: nullable *ast,
 };

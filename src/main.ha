@@ -11,8 +11,8 @@ use unix::signal;
 let silent = true;
 let just_check = false;
 
-const version = "0.11.0";
-const temp = ".tmp/";
+const version = "0.11.1";
+const temp = "tmp/";
 
 let sharedlib = false;
 let staticlib = false;
@@ -258,13 +258,15 @@ export fn main() void = {
             if(tpe is *aggregated){
                 const agg = tpe as *aggregated;
                 if(agg.kind == keyword::UNION){
-                    fmt::fprintf(file, "type {} = align 8 {{ l", agg.name)!;
+                    const desc = strtype(agg);
+                    defer free(desc);
+                    fmt::fprintf(file, "# {}\ntype {} = align 8 {{ l", desc, agg.name)!;
                     for(let tp .. agg.base){
                         if(!comp_type(tp, primitive::UNIT) && !comp_type(tp, primitive::VOID)){
                             fmt::fprintf(file, ", {}", qbe_t(agg.base[0], mode::ASSIGN))!;
                         };
                     };
-                    fmt::fprintfln(file, " }} # {}", strtype(agg))!;
+                    fmt::fprintfln(file, " }}")!;
                 } else {
                     assert(false, "TODO: records");
                 };
@@ -289,6 +291,15 @@ export fn main() void = {
             fmt::fprintfln(file,
                 "section \".rodata\"\ndata $lit.{} = align 16 {{ l {}, l {}, b \"{}\" }}", 
                 lit, length + 16, length, literals[lit])!;
+        };
+        for(let tdef ..& typedefs){
+            match(tdef){
+            case let agg: *aggregated =>
+                free(agg.name);
+                free(agg.base);
+                free(agg);
+            case *ext_array => void;
+            };
         };
         if(just_check){
             if(!silent) fmt::println(memio::string(file)!)!;

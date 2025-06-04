@@ -1,8 +1,14 @@
-- convert error union types to primitives when asserting errors
-- move value to union when type is such instead of extending
+- implement floats
+- make todo compatible with tagged unions and records
+- implement composite types declaration
+- implement enumerators
 - composite type arrays
-- implement records
 - implement complete operator precedence
+- implement records
+- implement array rules
+- implement sub-typing for records
+- implement record arithmetic
+- implement first-class functions
 - implement iterators with more than one accumulator
 - implement empty assignments
 - implement match block

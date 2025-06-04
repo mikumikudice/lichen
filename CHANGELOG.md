@@ -1,5 +1,6 @@
-- improved tagged union types processing and code dispatch
-- implemented actual tagged union types
-- added semantic assert for valid bubble/propagation error operator
-- removed runtime set/reset error type flag
-- added new test cases
+- made temporary file folder non-private
+- added assertion for operations with aggregated types
+- improved error messages
+- fixed some memory leaks
+- deprecated ast.inner in favor of metadata
+- updated TODO list and docs

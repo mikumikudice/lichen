@@ -150,14 +150,20 @@ fn strtype(tpe: lichen_t) str = {
         case keyword::UNION =>
             let variations = &memio::dynamic();
             if(agg.error_val is lichen_t){
-                fmt::fprintf(variations, "{}", strtype(agg.error_val as lichen_t))!;
+                const error_t = strtype(agg.error_val as lichen_t);
+                defer free(error_t);
+                fmt::fprintf(variations, "{}", error_t)!;
                 for(let v .. agg.base){
-                    fmt::fprintf(variations, " | {}", strtype(v))!;
+                    const var = strtype(v);
+                    defer free(var);
+                    fmt::fprintf(variations, " | {}", var)!;
                 };
             } else {
                 fmt::fprint(variations, "fail")!;
                 for(let v .. agg.base){
-                    fmt::fprintf(variations, " | {}", strtype(v))!;
+                    const var = strtype(v);
+                    defer free(var);
+                    fmt::fprintf(variations, " | {}", var)!;
                 };
             };
             return fmt::asprintf("union {}", memio::string(variations)!)!;
@@ -165,22 +171,15 @@ fn strtype(tpe: lichen_t) str = {
             return fmt::asprintf("record \"{}\"", agg.name)!;
         case keyword::ENUM =>
             return fmt::asprintf("enum \"{}\"", agg.name)!;
-        case keyword::LET =>
-            const left =
-                match(agg.error_val){
-                case let t: lichen_t => yield strtype(tpe);
-                case => yield strings::dup("fail")!;
-                };
-            defer free(left);
-            assert(len(agg.base) > 0);
-            return fmt::asprintf("type {} | {}", left, strtype(agg.base[0]))!;
         case =>
             assert(false, "unreachable");
             return "";
         };
     } else {
         const arr = tpe as *ext_array;
-        return fmt::asprintf("{} array", strtype(arr.base))!;
+        const arr_t = strtype(arr.base);
+        defer free(arr_t);
+        return fmt::asprintf("{} array", arr_t)!;
     };
 };
 
@@ -284,7 +283,6 @@ fn new_node() *ast = {
         kind = path_t::EOF,
         path = [],
         meta = void,
-        inner = null,
         next = null,
         last = null,
         ...
@@ -307,34 +305,25 @@ fn free_nodes(_node: nullable *ast) void = {
     count -= 1;
     const node = _node as *ast;
     match(node.meta){
-    case void =>
-        void;
-    case lichen_t =>
-        void;
-    case let test: *test_meta =>
-        io::close(test.line_msg)!;
-        free(test.line_msg);
-    case let memb: *member_meta =>
-        defer free(memb);
-        if(memb.val is *ast){
-            const val = memb.val as *ast;
-            if(val.kind == path_t::EXPR) free_nodes(memb.val as *ast);
-        };
-    case let meta: *var_meta =>
-        defer free(meta);
-        if(meta.mod is str) free(meta.mod as str);
-        if(node.inner is *ast) free_nodes(node.inner);
+    case void => void;
+    case let var: *var_meta =>
+        defer free(var);
+        if(var.mod is str) free(var.mod as str);
+        if(var.value is *ast) free_nodes(var.value);
 
-    case let exp: *expr_meta =>
-        defer free(exp);
-        defer free(exp.members);
-        for(let memb ..& exp.members){
-            match(memb){
-            case operator => void;
-            case let mem: *ast =>
-                free_nodes(mem);
-            };
-        };
+    case let fun: *fn_meta =>
+        defer free(fun);
+        free_nodes(fun.params);
+        if(fun.mod is str) free(fun.mod as str);
+        if(fun.body is *ast) free_nodes(fun.body);
+        free(fun.effects);
+
+    case let param: *param_meta =>
+        defer free(param);
+        free(param.names);
+        free(param.pos);
+        free(param.at);
+
     case let scp: *scope_meta =>
         defer free(scp);
         defer free(scp.members);
@@ -347,19 +336,20 @@ fn free_nodes(_node: nullable *ast) void = {
             };
         };
         for(let var ..& defs) free(var);
-    case let fun: *fn_meta =>
-        defer free(fun);
-        free(fun.effects);
-        free_nodes(fun.params);
-        if(fun.mod is str) free(fun.mod as str);
-        if(node.inner is *ast) free_nodes(node.inner);
 
-    case let param: *param_meta =>
-        defer free(param);
-        free(param.names);
-        free(param.pos);
-        free(param.at);
-
+    case let exp: *expr_meta =>
+        defer free(exp);
+        defer free(exp.members);
+        for(let memb ..& exp.members){
+            if(memb is *ast){
+                const m = memb as *ast;
+                if(m.kind != path_t::DECL &&
+                m.kind != path_t::CONST_DEF &&
+                m.kind != path_t::STT_DECL){
+                    free_nodes(memb as *ast);
+                };
+            };
+        };
     case let fncall: *funcall_meta =>
         defer free(fncall);
         for(let arg ..& fncall.args){
@@ -367,23 +357,54 @@ fn free_nodes(_node: nullable *ast) void = {
         };
         free(fncall.args);
         if(fncall.dest is str) free(fncall.dest as str);
+
+      case let memb: *member_meta =>
+        if(memb.val is *ast){
+            const val = memb.val as *ast;
+            if(val.kind != path_t::DECL &&
+                val.kind != path_t::CONST_DEF &&
+                val.kind != path_t::STT_DECL){
+                free_nodes(memb.val as *ast);
+            };
+        };
     case let array: *array_meta =>
         for(let item ..& array.items){
             free_nodes(item);
         };
         free(array.items);
+
+    case let index: *index_meta =>
+        free_nodes(index.index);
+
     case let ifel_block: *if_else_meta =>
         defer free(ifel_block);
+
         defer free(ifel_block.conds);
         for(let cond ..& ifel_block.conds) free_nodes(cond);
+
         defer free(ifel_block.bodies);
         for(let body ..& ifel_block.bodies) free_nodes(body);
+
+    case let for_block: *for_meta =>
+        free(for_block.item);
+        free_nodes(for_block.body);
+
+        defer free(for_block.acc);
+        for(let acc .. for_block.acc){
+            free_nodes(acc);
+        };
+    case let test: *test_meta =>
+        io::close(test.line_msg)!;
+        free(test.line_msg);
+
+    case lichen_t => void;
     };
     if(node.next is *ast){
         free_nodes(node.next);
     };
     if(node.kind != path_t::DECL &&
-        node.kind != path_t::CONST_DEF){
+        node.kind != path_t::CONST_DEF &&
+        node.kind != path_t::STT_DECL){
         free(node);
     };
 };
@@ -567,7 +588,6 @@ fn free_module(ctxt: *context) void = {
 
     for(let var ..& ctxt.glob.vars) free(var);
     free(ctxt.glob.vars);
-
     free(ctxt.modules);
     free(ctxt.fun_defs);
     free(ctxt.name);
@@ -592,7 +612,7 @@ fn new_array_t(ctxt: *context, base: lichen_t, length: size = 0) lichen_t = {
 fn new_union_t(ctxt: *context, base: []lichen_t, error: bool = false,
     error_val: (void | lichen_t) = void, name: (void | str) = void) lichen_t = {
     for(let t .. base){
-        assert(!untyped(t), strtype(t));
+        assert(!untyped(t));
     };
     if(error_val is lichen_t) assert(!untyped(error_val as lichen_t));
 
@@ -730,7 +750,7 @@ fn type_size(tpe: lichen_t) size = {
             };
             return length + length % 16;
         } else {
-            assert(agg.kind == keyword::UNION, strtype(agg));
+            assert(agg.kind == keyword::UNION);
             for(let f .. (tpe as *aggregated).base){
                 const f_z = type_size(f);
                 if(f_z > length) length = f_z;
@@ -1295,11 +1315,11 @@ fn gen_file(ctxt: *context, head: nullable *ast) (void | COMPERR) = {
         const this = node as *ast;
         switch(this.kind){
         case path_t::CONST_DEF =>
-            if(check_for_FFI(ctxt, this.inner as *ast)?){
+            const meta = this.meta as *var_meta;
+            if(check_for_FFI(ctxt, meta.value as *ast)?){
                 node = this.next;
                 continue;
             };
-            const meta = this.meta as *var_meta;
             if(meta.name.pub){
                 fmt::fprint(ctxt.buffer, "export ")!;
             };
@@ -1309,17 +1329,17 @@ fn gen_file(ctxt: *context, head: nullable *ast) (void | COMPERR) = {
             assert(!untyped(meta.name.itype));
             const tpe = meta.name.itype;
             if(is_subtype(tpe, primitive::STR)){
-                const inner = this.inner as *ast;
+                const value = meta.value as *ast;
                 let length = 0z;
                 let slices = []: []str;
                 defer free(slices);
-                const max = len(inner.path);
+                const max = len(value.path);
                 for(let i = 0z; i < max; i += 1){
-                    length += true_size(inner.path[i].val as str);
-                    append(slices, inner.path[i].val as str)!;
+                    length += true_size(value.path[i].val as str);
+                    append(slices, value.path[i].val as str)!;
                     if(i + 1 < max){
-                        if(!comp_tk(inner.path[i + 1].val, operator::PLS)){
-                            move_ptr(ctxt, inner.path[i + 1]);
+                        if(!comp_tk(value.path[i + 1].val, operator::PLS)){
+                            move_ptr(ctxt, value.path[i + 1]);
                             return error(ctxt, "invalid string operator");
                         };
                         i += 1;
@@ -1331,17 +1351,17 @@ fn gen_file(ctxt: *context, head: nullable *ast) (void | COMPERR) = {
                 };
                 fmt::fprintln(ctxt.buffer, " }")!;
             } else if(is_subtype(tpe, primitive::NUMBER)){
-                const inner = this.inner as *ast;
+                const value = meta.value as *ast;
                 let (acc, ini): (size, size) =
-                    match(inner.path[0].val){
+                    match(value.path[0].val){
                     case let n: size => yield (n, 1z);
                     case let o: operator =>
-                        yield (inner.path[1].val as size, 2z);
+                        yield (value.path[1].val as size, 2z);
                     };
-                const max = len(inner.path);
+                const max = len(value.path);
                 for(let i = ini; i < max; i += 2){
-                    const num = inner.path[i + 1].val as size;
-                    switch(inner.path[i].val as operator){
+                    const num = value.path[i + 1].val as size;
+                    switch(value.path[i].val as operator){
                     case operator::PLS =>
                         acc += num;
                     case operator::MIN =>
@@ -1351,7 +1371,7 @@ fn gen_file(ctxt: *context, head: nullable *ast) (void | COMPERR) = {
                     case operator::IDIV =>
                         acc /= num;
                     case operator::FDIV =>
-                        move_ptr(ctxt, inner.path[i]);
+                        move_ptr(ctxt, value.path[i]);
                         return error(ctxt, "invalid float division between integers");
                     case operator::MOD =>
                         acc &= num;
@@ -1474,6 +1494,7 @@ fn gen_fun(ctxt: *context, this: *ast) (void | COMPERR) = {
             rets = eval_kind::NONE,
             glob = false,
             name = param_l.names[p],
+            value = null,
         })!;
         append(local_scp.vars, pdef)!;
         append(params, pdef)!;
@@ -1496,7 +1517,7 @@ fn gen_fun(ctxt: *context, this: *ast) (void | COMPERR) = {
             "and %bscope evaluation type (%g{}%b)",
             strtype(meta.fn_type), strtype(scp_tpe));
     };
-    this.inner = body;
+    meta.body = body;
 
     const name = strings::replace(fix_global(meta), "'", ".q")!;
     defer free(name);
@@ -1586,9 +1607,9 @@ fn gen_scope(ctxt: *context, node: nullable *ast, stt_dest: (void | str) = void)
             defer free(name);
 
             if(meta.rets == eval_kind::NONE){
-                gen_exp(ctxt, this.inner as *ast, name, meta.name.itype)?;
+                gen_exp(ctxt, meta.value as *ast, name, meta.name.itype)?;
             } else {
-                gen_exp(ctxt, this.inner as *ast, name, scp_meta.tpe)?;
+                gen_exp(ctxt, meta.value as *ast, name, scp_meta.tpe)?;
             };
         case path_t::EXPR =>
             const meta = this.meta as *expr_meta;
@@ -1616,7 +1637,7 @@ fn gen_scope(ctxt: *context, node: nullable *ast, stt_dest: (void | str) = void)
                     case let funcall: *funcall_meta =>
                         gen_funcall(ctxt, member)?;
                     case =>
-                        assert(false, "TODO");
+                        assert(false, "unreachable");
                     };
                 };
                 continue;
@@ -1750,7 +1771,8 @@ fn gen_for_iterator(ctxt: *context, this: *ast, dest: str) (void | COMPERR) = {
         const wrap = strings::replace((f_meta.out_acc[0].val as ident).id, "'", ".q")!;
         defer free(wrap);
 
-        gen_exp(ctxt, f_meta.acc[0].inner as *ast, wrap, f_meta.tpe)?;
+        const acc_meta = f_meta.acc[0].meta as *var_meta;
+        gen_exp(ctxt, acc_meta.value as *ast, wrap, f_meta.tpe)?;
     };
     fmt::fprintfln(ctxt.buffer, "@iter.{}.rep", this.path[0].pos)!;
     fmt::fprintfln(ctxt.buffer,
@@ -2149,7 +2171,7 @@ fn gen_funcall(ctxt: *context, this: *ast, dest: (void | str) = void)
                 !comp_type(f_meta.fn_type, primitive::UNIT)){
                 fmt::fprintf(&temp, "\t%{} ={} call ${}(",
                     wrap, qbe_t(f_meta.fn_type, mode::ASSIGN), name)!;
-                yield wrap;
+                yield strings::dup(wrap)!;
             } else {
                 fmt::fprintf(&temp, "\tcall ${}(", name)!;
                 yield "";
@@ -2159,7 +2181,7 @@ fn gen_funcall(ctxt: *context, this: *ast, dest: (void | str) = void)
             case let wrap: str =>
                 fmt::fprintf(&temp, "\t%{} ={} call ${}(",
                     wrap, qbe_t(f_meta.fn_type, mode::ASSIGN), name)!;
-                yield wrap;
+                yield strings::dup(wrap)!;
             case void =>
                 yield
                 if(f_meta.fn_type is *aggregated){
@@ -2173,6 +2195,8 @@ fn gen_funcall(ctxt: *context, this: *ast, dest: (void | str) = void)
                 };
             };
         };
+    defer free(res);
+
     const max = len(p_meta.names);
     assert(len(meta.args) == max);
     for(let a = 0z; a < max; a += 1){
@@ -2349,7 +2373,6 @@ fn gen_move(ctxt: *context, header: *memio::stream, dest: str,
             case keyword::FAIL =>
                 fmt::fprintfln(ctxt.buffer,
                     "\t%{} =l alloc8 {}", dest, type_size(tpe))!;
-                assert(tpe is *aggregated, strtype(tpe));
                 const agg = tpe as *aggregated;
                 assert(agg.error_val is void);
                 fmt::fprintfln(ctxt.buffer, "\tstorel -1, %{}", dest)!;
@@ -2474,14 +2497,16 @@ fn gen_member(ctxt: *context, member: *ast, exp_type: lichen_t)
                     switch(m_meta.pre as operator){
                     case operator::BANG =>
                         const old_name = name;
-                        name = fmt::asprintf("{}.mod", name)!;
                         defer free(old_name);
+
+                        name = fmt::asprintf("{}.mod", name)!;
                         fmt::fprintfln(ctxt.buffer, "\t%{0} ={1} ceq{1} %{2}, 0",
                             name, move_t, old_name)!;
                     case operator::NOT =>
                         const old_name = name;
-                        name = fmt::asprintf("{}.mod", name)!;
                         defer free(old_name);
+
+                        name = fmt::asprintf("{}.mod", name)!;
                         fmt::fprintfln(ctxt.buffer, "\t%{} ={} xor %{}, 18446744073709551615",
                             name, move_t, old_name)!;
                     case operator::LENGTH =>
@@ -2760,8 +2785,8 @@ fn eval_c_def(ctxt: *context, at: size, pub: bool = false)
         rets = ctxt.eval_t,
         glob = true,
         name = name,
+        value = val,
     })!;
-    node.inner = val;
     node.path = ctxt.tokens[begin..end];
     return (node, end);
 };
@@ -2979,6 +3004,7 @@ fn eval_fun_def(ctxt: *context, at: size, pub: bool = false)
         fn_type = tpe: lichen_t,
         effects = efx,
         scope_begin = s_begin,
+        body = null,
     })!;
     node.path = ctxt.tokens[begin..end];
     return (node, end);
@@ -3115,9 +3141,9 @@ fn validate_efx(ctxt: *context, called: *fn_meta, caller: []tkval)
             default)!;
         defer free(help);
         return error(ctxt,
-            "the function %b{}%r is from the module "
-            "%g{}%r, but the caller function doesn't "
-            "implement this effect tag\n{}",
+            "the function %b{}%r, from the module "
+            "%g{}%r, is %yimpure%r, but the caller function doesn't "
+            "implement its effect tag\n{}",
             called.name.id, default, help);
     };
 };
@@ -3336,7 +3362,9 @@ fn eval_test(ctxt: *context, at: size) ((*ast, size) | COMPERR) = {
         ("\t", "\\t"), ("\n", "\\n"), ("\"", "\\\""), ("\'", "\\\'"))!;
     defer free(line);
 
-    const msg = fmt::asprintf("%R{}%r test failed\\n{}\\n", gen_pos(ctxt), line)!;
+    const pos = gen_pos(ctxt);
+    defer free(pos);
+    const msg = fmt::asprintf("%R{}%r test failed\\n{}\\n", pos, line)!;
     defer free(msg);
 
     const lit = add_color(strings::toutf8(msg));
@@ -3373,8 +3401,15 @@ fn eval_decl(ctxt: *context, at: size) ((*ast, size) | COMPERR) = {
     const old_eval = ctxt.eval_t;
     ctxt.eval_t = eval_kind::MOV;
 
-    const node = new_node();
-    node.kind = path_t::DECL;
+    const meta = var_meta {
+        pos = ctxt.tokens[begin],
+        ffi = void,
+        mod = void,
+        rets = eval_kind::NONE,
+        glob = false,
+        name = name,
+        value = null,
+    };
     match(tpe){
     case let tpe: lichen_t =>
         end = pop_assert(ctxt, end, operator::ASG,
@@ -3382,17 +3417,14 @@ fn eval_decl(ctxt: *context, at: size) ((*ast, size) | COMPERR) = {
         const eq = end;
         const (exp, _end) = eval_expression(ctxt, end, tpe)?;
         end = _end;
-        node.inner = exp;
+        meta.value = exp;
         match(exp.meta){
-        case let meta: *expr_meta =>
-            name.itype = push_type(ctxt, meta.tpe, tpe);
-        case let meta: *if_else_meta =>
-            if(len(meta.conds) == len(meta.bodies)){
-                move_ptr(ctxt, tk);
-                return error(ctxt, "the if block is not exhaustive");
-            };
-        case let meta: *var_meta =>
-            name.itype = push_type(ctxt, meta.name.itype, tpe);
+        case let e_meta: *expr_meta =>
+            meta.name.itype = push_type(ctxt, e_meta.tpe, tpe);
+        case let ifel_block: *if_else_meta =>
+            meta.name.itype = push_type(ctxt, ifel_block.tpe, tpe);
+        case let v_meta: *var_meta =>
+            meta.name.itype = push_type(ctxt, v_meta.name.itype, tpe);
         };
     case void =>
         tk = next_tk(ctxt, end, "expected %bvalue assignment%r, but got %y{}")?;
@@ -3404,37 +3436,32 @@ fn eval_decl(ctxt: *context, at: size) ((*ast, size) | COMPERR) = {
         const eq = end;
         const (exp, _end) = eval_expression(ctxt, end + 1)?;
         end = _end;
-        node.inner = exp;
+        meta.value = exp;
         match(exp.meta){
-        case let meta: *expr_meta =>
-            if(untyped(meta.tpe)){
+        case let e_meta: *expr_meta =>
+            if(untyped(e_meta.tpe)){
                 move_ptr(ctxt, tk);
                 return error(ctxt, "cannot infer expression type");
             };
-            name.itype = meta.tpe;
-        case let meta: *var_meta =>
-            name.itype = meta.name.itype;
-        case let meta: *array_meta =>
-            if(untyped(meta.tpe)){
+            meta.name.itype = e_meta.tpe;
+        case let v_meta: *var_meta =>
+            meta.name.itype = v_meta.name.itype;
+        case let arr_meta: *array_meta =>
+            if(untyped(arr_meta.tpe)){
                 move_ptr(ctxt, tk);
                 return error(ctxt, "cannot infer expression type");
             };
-            name.itype = meta.tpe;
+            meta.name.itype = arr_meta.tpe;
         case =>
             fmt::fatalf("missing match for {} kind", exp.kind: u8);
         };
     };
     ctxt.eval_t = old_eval;
 
+    const node = new_node();
+    node.kind = path_t::DECL;
     node.path = ctxt.tokens[begin..end];
-    node.meta = alloc(var_meta {
-        pos = ctxt.tokens[begin],
-        ffi = void,
-        mod = void,
-        rets = eval_kind::NONE,
-        glob = false,
-        name = name,
-    })!;
+    node.meta = alloc(meta)!;
     return (node, end);
 };
 
@@ -3494,6 +3521,10 @@ fn eval_abbs_exp(ctxt: *context, at: size, hint: lichen_t = primitive::ANY,
         append(meta.members, mem_r)!;
 
         move_ptr(ctxt, tk);
+        if(lft_t is *aggregated || rgt_t is *aggregated){
+            return error(ctxt, "cannot operate with %b{}%r and %b{}%r",
+                strtype(lft_t), strtype(rgt_t));
+        };
         switch(oper){
         case operator::LAND, operator::LOR =>
             tpe = mr_meta.tpe;
@@ -4315,6 +4346,7 @@ fn eval_for_iterator(ctxt: *context, at: size, hint: lichen_t) ((*ast, size) | C
             rets = ctxt.eval_t,
             glob = false,
             name = p.val as ident,
+            value = null,
         };
         meta.name.itype = ele_tpe;
         pdef.meta = alloc(meta)!;
@@ -4370,11 +4402,7 @@ fn eval_statement_decl(ctxt: *context, at: size) ((*ast, size) | COMPERR) = {
     let end = pop_assert(ctxt, end, operator::ASG,
         "expected %bassignment%r, but got %y{}")?;
 
-    const old_eval = ctxt.eval_t;
-    ctxt.eval_t = eval_kind::NONE;
     const (exp, _end) = eval_expression(ctxt, end, tpe)?;
-    ctxt.eval_t = old_eval;
-
     const e_meta = exp.meta as *expr_meta;
     if(untyped(e_meta.tpe)){
         move_ptr(ctxt, ctxt.tokens[begin]);
@@ -4393,8 +4421,8 @@ fn eval_statement_decl(ctxt: *context, at: size) ((*ast, size) | COMPERR) = {
         glob = false,
         rets = ctxt.eval_t,
         name = namespace,
+        value = exp,
     })!;
-    node.inner = exp;
     return (node, end);
 };
 
@@ -4508,8 +4536,10 @@ fn eval_funcall(ctxt: *context, at: size) ((*ast, size) | COMPERR) = {
         end += 1;
     } else if(f_meta.fn_type is *aggregated && (f_meta.fn_type as *aggregated).error &&
         ctxt.eval_t != eval_kind::MOV){
-        move_ptr(ctxt, tk);
-        return error(ctxt, "cannot ignore error here");
+        move_ptr(ctxt, ctxt.tokens[begin]);
+        return error(ctxt,
+            "this function %ymay fail%r, but it's not handled."
+            " try adding %p\"%d!%r%p\"%r at the end of the call");
     };
 
     node.path = ctxt.tokens[begin..end];
@@ -4528,7 +4558,7 @@ fn fix_global(meta: (*fn_meta | *var_meta)) str = {
     match(meta){
     case let f_meta: *fn_meta =>
         if(f_meta.ffi is str){
-            return f_meta.ffi as str;
+            return strings::dup(f_meta.ffi as str)!;
         } else if(f_meta.mod is str){
             return strings::dup(f_meta.mod as str)!;
         } else {
@@ -4878,8 +4908,6 @@ fn is_subtype(_this: lichen_t, _that: lichen_t) bool = {
                         return true;
                     };
                 };
-            } else if(this.kind == keyword::LET){
-                return is_subtype(_that, this.base[0]);
             };
             return false;
         case let this: primitive =>
@@ -4888,8 +4916,6 @@ fn is_subtype(_this: lichen_t, _that: lichen_t) bool = {
                 for(let v .. that.base){
                     if(is_subtype(this, v)) return true;
                 };
-            } else if(that.kind == keyword::LET){
-                return is_subtype(this, that.base[0]);
             };
             return false;
         };

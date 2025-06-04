@@ -118,6 +118,6 @@ if #failed > 0 then
     os.exit(1)
 else
     run("rm -r " .. tmp)
-    run("rm -r .tmp/")
+    run("rm -r tmp/")
 end
 
