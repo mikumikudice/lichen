@@ -39,10 +39,10 @@ we plan to fully support these OSes/environments:
 - freestanding environments + protected mode/real mode
 
 support include standard library port to the available syscalls/APIs and binary specifics.
-lichen has and will never have native support for closed source/proprietary OSes such as windows and macOS.
+lichen has not and will never have native support for closed source/proprietary OSes such as windows and macOS.
 
 # building and installation
-lichen is written in the [hare programming language](https://hare-lang.org) and uses the [QBE](https://c9x.me/compile/) IR as a backend to generate the binaries. once all dependencies are installed, you're ready to both build the compiler and use it with no other dependencies. note that each of lichen' dependencies have theirs own dependencies. once everything is set, simply run the `install.sh`. it will copy the a binary called `lcc` and the runtime and standard library to `~/.local/bin` and `~/.local/lib/lcclib`, respectively, and will be available only for your current user. you also can specify which directory the compiler should look for the runtime and standard library using the `-std` flag.
+lichen is written in the [hare programming language](https://hare-lang.org) and uses the [QBE](https://c9x.me/compile/) IR as a backend to generate the binaries. once all dependencies are installed, you're ready to both build the compiler and use it with no other dependencies. note that each of lichen' dependencies have theirs own dependencies. once everything is set, simply run the `install.sh`. it will copy a binary called `lcc` and the runtime and standard library to `~/.local/bin` and `~/.local/lib/lcclib`, respectively, and will be available only for your current user. you also can specify which directory the compiler should look for the runtime and standard library using the `-std` flag.
 
 optionally, if you have lua 5.3, you can run an automated test unit for all milestones with `run_tests.lua`.
 
