@@ -13,6 +13,7 @@
 - implement empty assignments
 - implement match block
 - implement global test block
+- implement C-compatible execution prelude
 - fix memory leaks
 - string concatenation at runtime
 - tuples

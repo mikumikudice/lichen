@@ -1,6 +1,3 @@
-- made temporary file folder non-private
-- added assertion for operations with aggregated types
-- improved error messages
-- fixed some memory leaks
-- deprecated ast.inner in favor of metadata
-- updated TODO list and docs
+- lots of bugfixes on the type system
+- implemented casting for arrays
+- implemented casting for if-else blocks

@@ -2319,7 +2319,11 @@ fn gen_move(ctxt: *context, header: *memio::stream, dest: str,
                         qbe_t(var.name.itype, mode::ASSIGN), name, dest)!;
                 };
             } else if(var.name.itype is *aggregated && tpe is *aggregated){
-                assert(false, "todo");
+                if(is_subtype(var.name.itype, tpe)){
+                    fmt::fprintfln(ctxt.buffer, "\t%{} =l copy %{} # aa", dest, name)!;
+                } else {
+                    assert(false, "todo");
+                };
             } else {
                 assert(false, "todo");
             };
@@ -2754,7 +2758,8 @@ fn eval_c_def(ctxt: *context, at: size, pub: bool = false)
     end += 1;
     name.pub = pub;
     name.glob = true;
-    name.itype = tpe.val as primitive;
+    name.itype = tpe.val as primitive; // TODO: allow composite types
+    assert(!untyped(name.itype));
 
     // assignment operator
     end = pop_assert(ctxt, end, operator::ASG,
@@ -3230,8 +3235,6 @@ fn eval_scope(ctxt: *context, at: size, hint: lichen_t = primitive::ANY,
         members = [],
         scp = ctxt.scp,
     };
-    const old_eval = ctxt.eval_t;
-
     let rets = false;
     let last: lichen_t = primitive::ANY;
     let tpe: lichen_t = primitive::ANY;
@@ -3298,7 +3301,6 @@ fn eval_scope(ctxt: *context, at: size, hint: lichen_t = primitive::ANY,
             case let call: *funcall_meta =>
                 last = call.tpe;
             };
-            ctxt.eval_t = old_eval;
         };
         end = pop_assert(ctxt, end, symbol::EOL,
             "expected %bend of line%r, but got %y{}")?;
@@ -3456,6 +3458,7 @@ fn eval_decl(ctxt: *context, at: size) ((*ast, size) | COMPERR) = {
             fmt::fatalf("missing match for {} kind", exp.kind: u8);
         };
     };
+    assert(!untyped(meta.name.itype));
     ctxt.eval_t = old_eval;
 
     const node = new_node();
@@ -3489,6 +3492,26 @@ fn eval_abbs_exp(ctxt: *context, at: size, hint: lichen_t = primitive::ANY,
     // eval first member;
     const (mem_l, _end) = eval_member(ctxt, end)?;
     const ml_meta = mem_l.meta as *member_meta;
+    if(comp_type(ml_meta.tpe, primitive::ANY)){
+        if(comp_type(hint, primitive::ANY)){
+            move_ptr(ctxt, ctxt.tokens[end]);
+            return error(ctxt, "cannot infer %bexpression type%r");
+        };
+        ml_meta.tpe = hint;
+    } else if(!untyped(hint) && untyped(ml_meta.tpe)){
+        ml_meta.tpe = cast(ctxt, ml_meta.tpe, hint, ctxt.tokens[end])?;
+        if(ml_meta.val is *ast){
+            const memb = ml_meta.val as *ast;
+            match(memb.meta){
+            case let array: *array_meta =>
+                if(untyped(array.tpe)){
+                    array.tpe = ml_meta.tpe;
+                    array.itm_tpe = from_array(ml_meta.tpe);
+                };
+            case => void;
+            };
+        };
+    };
     let lft_t = ml_meta.tpe;
     end = _end;
     append(meta.members, mem_l)!;
@@ -3656,29 +3679,9 @@ fn eval_abbs_exp(ctxt: *context, at: size, hint: lichen_t = primitive::ANY,
         tk = next_tk(ctxt, end,
             "expected %bcontant value%r, but got %y{}")?;
     };
-    if(!untyped(tpe)){
-        move_ptr(ctxt, ctxt.tokens[begin]);
-        meta.tpe = push_type(ctxt, meta.tpe, tpe);
-    } else {
-        assert_subtype(ctxt, tpe, hint, ctxt.tokens[begin])?;
-        meta.tpe = hint;
-    };
+    meta.tpe = push_type(ctxt, meta.tpe, tpe);
+    assert(!comp_type(meta.tpe, primitive::ANY));
 
-    if(!comp_type(hint, primitive::ANY)){
-        if(untyped(ml_meta.tpe) && len(meta.members) == 1){
-            const m_meta = (meta.members[0] as *ast).meta as *member_meta;
-            m_meta.tpe = hint;
-            if(m_meta.val is *ast)
-            match((m_meta.val as *ast).meta){
-            case let a_meta: *array_meta =>
-                a_meta.tpe = hint;
-                a_meta.itm_tpe = from_array(hint);
-            case let e_meta: *expr_meta =>
-                e_meta.tpe = hint;
-            case => void;
-            };
-        };
-    };
     const node = new_node();
     node.kind = path_t::EXPR;
     node.path = ctxt.tokens[begin..end];
@@ -4139,11 +4142,6 @@ fn eval_if_else(ctxt: *context, at: size, hint: lichen_t) ((*ast, size) | COMPER
                 append(meta.bodies, else_body)!;
 
                 tk = next_tk(ctxt, end, "expected %bend of line%r, but got %y{}")?;
-                if(!comp_tk(tk.val, symbol::EOL)){
-                    move_ptr(ctxt, tk);
-                    return error(ctxt, "expected %bend of line%r, but got %y{}",
-                        strtoken(tk.val));
-                };
                 break;
             } else {
                 move_ptr(ctxt, tk);
@@ -4151,19 +4149,25 @@ fn eval_if_else(ctxt: *context, at: size, hint: lichen_t) ((*ast, size) | COMPER
                     "expected %belse body%r or %belse-if block%r, but got %y{}",
                     strtoken(tk.val));
             };
-        } else if(comp_tk(tk.val, symbol::EOL)){
-            break;
         } else {
-            move_ptr(ctxt, tk);
-            return error(ctxt,
-                "expected %belse block%r or %bend of line%r, but got %y{}",
-                strtoken(tk.val));
+            break;
         };
     };
+    const (new, _end) = eval_type(ctxt, end)?;
+    if(new is lichen_t){
+        meta.tpe = cast(ctxt, meta.tpe, new as lichen_t,
+            ctxt.tokens[end])?;
+    };
+    end = _end;
+
     // non-exhaustive if
     if(len(meta.bodies) == len(meta.conds)){
         meta.tpe = push_type(ctxt, meta.tpe, primitive::UNIT);
+    } else {
+        move_ptr(ctxt, ctxt.tokens[begin]);
     };
+    assert(!comp_type(meta.tpe, primitive::ANY));
+
     for(let body ..& meta.bodies){
         const b_meta = body.meta as *scope_meta;
         move_ptr(ctxt, body.path[0]);
@@ -4256,13 +4260,16 @@ fn eval_for_iterator(ctxt: *context, at: size, hint: lichen_t) ((*ast, size) | C
         primitive::ARRAY, tpe_msg::BOOL)?;
     ctxt.eval_t = old_eval;
 
-    end = _end;
     const i_meta = item.meta as *expr_meta;
-    if(untyped(i_meta.tpe)){
+    if(comp_type(i_meta.tpe, primitive::ARRAY)){
         move_ptr(ctxt, ctxt.tokens[end + 1]);
-        return error(ctxt, "cannot iterate over %b{}%r (an %yuntyped array%r)",
+        return error(ctxt, "cannot iterate over an %yuntyped array%r");
+    } else if(untyped(i_meta.tpe)){
+        move_ptr(ctxt, ctxt.tokens[end + 1]);
+        return error(ctxt, "cannot iterate over %b{}%r (not an array type)",
             strtype(i_meta.tpe));
     };
+    end = _end;
     const ele_tpe = from_array(i_meta.tpe);
 
     tk = next_tk(ctxt, end,
@@ -4343,7 +4350,7 @@ fn eval_for_iterator(ctxt: *context, at: size, hint: lichen_t) ((*ast, size) | C
             pos = p,
             ffi = void,
             mod = void,
-            rets = ctxt.eval_t,
+            rets = eval_kind::NONE,
             glob = false,
             name = p.val as ident,
             value = null,
@@ -4376,7 +4383,6 @@ fn eval_for_iterator(ctxt: *context, at: size, hint: lichen_t) ((*ast, size) | C
         out_acc = out_acc,
         body = body,
     };
-
     ctxt.scp = upper;
     const node = new_node();
     node.kind = path_t::STATEMENT;
@@ -4693,10 +4699,13 @@ fn assert_subtype(ctxt: *context, current: lichen_t, new: lichen_t, pos: token,
 
 fn push_type(ctxt: *context, current: lichen_t, new: lichen_t) lichen_t = {
     if(is_subtype(new, current)){
-        if(untyped(current)) return new;
+        if(current is primitive && new is primitive){
+            if(comp_type(current, primitive::ANY)) return new;
+            if(untyped(current) && !comp_type(new, primitive::ANY)) return new;
+            return current;
+        };
         if(new is primitive && current is *aggregated) return current;
-        if(current is primitive && new is *aggregated) return new;
-        return current;
+        return new;
     } else if(current is primitive){
         const list = []: []lichen_t;
         if(!untyped(current)) append(list, current)!;
@@ -4833,6 +4842,18 @@ fn is_castable(_this: lichen_t, _that: lichen_t) bool = {
             return this == primitive::CSTR || this == primitive::STR;
         case primitive::UNIT, primitive::VOID =>
             return this == that;
+        case primitive::ARRAY =>
+            return is_subtype(this, primitive::ARRAY);
+        case primitive::ARR_U8, primitive::ARR_U16, primitive::ARR_U32, primitive::ARR_U64,
+            primitive::ARR_I8, primitive::ARR_I16, primitive::ARR_I32, primitive::ARR_I64,
+            primitive::ARR_F32, primitive::ARR_F64, primitive::ARR_STR, primitive::ARR_CSTR =>
+            return is_subtype(this, primitive::ARRAY) || comp_type(this, that);
+        case primitive::ARR_NUMBER =>
+            return is_subtype(this, primitive::ARRAY) ||
+                (this > primitive::ARRAY && is_subtype(from_array(this), primitive::NUMBER));
+        case primitive::ARR_RATIO =>
+            return is_subtype(this, primitive::ARRAY) ||
+                (this > primitive::ARRAY && is_subtype(from_array(this), primitive::RATIO));
         case =>
             assert(false, "unreachable");
             return false;
