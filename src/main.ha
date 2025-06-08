@@ -11,7 +11,7 @@ use unix::signal;
 let silent = true;
 let just_check = false;
 
-const version = "0.11.2";
+const version = "0.11.3";
 const temp = "tmp/";
 
 let sharedlib = false;
@@ -53,7 +53,7 @@ export fn main() void = {
         "%y-- prompts each substep. if %g-c%y is also set, dumps qbe IR instead"
         
         "\n %g-t\t\t"
-        "%y-- keeps temporary files at %g.tmp/%y folder";
+        "%y-- keeps temporary files at %gtmp/%y folder";
 
     const hlp =
         "\n%gget help on learning how to use lichen in "
@@ -263,7 +263,7 @@ export fn main() void = {
                     fmt::fprintf(file, "# {}\ntype {} = align 8 {{ l", desc, agg.name)!;
                     for(let tp .. agg.base){
                         if(!comp_type(tp, primitive::UNIT) && !comp_type(tp, primitive::VOID)){
-                            fmt::fprintf(file, ", {}", qbe_t(agg.base[0], mode::ASSIGN))!;
+                            fmt::fprintf(file, ", {}", qbe_t(tp, mode::ASSIGN))!;
                         };
                     };
                     fmt::fprintfln(file, " }}")!;

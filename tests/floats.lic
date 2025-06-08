@@ -1,0 +1,13 @@
+io = use "io.lim";
+
+pub fn main() void = io {
+    let pi f64 = 355:113;
+    let r  f32 = 4;
+    let area = pi * (r * r) f64;
+
+    if area <= 50 + 30:113 {
+        io::println("test ok")!;
+    } else {
+        io::println("test failed")!;
+    };
+};

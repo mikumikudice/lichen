@@ -697,13 +697,19 @@ fn qbe_t(tpe: lichen_t, md: mode = mode::REAL) str = {
         case primitive::I32 =>
             if(md == mode::LOAD) return "sw";
             return "w";
+        case primitive::F32 =>
+            return "s";
+        case primitive::F64 =>
+            return "d";
         case primitive::U64, primitive::I64, primitive::STR,
             primitive::CSTR, primitive::ARR_U8, primitive::ARR_U16,
             primitive::ARR_U32, primitive::ARR_U64, primitive::ARR_I8,
             primitive::ARR_I16, primitive::ARR_I32, primitive::ARR_I64,
             primitive::ARR_F32, primitive::ARR_F64, primitive::ARR_STR,
-            primitive::ARR_CSTR, primitive::NUMBER, primitive::RATIO =>
+            primitive::ARR_CSTR, primitive::NUMBER =>
             return "l";
+        case primitive::RATIO =>
+            return "d";
         case primitive::UNIT, primitive::VOID =>
             assert(md != mode::ASSIGN);
             return prm_value[tpe as primitive];
@@ -768,6 +774,37 @@ fn type_size(tpe: lichen_t) size = {
     } else {
         assert(false, "unreachable");
         return 0;
+    };
+};
+
+fn size_mismatch(src: primitive, dest: primitive) bool = {
+    if(is_subtype(src, primitive::NUMBER) && is_subtype(dest, primitive::NUMBER)){
+        return type_size(src) < type_size(dest);
+    };
+    return type_size(src) != type_size(dest);
+};
+
+fn itof(int_t: primitive, float_t: primitive) str = {
+    // unsigned
+    if(is_subtype(primitive::U8, int_t)){
+        if(type_size(int_t) == 4) return "uwtof";
+        return "ultof";
+    // signed
+    } else {
+        if(type_size(int_t) == 4) return "swtof";
+        return "sltof";
+    };
+};
+
+fn ftoi(float_t: primitive, int_t: primitive) str = {
+    // unsigned
+    if(is_subtype(primitive::U8, int_t)){
+        if(type_size(int_t) == 4) return "stoui";
+        return "dtoui";
+    // signed
+    } else {
+        if(type_size(int_t) == 4) return "stosi";
+        return "dtosi";
     };
 };
 
@@ -1565,7 +1602,7 @@ fn gen_fun(ctxt: *context, this: *ast) (void | COMPERR) = {
             const agg = meta.fn_type as *aggregated;
             assert(agg.error_val is void);
             fmt::fprintfln(ctxt.buffer, "\tstorel {1}, %{0}\n\tret %{0}",
-                dest, type_id(agg.base[0]))!;
+                dest, type_id(primitive::UNIT))!;
         } else if(is_subtype(meta.fn_type, primitive::VOID)){
             if(meta.fn_type is *aggregated){
                 const agg = meta.fn_type as *aggregated;
@@ -1675,14 +1712,23 @@ fn gen_scope(ctxt: *context, node: nullable *ast, stt_dest: (void | str) = void)
                 fmt::fprintfln(ctxt.buffer, "\tdbgloc {}, {}", l, c)!;
 
                 const meta = this.meta as *test_meta;
+                const e_meta = meta.cond.meta as *expr_meta;
                 const name = fmt::asprintf("test.{}", this.path[0].pos)!;
                 defer free(name);
-                gen_exp(ctxt, meta.cond, name, (meta.cond.meta as *expr_meta).tpe)?;
+                gen_exp(ctxt, meta.cond, name, e_meta.tpe)?;
 
+                const c_dest = fmt::asprintf("{}.cond", name)!;
+                defer free(c_dest);
+                if(is_subtype(e_meta.tpe, primitive::RATIO)){
+                    fmt::fprintfln(ctxt.buffer, "\t%{} =l copy %{}.cmp", c_dest, name)!;
+                } else {
+                    fmt::fprintfln(ctxt.buffer, "\t%{} ={} copy %{}", c_dest,
+                        qbe_t(e_meta.tpe, mode::ASSIGN), name)!;
+                };
                 fmt::fprintfln(ctxt.buffer, "\tjnz %{0}, @{0}.ok, @{0}.fail\n@{0}.fail\n"
                     "\t%.stderr =l loadsw $rt_stderr\n\tcall $rt_puts(w %.stderr, l $lit.{1})\n"
                     "\tcall $rt_exit(w 1)\n@{0}.ok",
-                    name, push_str(ctxt, memio::string(meta.line_msg)!))!;
+                    c_dest, push_str(ctxt, memio::string(meta.line_msg)!))!;
             case =>
                 assert(false, "unreachable");
             };
@@ -1707,10 +1753,18 @@ fn gen_if_else(ctxt: *context, this: *ast, stt_dest: (void | str) = void)
         const b_meta = meta.bodies[b].meta as *scope_meta;
         if(b < cond_max){
             const cond = meta.conds[b];
-
             const c_meta = cond.meta as *expr_meta;
-            gen_exp(ctxt, cond, c_dest, c_meta.tpe)?;
 
+            const exp_dest = fmt::asprintf("exp.{}", cond.path[0].pos)!;
+            defer free(exp_dest);
+
+            gen_exp(ctxt, cond, exp_dest, c_meta.tpe)?;
+            if(is_subtype(c_meta.tpe, primitive::RATIO)){
+                fmt::fprintfln(ctxt.buffer, "\t%{} =l copy %{}.cmp", c_dest, exp_dest)!;
+            } else {
+                fmt::fprintfln(ctxt.buffer, "\t%{} ={} copy %{}", c_dest,
+                    qbe_t(c_meta.tpe, mode::ASSIGN), exp_dest)!;
+            };
             fmt::fprintfln(ctxt.buffer, "\tjnz %{0}, @t.{0}.{1}, @f.{0}.{1}\n@t.{0}.{1}", c_dest, b)!;
             gen_scope(ctxt, body, stt_dest)?;
 
@@ -1718,6 +1772,7 @@ fn gen_if_else(ctxt: *context, this: *ast, stt_dest: (void | str) = void)
                 fmt::fprintfln(ctxt.buffer, "\tjmp @end.{}", c_dest)!;
             };
             fmt::fprintfln(ctxt.buffer, "@f.{}.{}", c_dest, b)!;
+            // non exhaustive value (unit)
             if(meta.tpe is *aggregated && b == body_max - 1 && body_max == cond_max){
                 const agg = meta.tpe as *aggregated;
                 if(agg.error_val is void && agg.error){
@@ -1725,7 +1780,7 @@ fn gen_if_else(ctxt: *context, this: *ast, stt_dest: (void | str) = void)
                     fmt::fprintfln(ctxt.buffer, "\t%{} =l alloc8 {}",
                     stt_dest as str, type_size(agg))!;
                     fmt::fprintfln(ctxt.buffer, "\tstorel {1}, %{0}\n\tret %{0}",
-                        stt_dest as str, type_id(agg.base[0]))!;
+                        stt_dest as str, type_id(primitive::UNIT))!;
                 };
             };
         } else {
@@ -1893,11 +1948,8 @@ fn gen_exp(ctxt: *context, exp: *ast, dest: str, exp_type: lichen_t)
     (void | COMPERR) = {
     match(exp.meta){
     case let var: *var_meta =>
-        const temp = memio::dynamic();
-        defer io::close(&temp)!;
         const old_fail = ctxt.fail;
-        gen_move(ctxt, &temp, dest, exp, exp_type)?;
-
+        gen_move(ctxt, dest, exp, exp_type)?;
         if(var.rets == eval_kind::RET){
             if(!is_subtype(exp_type, primitive::UNIT)
                 && !is_subtype(exp_type, primitive::VOID)){
@@ -1951,29 +2003,26 @@ fn gen_exp(ctxt: *context, exp: *ast, dest: str, exp_type: lichen_t)
 fn gen_exp_steps(ctxt: *context, members: [](*ast | operator), dest: str,
     exp_type: lichen_t, stop_logic: bool = false) (size | COMPERR) = {
     const exp_t = qbe_t(exp_type, mode::ASSIGN);
-    const temp = memio::dynamic();
-    defer io::close(&temp)!;
 
     const max = len(members);
     const begin =
         match(members[0]){
         case let oper: operator =>
             if(oper == operator::MIN){
-                gen_move(ctxt, &temp, dest, members[1] as *ast, exp_type)?;
-                fmt::fprintfln(ctxt.buffer, "{0}\t{1} ={2} neg {1}",
-                    memio::string(&temp)!, dest, exp_t)!;
+                gen_move(ctxt, dest, members[1] as *ast, exp_type)?;
+                fmt::fprintfln(ctxt.buffer, "\t{1} ={2} neg {1}", dest, exp_t)!;
             } else {
-                gen_move(ctxt, &temp, dest, members[1] as *ast, exp_type)?;
+                gen_move(ctxt, dest, members[1] as *ast, exp_type)?;
             };
             yield 2z;
         case let mem: *ast =>
-            gen_move(ctxt, &temp, dest, members[0] as *ast, exp_type)?;
+            gen_move(ctxt, dest, members[0] as *ast, exp_type)?;
             yield 1z;
         };
     for(let m = begin; m < max; m += 2){
         const op = members[m] as operator;
         switch(op){
-        case operator::PLS, operator::MIN, operator::MUL, operator::IDIV,
+        case operator::PLS, operator::MIN, operator::MUL, operator::IDIV, operator::FDIV,
             operator::SHL, operator::SHR, operator::BAND, operator::BOR =>
             const memb = gen_member(ctxt, members[m + 1] as *ast, exp_type)?;
             defer free(memb);
@@ -1988,6 +2037,7 @@ fn gen_exp_steps(ctxt: *context, members: [](*ast | operator), dest: str,
                     } else {
                         yield "div";
                     };
+                case operator::FDIV => yield "div";
                 case operator::SHL => yield "shl";
                 case operator::SHR =>
                     yield if(is_subtype(exp_type, primitive::U64)){
@@ -2023,26 +2073,34 @@ fn gen_exp_steps(ctxt: *context, members: [](*ast | operator), dest: str,
                 case operator::LEQ =>
                     yield if(is_subtype(exp_type, primitive::U64)){
                         yield "ule";
-                    } else {
+                    } else if(is_subtype(exp_type, primitive::I64)){
                         yield "sle";
+                    } else {
+                        yield "le";
                     };
                 case operator::GEQ =>
                     yield if(is_subtype(exp_type, primitive::U64)){
                         yield "uge";
-                    } else {
+                    } else if(is_subtype(exp_type, primitive::I64)){
                         yield "sge";
+                    } else {
+                        yield "ge";
                     };
                 case operator::LST =>
                     yield if(is_subtype(exp_type, primitive::U64)){
                         yield "ult";
-                    } else {
+                    } else if(is_subtype(exp_type, primitive::I64)){
                         yield "slt";
+                    } else {
+                        yield "lt";
                     };
                 case operator::GTT =>
                     yield if(is_subtype(exp_type, primitive::U64)){
                         yield "ugt";
-                    } else {
+                    } else if(is_subtype(exp_type, primitive::I64)){
                         yield "sgt";
+                    } else {
+                        yield "gt";
                     };
                 case =>
                     assert(false, "TODO");
@@ -2065,6 +2123,10 @@ fn gen_exp_steps(ctxt: *context, members: [](*ast | operator), dest: str,
                         dest, right)!;
                     fmt::fprintfln(ctxt.buffer, "\t%{0} =l ceql l%{0}, 0", dest)!;
                 };
+            } else if(is_subtype(exp_type, primitive::RATIO)){
+                    fmt::fprintfln(ctxt.buffer, "\t%{0}.cmp =l c{2}{1} %{0}, %{3}",
+                    dest, exp_t, inst, right)!;
+                    fmt::fprintfln(ctxt.buffer, "\t%{0} ={1} cast %{0}.cmp", dest, exp_t)!;
             } else {
                 fmt::fprintfln(ctxt.buffer, "\t%{0} ={1} c{2}{1} %{0}, %{3}",
                     dest, exp_t, inst, right)!;
@@ -2248,8 +2310,8 @@ fn gen_funcall(ctxt: *context, this: *ast, dest: (void | str) = void)
 
 // generates the coresponding move instruction for a given member and fixes any
 // casting for the given member type and expected `tpe` type.
-fn gen_move(ctxt: *context, header: *memio::stream, dest: str,
-    member: *ast, tpe: lichen_t) (void | COMPERR) = {
+fn gen_move(ctxt: *context, dest: str, member: *ast, tpe: lichen_t)
+    (void | COMPERR) = {
     assert(!strings::hasprefix(dest, "%"), dest);
     const move_t = qbe_t(tpe, mode::ASSIGN);
     const m_meta = member.meta as *member_meta;
@@ -2257,86 +2319,36 @@ fn gen_move(ctxt: *context, header: *memio::stream, dest: str,
     case let node: *ast =>
         match(node.meta){
         case let var: *var_meta =>
-            let name = fix_global(var);
+            const old_name = fix_global(var);
+            defer free(old_name);
+
+            const var_t = qbe_t(var.name.itype, mode::ASSIGN);
+            const name = fmt::asprintf("{}.{}", old_name, var_t)!;
             defer free(name);
-            if(var.name.itype is primitive && tpe is primitive){
-                if(is_subtype(var.name.itype, primitive::NUMBER)){
-                    if(var.name.glob){
-                        if(is_subtype(var.name.itype, primitive::NUMBER)){
-                            fmt::fprintfln(header, "\t%{0} ={1} load{2} ${0}",
-                                name, qbe_t(var.name.itype, mode::ASSIGN),
-                                qbe_t(var.name.itype, mode::LOAD))!;
-                        } else {
-                            fmt::fprintfln(header, "\t%{0} =l copy ${0}", name)!;
-                        };
-                    };
-                    if(comp_type(var.name.itype, tpe) || is_subtype(tpe, var.name.itype) ||
-                        type_size(tpe) <= type_size(var.name.itype)){
-                        fmt::fprintfln(ctxt.buffer, "{}\t%{} ={} copy %{}",
-                            memio::string(header)!, dest, move_t, name)!;
-                    } else {
-                        fmt::fprintfln(ctxt.buffer, "{}\t%{} ={} ext{} %{}",
-                            memio::string(header)!, dest, move_t,
-                            qbe_t(var.name.itype, mode::LOAD), name)!;
-                    };
-                } else if(comp_type(var.name.itype, primitive::STR) &&
-                    comp_type(tpe, primitive::CSTR)){
-                    if(var.glob){
-                        fmt::fprintfln(ctxt.buffer, "{}\t%{} ={} add ${}, 16",
-                            memio::string(header)!, dest, move_t, name)!;
-                    } else {
-                        fmt::fprintfln(ctxt.buffer, "{}\t%{} ={} add %{}, 16",
-                            memio::string(header)!, dest, move_t, name)!;
-                    };
-                } else if(comp_type(var.name.itype, primitive::STR) ||
-                    comp_type(var.name.itype, primitive::CSTR)){
-                    if(var.glob){
-                        fmt::fprintfln(ctxt.buffer, "{}\t%{} ={} copy ${}",
-                            memio::string(header)!, dest, move_t, name)!;
-                    } else {
-                        fmt::fprintfln(ctxt.buffer, "{}\t%{} ={} copy %{}",
-                            memio::string(header)!, dest, move_t, name)!;
-                    };
-                } else if(is_subtype(var.name.itype, primitive::RATIO)){
-                    assert(false, "TODO: ratios");
-                } else if(is_subtype(var.name.itype, primitive::ARRAY)){
-                    fmt::fprintfln(ctxt.buffer, "{}\t%{} =l copy %{}",
-                        memio::string(header)!, dest, name)!;
-                } else {
-                    //assert(false, "unexpected type");
-                    fmt::fatalf("unexpected type {}", strtype(var.name.itype));
-                };
-            } else if(var.name.itype is primitive && tpe is *aggregated){
-                const dest_t = tpe as *aggregated;
-                if(dest_t.kind == keyword::UNION){
-                    fmt::fprintfln(ctxt.buffer, "\t%{} =l alloc8 {}",
-                        dest, type_size(dest_t))!;
-                    fmt::fprintfln(ctxt.buffer, "\t%{0}.ptr =l copy %{0}", dest)!;
-                    fmt::fprintfln(ctxt.buffer, "\tstorel {}, %{}.ptr",
-                        type_id(dest_t.base[0]), dest)!;
-                    fmt::fprintfln(ctxt.buffer, "\t%{0}.ptr =l add %{0}.ptr, 8", dest)!;
-                    fmt::fprintfln(ctxt.buffer, "\tstore{} %{}, %{}.ptr",
-                        qbe_t(var.name.itype, mode::ASSIGN), name, dest)!;
-                };
-            } else if(var.name.itype is *aggregated && tpe is *aggregated){
-                if(is_subtype(var.name.itype, tpe)){
-                    fmt::fprintfln(ctxt.buffer, "\t%{} =l copy %{} # aa", dest, name)!;
-                } else {
-                    assert(false, "todo");
-                };
+
+            if(!comp_type(var.name.itype, m_meta.tpe)){
+                gen_cast(ctxt, old_name, var.name.itype,
+                    var.name.glob || var.ffi is str, name, m_meta.tpe);
+                gen_cast(ctxt, name, m_meta.tpe, false, dest, tpe);
             } else {
-                assert(false, "todo");
+                gen_cast(ctxt, old_name, m_meta.tpe,
+                    var.name.glob || var.ffi is str, dest, tpe);
             };
         case let array: *array_meta =>
             gen_stack_array(ctxt, array, dest)?;
+
         case let index: *index_meta =>
             gen_array_index(ctxt, index, dest)?;
+
         case *if_else_meta =>
             gen_if_else(ctxt, node, dest)?;
+
         case *for_meta =>
             gen_for_iterator(ctxt, node, dest)?;
+
         case let exp: *expr_meta =>
             gen_exp(ctxt, node, dest, exp.tpe)?;
+
         case let funcall: *funcall_meta =>
             const f_meta = funcall.fun.meta as *fn_meta;
             if(comp_type(funcall.tpe, f_meta.fn_type)){
@@ -2357,10 +2369,10 @@ fn gen_move(ctxt: *context, header: *memio::stream, dest: str,
                         fmt::fprintfln(ctxt.buffer, "\t%{} ={} load{} %{}", dest,
                             qbe_t(tpe, mode::ASSIGN), qbe_t(tpe, mode::LOAD), temp)!;
                     } else {
-                        assert(false, "todo");
+                        assert(false, "TODO");
                     };
                 } else {
-                    assert(false, "todo");
+                    assert(false, "TODO");
                 };
             };
         };
@@ -2413,6 +2425,72 @@ fn gen_move(ctxt: *context, header: *memio::stream, dest: str,
             assert(false, "unreachable");
         };
     };
+};
+
+fn gen_cast(ctxt: *context, src: str, src_t: lichen_t, src_glob: bool,
+    dest: str, dest_t: lichen_t) void = {
+    const dest_qbe_t = qbe_t(dest_t, mode::ASSIGN);
+    if(src_glob){
+        if(comp_type(src_t, primitive::STR) || comp_type(src_t, primitive::CSTR)){ // TODO: is_object
+            fmt::fprintfln(ctxt.buffer, "\t%{0} ={1} copy ${0}",
+                src, qbe_t(src_t, mode::ASSIGN))!;
+        } else {
+            fmt::fprintfln(ctxt.buffer, "\t%{0} ={1} load{2} ${0}",
+                src, qbe_t(src_t, mode::ASSIGN), qbe_t(src_t, mode::LOAD))!;
+        };
+    };
+    if(src_t is primitive && dest_t is primitive){
+        if(!comp_type(src_t as primitive, dest_t as primitive) &&
+            size_mismatch(src_t as primitive, dest_t as primitive)){
+            // cast between integers
+            if(is_subtype(src_t, primitive::NUMBER) && is_subtype(dest_t, primitive::NUMBER)){
+                fmt::fprintfln(ctxt.buffer, "\t%{} ={} ext{} %{}",
+                    dest, dest_qbe_t, qbe_t(src_t, mode::LOAD), src)!;
+            // cast of integer to float
+            } else if(is_subtype(src_t, primitive::NUMBER) && is_subtype(dest_t, primitive::RATIO)){
+                fmt::fprintfln(ctxt.buffer, "\t%{} ={} {} %{}",
+                    dest, dest_qbe_t, itof(src_t as primitive, dest_t as primitive), src)!;
+            // cast of float to integer
+            } else if(is_subtype(src_t, primitive::RATIO) && is_subtype(dest_t, primitive::NUMBER)){
+                fmt::fprintfln(ctxt.buffer, "\t%{} ={} {} %{}",
+                    dest, dest_qbe_t, ftoi(src_t as primitive, dest_t as primitive), src)!;
+            // cast between floats
+            } else {
+                if(type_size(src_t) < type_size(dest_t)){
+                    fmt::fprintfln(ctxt.buffer, "\t%{} ={} exts %{}",
+                        dest, dest_qbe_t, src)!;
+                } else {
+                    fmt::fprintfln(ctxt.buffer, "\t%{} ={} truncd %{}",
+                        dest, dest_qbe_t, src)!;
+                };
+            };
+        } else {
+            fmt::fprintfln(ctxt.buffer, "\t%{} ={} copy %{}", dest, dest_qbe_t, src)!;
+        };
+    } else if(src_t is primitive && dest_t is *aggregated){
+        const agg = dest_t as *aggregated;
+        if(agg.kind == keyword::UNION){
+            gen_union_lit(ctxt, src, src_t as primitive, dest, agg);
+        } else {
+            fmt::fprintfln(ctxt.buffer, "\t%{} ={} cast %{}", dest, dest_qbe_t, src)!;
+        };
+    } else {
+        fmt::fprintfln(ctxt.buffer, "\t%{} ={} copy %{}", dest, dest_qbe_t, src)!;
+    };
+};
+
+fn gen_union_lit(ctxt: *context, src: str, src_t: primitive, dest: str, dest_t: *aggregated) void = {
+    const tp_id = type_id(find_variant(src_t, dest_t));
+    fmt::fprintfln(ctxt.buffer, "\t%{} =l alloc8 {}",
+        dest, type_size(dest_t))!;
+
+    fmt::fprintfln(ctxt.buffer, "\t%{0}.ptr =l copy %{0}", dest)!;
+    fmt::fprintfln(ctxt.buffer, "\tstorel {}, %{}.ptr",
+        tp_id, dest)!;
+
+    fmt::fprintfln(ctxt.buffer, "\t%{0}.ptr =l add %{0}.ptr, 8", dest)!;
+    fmt::fprintfln(ctxt.buffer, "\tstore{} %{}, %{}.ptr",
+        qbe_t(src_t), src, dest)!;
 };
 
 fn gen_stack_array(ctxt: *context, array: *array_meta, dest: str) (void | COMPERR) = {
@@ -3284,13 +3362,13 @@ fn eval_scope(ctxt: *context, at: size, hint: lichen_t = primitive::ANY,
             case let e_meta: *expr_meta =>
                 if(e_meta.rets != eval_kind::NONE){
                     move_ptr(ctxt, tk);
-                    return error(ctxt, "missing %bmap operator%r # 1");
+                    return error(ctxt, "missing %bmap operator%r");
                 };
                 last = e_meta.tpe;
             case let ifel_block: *if_else_meta =>
                 if(ifel_block.rets != eval_kind::NONE){
                     move_ptr(ctxt, tk);
-                    return error(ctxt, "missing %bmap operator%r # 2");
+                    return error(ctxt, "missing %bmap operator%r");
                 };
                 last = ifel_block.tpe;
             case let var: *var_meta =>
@@ -3550,7 +3628,7 @@ fn eval_abbs_exp(ctxt: *context, at: size, hint: lichen_t = primitive::ANY,
         };
         switch(oper){
         case operator::LAND, operator::LOR =>
-            tpe = mr_meta.tpe;
+            tpe = rgt_t;
         case operator::EQL, operator::NEQ =>
             if(!untyped(lft_t) && !untyped(rgt_t)){
                 if(!comp_type(lft_t, rgt_t)){
@@ -3646,6 +3724,18 @@ fn eval_abbs_exp(ctxt: *context, at: size, hint: lichen_t = primitive::ANY,
                     return error(ctxt, "cannot perform arithmetic on %b{}",
                         strtype(tpe));
                 };
+            };
+        case operator::FDIV =>
+            if(!is_subtype(lft_t, primitive::RATIO)){
+                return error(ctxt, "lefthand is not a %bvalid dividend");
+            };
+            if(!is_subtype(rgt_t, primitive::RATIO)){
+                return error(ctxt, "righthand is not a %bvalid dividend");
+            };
+            if(untyped(lft_t) && untyped(rgt_t)){
+                tpe = primitive::RATIO;
+            } else {
+                tpe = push_type(ctxt, tpe, rgt_t);
             };
         case =>
             if(!untyped(lft_t) && !untyped(rgt_t)){
@@ -4701,6 +4791,10 @@ fn push_type(ctxt: *context, current: lichen_t, new: lichen_t) lichen_t = {
     if(is_subtype(new, current)){
         if(current is primitive && new is primitive){
             if(comp_type(current, primitive::ANY)) return new;
+            if((comp_type(current, primitive::NUMBER) &&
+                comp_type(new, primitive::RATIO)) ||
+                (comp_type(current, primitive::RATIO) &&
+                comp_type(new, primitive::NUMBER))) return new;
             if(untyped(current) && !comp_type(new, primitive::ANY)) return new;
             return current;
         };
@@ -4879,7 +4973,7 @@ fn is_subtype(_this: lichen_t, _that: lichen_t) bool = {
             primitive::I32, primitive::I64 =>
             return (this <= that && this >= primitive::I8) || this == primitive::NUMBER;
         case primitive::F32, primitive::F64 =>
-            return (this <= that && this >= primitive::F32) || this == primitive::RATIO;
+            return (this <= that && this >= primitive::F32) || this == primitive::RATIO || this == primitive::NUMBER;
         case primitive::STR =>
             return this == that || this == primitive::ARR_U8;
         case primitive::NUMBER =>
@@ -4943,6 +5037,19 @@ fn is_subtype(_this: lichen_t, _that: lichen_t) bool = {
     } else {
         return comp_type(_this, _that);
     };
+};
+
+fn find_variant(var: lichen_t, list: *aggregated) lichen_t = {
+    assert(is_subtype(var, list));
+    if(list.error_val is lichen_t &&
+        is_subtype(var, list.error_val as lichen_t)){
+        return list.error_val as lichen_t;
+    };
+    for(let v .. list.base){
+        if(is_subtype(var, v)) return v;
+    };
+    fmt::fatalf("{} is not a variant of {}",
+        strtype(var), strtype(list));
 };
 
 fn error_compatible(host: lichen_t, call: *aggregated) bool = {

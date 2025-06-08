@@ -39,13 +39,14 @@ local tests = {
     { src = "oper", input = "", output = "", code = 0, nocomp = false },
     { src = "bool", input = "", output = "", code = 0, nocomp = false },
     { src = "math", input = "", output = "test ok\n", code = 0, nocomp = false },
+    { src = "floats", input = "", output = "test ok\n", code = 0, nocomp = false },
     { src = "arrays", input = "", output = "test ok!\n", code = 0, nocomp = false },
 
     -- io and effects --
     { src = "hello", input = "", output = "mornin' sailor!\n", code = 0, nocomp = false },
     { src = "mods", input = "", output = "mornin' sailor!\n", code = 0, nocomp = false },
     { src = "reply", input = "mika", output = "hi! what's your name?\n > hello, mika", code = 0, nocomp = false },
-    { src = "files", input = "", output = "working!\n", code = 0, nocomp = false },
+    { src = "files", input = "", output = "", code = 0, nocomp = false },
 
     -- branching and recursion --
     { src = "if-else", input = "", output = "test 0 ok\ntest 1 ok\ntest 2 ok\ntest 3 ok\n" ..

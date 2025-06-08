@@ -1,3 +1,4 @@
-- lots of bugfixes on the type system
-- implemented casting for arrays
-- implemented casting for if-else blocks
+- implemented floating point types
+- removed debug code from qbe IR emit
+- simplified and updated type casting code gen
+- removed temporary union behavior code
