@@ -1,5 +1,0 @@
-io = use "io.lim";
-
-pub fn main() void = io {
-    io::fprint(4, "fail!\n")!;
-};

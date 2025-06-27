@@ -1,5 +1,5 @@
-// test for conflict between function
-// and local variable name duplication
+// parsing test for conflict between
+// function and local variable names
 
 pub fn main() void = {
     let main u32 = 0;

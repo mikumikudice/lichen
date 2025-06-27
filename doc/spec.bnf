@@ -1,0 +1,70 @@
+Program     ::= global_def+;
+global_def  ::= ("pub"? type_def | const_def | fun_def) eol;
+
+type_def    ::= "type" namespace "=" (enum_def | record_def | type);
+namespace   ::= "_"*[a-zA-Z][a-zA-Z0-9_]* "'"*;
+enum_def    ::= "enum" type "{" variant ("," variant)* "}";
+variant     ::= namespace ("=" constant)?;    
+record_def  ::= "record" "{" ("use"? declaration eol)+ "}";
+type        ::= "!"? (primitive | namespace | array | tuple | function);
+
+declaration ::= namespace type;
+primitive   ::= "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "f32" | "f64" | "bool" | "str" | "cstr" | "unit" | "void" | "mem";
+array       ::= "[" number? "]" type;
+tuple       ::= "(" type ("," type)+ ")";
+function    ::= "fn" "(" ( type ("," type)* )* (type "...")? ")" type effect?;
+
+const_def   ::= namespace (type | "mod") "=" (unary_oper? constant) | import;
+constant    ::= number | string | rune | boolean | error_state | const_array;
+import      ::= "use" string;
+mod_field   ::= namespace ("::" namespace)+;
+
+number      ::= ("0x" [a-fA-f0-9][a-fA-f0-9_]*) | ("0o" [0-7][0-7_]*) | ("0b" [01][01_]*) | ([0-9][0-9_]*);
+string      ::= '"' ([^"] | escape_char)* '"';
+rune        ::= "'" ([^'] | escape_char) "'";
+escape_char ::= "\t" | "\b" | "\a" | "\r" | "\n" | "\f" | "\0" | '\"' | "\'";
+boolean     ::= "true" | "false";
+error_state ::= "fail" | "nomem";
+const_array ::= "[" ((constant ("," constant)*)*) | (constant eol constant "...") "]";
+array_lit   ::= "[" ((expression ("," expression)*)*) | ((constant | namespace) eol constant "...") "]";
+
+fun_def     ::= "fn" namespace "(" ( "mut"? declaration ("," "mut"? declaration)* )* ("mut"? declaration "...")? ")" type effect? scope | ffi;
+effect      ::= "do" | (namespace ("&" namespace)*);
+scope       ::= "{" (statement eol)+ "}";
+ffi         ::= "use" string;
+
+statement   ::= test | expression | var_def | assignment | arena | if_else | switch | for_loop | return | "unreachable";
+test        ::= "test" "?"? expression string?;
+return      ::= "return" expression?;
+
+expression  ::= (unary_oper? member (binary_oper member)*) | ("(" unary_oper? member (binary_oper member)* ")");
+binary_oper ::= "+" | "-" | "*" | "/" | "%" | "<<" | ">>" | "|" | "&" | "^" | "==" | "!=" | "<" | ">" | "<=" | ">=" | "..";
+unary_oper  ::= "-" | "+" | "!" | "~" | "#";
+
+member      ::= (constant | ((namespace | fun_call | rec_field | array_index | mod_field) propagation?) | ternary | array_lit | tuple_lit | rec_edit) type?;
+rec_field   ::= (object | array_index) ("." (object | array_index))+;
+array_index ::= (object | rec_field) "[" expression ("," expression)+ "]";
+object      ::= namespace | fun_call;
+
+fun_call    ::= (namespace | mod_field) "(" (expression ("," expression)*)* ")";
+propagation ::= ("?" expression?) | ("!" (">" (error_state "|")? (test | if_else | switch | for_loop | return))*);
+
+ternary     ::= expression "if" expression "else" expression;
+tuple_lit   ::= "(" expression ("," expression)+ ")";
+rec_lit     ::= "{" (assignment ("," assignment)* "..."?) | "..." "}"
+rec_edit    ::= "{" namespace "|" assignment ("," assignment)* "}"
+
+var_def     ::= "let" "mut"? namespace ("," namespace)* type? "=" expression | allocation;
+assignment  ::= (namespace | rec_field) "=" expression;
+arena       ::= "mem" namespace "|" (number | expression) scope propagation?;
+allocation  ::= "new" ("?" | "!")? (array_lit | namespace) "@" namespace;
+
+if_else     ::= if_block ("else" if_block)* ("else" (local_var eol)? scope)?;
+if_block    ::= "if" (local_var eol)? expression scope;
+local_var   ::= namespace type? ("," namespace type?)* "=" expression;
+
+switch      ::= "switch" (local_var eol)? expression ("|" constant (("," constant)* | (".." constant))? scope eol)+;
+for_loop    ::= "for" (local_var eol)? array_iter scope;
+array_iter  ::= namespace ".." (namespace | array);
+
+eol         ::= ";";

@@ -1,0 +1,8 @@
+// parsing test for missing effect tag
+// on function call
+
+pub fn main() void = foo {
+    foo'();
+};
+
+fn foo'() unit = bar {};

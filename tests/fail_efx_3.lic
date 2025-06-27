@@ -1,5 +1,8 @@
+// test for missing effect tags
+
 io mod = use "std/io.lim";
 
-pub fn main() void = io {
+pub fn main() void = {
     io::println("mornin' sailor!")!;
 };
+

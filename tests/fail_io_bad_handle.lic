@@ -1,0 +1,8 @@
+// runtime test for correct asserts on
+// fail states
+
+io mod = use "std/io.lim";
+
+pub fn main() void = io {
+    io::fprintln(3, "something")!;
+};

@@ -1,0 +1,71 @@
+// test for compiler: deep expressions, nested if-else,
+// propagation, error handling, recursion, and type casting
+
+io mod = use "std/io.lim";
+
+// simple fail-returning function
+fn might_fail(val i32) !i32 = io {
+    if val < 0 {
+        return fail;
+    } else {
+        return val + 1;
+    };
+};
+
+// recursive factorial (with fail on negative)
+fn factorial(n i32) i32 = io {
+    if n < 0 {
+        return 1;
+    } else if n == 0 {
+        return 1;
+    } else {
+        let next = factorial(n - 1);
+        return n * next;
+    };
+};
+
+// main entry point
+pub fn main() void = io {
+    let a = 10 u32;
+    let b = 20 u64;
+    let c = a u64 + b;
+
+    // deep expression tree with type casts
+    let d = ((c * 2 u64 + 5 u64) / 3 u64 - b) * (a u64 + 7 u64);
+
+    // call to might_fail, propagate result
+    let x = might_fail(100 i32 - d i32)!;
+
+    // multiple nested if-else with propagation
+    if x > 0 && x < 100 {
+        io::println("branch 1 ok")!;
+    } else if x >= 100 && x < 200 {
+        io::println("branch 2 ok")!;
+    } else {
+        io::println("branch other")!;
+    };
+
+    // nested ternary expression
+    let y = x * 2 if x > 50 else x + 10;
+
+    // nested if-else on computed y
+    if y % 2 == 0 {
+        io::println("y is even")!;
+    } else {
+        io::println("y is odd")!;
+    };
+
+    // multiple calls with forced propagation
+    io::println("computing factorial...")!;
+    let f = factorial(5);
+    io::println("factorial(5) ok")!;
+    io::println("result is:")!;
+
+    // chaining propagation
+    let z = might_fail(f + 10)! + might_fail(f + 20)!;
+    if z > 0 {
+        io::println("z computed ok")!;
+    } else {
+        io::println("z failed")!;
+    };
+};

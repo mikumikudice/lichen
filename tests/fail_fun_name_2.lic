@@ -1,5 +1,5 @@
 // test for conflict between function
-// and module binding name duplication
+// and module binding names
 
-io = use "io.lim";
+io mod = use "std/io.lim";
 fn io() unit = {};

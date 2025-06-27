@@ -1,4 +1,1 @@
-- implemented floating point types
-- removed debug code from qbe IR emit
-- simplified and updated type casting code gen
-- removed temporary union behavior code
+- total language refactoring. address for documentation

@@ -4,4 +4,4 @@ mkdir -p ~/.local/lib/
 cd ./src/
 hare build -o ~/.local/bin/lcc
 cd ..
-cp -r ./lib/. ~/.local/lib/lcclib/
+cp -r ./lib/. ~/.local/lib/lcc/

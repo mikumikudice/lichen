@@ -1,0 +1,14 @@
+// compilation test for correct
+// unwrapping of primitives
+
+pub fn main() void = {
+    let y = foo(1)!;
+};
+
+fn foo(x u32) !u32 = {
+    if x == 0 {
+        return fail;
+    } else {
+        return 10 / x; 
+    };
+};

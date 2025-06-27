@@ -10,42 +10,42 @@ pub TRUNCATE  u32 = 0o1000;
 pub APPEND    u32 = 0o2000;
 
 // runtime wrapper for the open syscall
-fn rt_open(filename cstr, flags u32, mode u32) i32 = rt$rt_open;
+fn rt_open(filename cstr, flags u32, mode u32) i32 = rt use "rt.open";
 
 // runtime wrapper for the close syscall
-fn rt_close(handle u32) i32 = rt$rt_close;
+fn rt_close(handle u32) i32 = rt use "rt.close";
 
 // runtime wrapper for the unlink syscall
-fn rt_unlink(filename cstr) i32 = rt$rt_unlink;
+fn rt_unlink(filename cstr) i32 = rt use "rt.unlink";
 
 // runtime wrapper for the rename syscall
-fn rt_rename(oldname cstr, newname cstr) i32 = rt$rt_rename;
+fn rt_rename(oldname cstr, newname cstr) i32 = rt use "rt.rename";
 
 // opens a file and returns a file handle
 // TODO: wrap negative values as an error type
 pub fn open(filename str, flags u32) !u32 = rt {
-    let handle = rt_open(filename cstr, flags, 0o7000);
-    => if handle > 0 {
-        => handle u32;
+    handle = rt_open(filename cstr, flags, 0o7000);
+    if handle > 0 {
+        return handle u32;
     } else {
-        => fail;
+        return fail;
     };
 };
 
 pub fn close(handle u32) !unit = rt {
-    => if rt_close(handle) < 0 {
-        => fail;
+    if rt_close(handle) < 0 {
+        return fail;
     };
 };
 
 pub fn remove(filename str) !unit = rt {
-    => if rt_unlink(filename cstr) < 0 {
-        => fail;
+    if rt_unlink(filename cstr) < 0 {
+        return fail;
     };
 };
 
 pub fn rename(oldname str, newname str) !unit = rt {
-    => if rt_rename(oldname cstr, newname cstr) < 0 {
-        => fail;
+    if rt_rename(oldname cstr, newname cstr) < 0 {
+        return fail;
     };
 };

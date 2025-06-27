@@ -1,0 +1,3 @@
+// parsing test for recursive file
+// import assertion
+main mod = use "fail_self-import.lic";

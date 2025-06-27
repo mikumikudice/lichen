@@ -1,0 +1,8 @@
+// parsing test for typechecking of
+// unhandled errors
+
+pub fn main() void = {
+    foo();
+};
+
+fn foo() !unit = {};

@@ -1,9 +1,10 @@
-// parsing test for global data parsing and FFI
+// parsing test for global data parsing
+// and FFI linking
 
-msg str = "mornin' " + "sailor!\n";
+msg str = "mornin' sailor!\n";
+stdout u32 = use "rt.stdout";
 
-stdout u32 = $rt_stdout;
-fn puts(handle u32, data str) u32 = rt$rt_puts;
+fn puts(handle u32, data str) u32 = rt use "rt.write";
 
 pub fn main() void = do {
     puts(stdout, msg);

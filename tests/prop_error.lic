@@ -1,7 +1,0 @@
-// parsing test for invalid error propagation
-
-pub fn main() void = {
-    error()?;
-};
-
-fn error() !unit = { => fail; };

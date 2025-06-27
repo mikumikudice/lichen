@@ -1,7 +1,8 @@
-// test for conflict between module binding
-// and local variable name duplication
+// parsing test for conflict between
+// module binding and local variable
+// names
 
-io = use "io.lim";
+io mod = use "std/io.lim";
 
 pub fn main() void = io {
     let io u32 = 0;

@@ -1,8 +1,0 @@
-// parsing test for modules, nested function
-// calls, FFI symbols and effect system.
-
-io = use "io.lim";
-
-pub fn main() void = io {
-    io::fprint(io::stdout, "mornin' sailor!\n")!;
-};

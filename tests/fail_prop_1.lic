@@ -1,0 +1,8 @@
+// parsing test for typechecking of
+// invalid error bubbling
+
+pub fn main() void = {
+    foo()?;
+};
+
+fn foo() !unit = {};

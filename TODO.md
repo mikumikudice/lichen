@@ -1,21 +1,21 @@
-- implement floats
-- make todo compatible with tagged unions and records
+- implement for loop
+- implement switch case
+- implement submodules
+- implement arenas
+- implement arena allocation
+- string concatenation
+- tuples
+- assert for division by zero
+- assert for mutual-recursive import
 - implement composite types declaration
 - implement enumerators
-- composite type arrays
-- implement complete operator precedence
+- implement arrays
+- implement logic operator chain
 - implement records
-- implement array rules
+- implement record arithmetic
 - implement sub-typing for records
 - implement record arithmetic
 - implement first-class functions
-- implement iterators with more than one accumulator
 - implement empty assignments
 - implement match block
 - implement global test block
-- implement C-compatible execution prelude
-- fix memory leaks
-- string concatenation at runtime
-- tuples
-- implement dynamic types
-- update io module for dynamic types and deprecate mem module

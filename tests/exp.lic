@@ -1,5 +1,5 @@
-// parsing test for function calls, expression
-// and return expresison/values
+// parsing test for function calls,
+// expressions and return statements
 
 pub fn main() void = {
     let x = 7 u32;
@@ -8,10 +8,9 @@ pub fn main() void = {
 };
 
 fn foo(x u32) u32 = {
-    => x * x;
+    return x * x;
 };
 
 fn bar(x u32) u32 = {
-    let y u32 = todo;
-    => foo(x + y);
+    return foo(x + 1);
 };

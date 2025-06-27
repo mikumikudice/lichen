@@ -1,0 +1,7 @@
+// parsing test for unhandled but
+// assigned error types
+pub fn main() void = {
+    let foo = bar();
+};
+
+fn bar() !unit = { return fail; };

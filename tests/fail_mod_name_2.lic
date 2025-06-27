@@ -1,5 +1,5 @@
-// test for conflict between function
-// and module name duplication
+// parsing test for conflict between
+// function and module names
 
-fn io() u32 = { => 0 };
-io = use "io.lim";
+fn io() u32 = { return 0; };
+io mod = use "std/io.lim";

@@ -1,0 +1,8 @@
+// parsing test for invalid cross
+// do-tagged calls
+
+pub fn main() void = do {
+    foo'();
+};
+
+fn foo'() unit = do {};

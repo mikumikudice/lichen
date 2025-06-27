@@ -1,5 +1,0 @@
-fs = use "fs.lim";
-
-pub fn main() void = fs {
-    fs::close(4)!;
-};

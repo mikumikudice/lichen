@@ -1,0 +1,9 @@
+// parsing test for effectless calls
+// and unit returns
+pub fn main() void = {
+    foo();
+};
+
+fn foo() unit = {
+    return;
+};
