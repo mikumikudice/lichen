@@ -1,4 +1,1 @@
-- added means to assign to array items
-- added constant test cases
-- added decimal/floating point literals
-- changed assignment semantic for aggregated types
+fix code emit for some tests

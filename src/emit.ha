@@ -971,16 +971,15 @@ fn gen_cast(
         fmt::fprintfln(buff, "\t{} ={} copy {}", dest, dest_qbe_t, src)!;
         return;
     };
-    if(src_t.base is primitive &&  !src_t.fail && dest_t.base is primitive &&
+    if(src_t.base is primitive && !src_t.fail && dest_t.base is primitive &&
         !dest_t.fail){
         if(comp_type(src_t, primitive::STR) || comp_type(dest_t, primitive::STR)){
-            if(comp_type(src_t, dest_t)){
-                fmt::fprintfln(buff, "\t{} =l copy {}", dest, src)!;
-                return;
-            } else {
-                assert(comp_type(dest_t, primitive::CSTR));
+            if(!comp_type(src_t, dest_t) && comp_type(dest_t, primitive::CSTR)){
                 fmt::fprintfln(buff, "\t{} =l add {}, 8", dest, src)!;
                 fmt::fprintfln(buff, "\t{0} =l loadl {0}", dest)!;
+                return;
+            } else {
+                fmt::fprintfln(buff, "\t{} =l copy {}", dest, src)!;
                 return;
             };
         } else if(!comp_type(src_t, dest_t) && size_mismatch(src_t, dest_t)){
