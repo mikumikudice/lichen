@@ -1,1 +1,2 @@
-fix code emit for some tests
+- now unit is castable into void, but not the other way around
+- strings are still castable into cstr, but not subtypes

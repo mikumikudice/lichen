@@ -2393,8 +2393,6 @@ fn _is_subtype(_this: lichen_t, _that: lichen_t) bool = {
         case primitive::RATIO =>
             return this == primitive::RATIO || this == primitive::NUMBER ||
                 is_subtype(that, this);
-        case primitive::CSTR =>
-            return this == primitive::STR || this == primitive::CSTR;
         case primitive::VOID =>
             return this == primitive::UNIT || this == primitive::VOID;
         case =>
@@ -2459,8 +2457,10 @@ fn _castable(_this: lichen_t, _that: lichen_t) bool = {
             primitive::I32, primitive::I64, primitive::F32,
             primitive::F64, primitive::NUMBER, primitive::RATIO =>
             return is_subtype(this, primitive::NUMBER);
-        case primitive::UNIT, primitive::VOID =>
+        case primitive::UNIT =>
             return this == that;
+        case primitive::VOID =>
+            return this == primitive::UNIT || this == primitive::VOID;
         case primitive::CSTR =>
             return is_subtype(this, primitive::STR);
         case primitive::BOOL =>
