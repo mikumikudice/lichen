@@ -1,0 +1,11 @@
+// parsing test for asserting for
+// pure functions being called without
+// its value being used
+
+fn foo() u32 = {
+    return 4;
+};
+
+pub fn main() void = {
+    foo();
+};

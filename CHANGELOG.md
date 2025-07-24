@@ -1,1 +1,1 @@
-- total language refactoring. address for documentation
+- implemented missing assertion for pure functions' unused returns and updated tests accordingly

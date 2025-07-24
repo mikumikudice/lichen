@@ -1350,6 +1350,29 @@ fn eval_scope(
                 "%gtry bubbling the error with %d?%g or asserting it with %d!",
                 "cannot %yignore error value in here");
         };
+        // address for unassigned pure functions
+        if(stt is *expr_meta){
+            const root = extract_root(stt as *expr_meta);
+            if(root is *funcall_meta){
+                const call = root as *funcall_meta;
+                if(len(call.fun.effect) == 0){
+                    move_ptr(ctxt, tk);
+                    if(call.fun.origin != ctxt.file){
+                        return error_hint(ctxt,
+                            "%\nbtry assigning it to a variable or comparing it in a if block",
+                            "the function %b{}()%d is pure, but its value is never used",
+                            call.fun.fun.name);
+                    } else {
+                        const mod = strings::rcut(
+                            strings::rcut(call.fun.origin, "/").1, ".").0;
+                        return error_hint(ctxt,
+                            "\n%btry assigning it to a variable or comparing it in a if block",
+                            "the function %b{}::{}()%d is pure, but its value is never used",
+                            mod, call.fun.fun.name);
+                    };
+                };
+            };
+        };
         end = _end;
         tk = next_tk(ctxt, end,
             "expected %bstatement%r, but got %y{}")?;
@@ -2464,6 +2487,19 @@ fn extract_hand_type(hand: hand_t) lichen_t = {
         return meta.tpe;
     case let meta: *ternary_meta =>
         return meta.tpe;
+    };
+};
+
+fn extract_root(exp: *expr_meta) (void | path_meta) = {
+    match(exp.val){
+    case let hand: *hand_meta => return  hand;
+    case let ternary: *ternary_meta => return ternary;
+    case let exp: *expr_meta => return extract_root(exp);
+    case let memb: *member_meta =>
+        match(memb.val){
+        case keyword => void;
+        case => return memb.val as (*const_meta | *var_meta | *funcall_meta);
+        };
     };
 };
 

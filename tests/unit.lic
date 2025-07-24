@@ -1,7 +1,7 @@
 // parsing test for effectless calls
 // and unit returns
 pub fn main() void = {
-    foo();
+    let x = foo();
 };
 
 fn foo() unit = {

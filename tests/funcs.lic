@@ -2,7 +2,7 @@
 // lazy dispatch and return values
 
 pub fn main() void = {
-    foo(1);
+    let x = foo(1);
 };
 
 fn foo(x u32) u32 = {
