@@ -97,6 +97,21 @@ roadmap:
     - [partial] BNF syntax
     - [undone] grammar spec
 - [partial] parser
+    - [partial] literals
+        - [done] strings and runes
+        - [done] integer numbers
+            - [done] hex
+            - [done] oct
+            - [done] bin
+        - [done] boolean
+        - [done] fail and nomem
+        - [undone] decimal numbers
+            - [undone] decimal point
+            - [undone] scientific notation
+        - [undone] array literals
+            - [undone] spreading
+        - [undone] record literals
+            - [undone] autofill
     - [partial] declarations
         - [partial] functions
             - [done] declaration

@@ -143,6 +143,16 @@ fn x'(a u32) u32 = x(a, 2);
 ```
 on these alias, only constant values are allowed to be used, just like global variables' values.
 
+functions may also give optional values for its parameters, that will be overwritten if a new value is provided:
+```rust
+fn div(x u32, y u32 = 2) u32 = { return x * y; };
+
+pub fn main() void = {
+    let a = div(10, 5);
+    let b = div(4);
+};
+```
+
 # variables
 local variables have a special behaviour, especially considering mutability. for instance, scope declarations, function parameters and statement declarations are considered local variables, which means they can be mutable and have considerably more complex expressions assigned to:
 ```rust
@@ -193,7 +203,11 @@ let eight_two = 0o12 u32;
 let alpha = 0x_00_0a u32;
 let one_double_o_one = 0b10_01 u32;
 ```
-floating points are a special case because the type exists, but there is no decimal notation syntax. all floating point values must be extracted as ratios i.e. numeric divisions.
+floating points can be expressed as decimal numbers or in scientific notation:
+```rust
+let pi f64 = 3.1413;
+let avogadro = 6.022e23;
+```
 
 ## strings
 lichen supports total C ffi at primitive levels, which means we support strings with fat pointers (`str`) and null-terminated strings (`cstr`), nicknamed C-strings. you can freely cast a string to a C-string, but not the other way around. a string with a fat pointer is a pointer with a length and a pointer to the actual data, casting it to a C-string means assigning only the data. strings are also the only primitive value that doesn't require a explicit casting.
@@ -373,23 +387,31 @@ pub fn main() void = {
 ```
 marking id with `use` as well would result a compilation error.
 
-records are passed by value by default, which means you are not duplicating any data on assignment:
+records are passed by value by default, which means you are duplicating all data on assignment:
 ```rust
 let mut foo some_rec = { field_1 = 4, ... };
 let mut bar = foo;
-foo.field_1 = 5; // now bar.field_1 is also 5
+foo.field_1 = 5; // bar.field_1 is still 4
 ```
-you can duplicate statically the record using `new`:
-```rust
-let mut egg = new foo; // egg is now a copy of foo
-egg.field_1 = 9;
-foo.field_1 = 6; // egg.field_1 is still 9
-```
-or dynamically if needed:
+you can also dynamically duplicate if needed:
 ```rust
 let mut buz = new ! foo @ arena;
 ```
 see more about mutability in [this section](#mutability) and about memory allocation and arenas in [this section](#memory-arenas-and-memory-allocation).
+
+record fields are always set to its zero value if not assigned on initialization, i.e. numeric values are assigned to 0, booleans to false, strings to `""`, etc, but they can also implement default values for these fields:
+```rust
+type car = record {
+    door_cound u32 = 4,
+    manufacturer str,
+    model str,
+};
+
+pub fn main() void = {
+    let golf = car { manufacturer = "volkswagen", model = "sportline" };
+    let beetle = car { manufacturer = "volkswagen", door_cound = 2 };
+};
+```
 
 ## enumerators
 enumerators are a way of defining a finite set of values behind a single type. you can use any primitive type as a enum type, as follows:
@@ -663,7 +685,17 @@ see more about the `?>` syntax in [this](#error-assertion) and [this](#error-and
 
 the index is optional, but must be placed after the iteration variable. it can be named anything nevertheless. the type of the indexing variable is always `u64`.
 
-# test
+once it's safe to assume the for loop will never go out of bounds with an array, when the iteration item is marked as mutable, it can be used to assign to a particular index of the array, as follows:
+```rust
+let mut arr = [1, 2, 3, 4, 5] u32;
+
+for mut item, index .. list {
+    item = list[index + 1] ?> 0;
+};
+```
+this code left-shifts the array by one, appending a zero at the end with the use of `?>`. for an array item reassignment, it is mandatory for the iteration array also be mutable.
+
+## test
 the test statement asserts for a boolean expression to be true, optionally prompting an error message, and then halting the program execution on fail.
 ```rust 
 let x = "foo";
@@ -711,6 +743,18 @@ mem input | 512 {
         };
     }!;
 }!;
+```
+as a sub-product of lifetimes, no value allocated within an arena can be assigned to outer scope variables or returned, once this would exceed the limits of whe arena scope and life longer than its lifetime:
+```rust
+fn some_function() str = {
+    let mut buffer = "";
+    mem arena | 512 {
+        let new buffer' = new ! [512; 0...] u8 @ arena;
+        buffer = buffer' str; // invalid. `buffer` lives longer than the arena
+        buffer' = new ! buffer @ arena; // valid. copying of data into the arena
+        return buffer'; // invalid. upper stack-frame lives longer than the arena
+    }!;
+};
 ```
 
 # effects
@@ -933,7 +977,7 @@ let assert []u32 = [1, 2, 3] ..! [5, 6, 7] @ arena;
 ```
 
 # mutability
-lichen addresses for mutability. unlike rust, this system is not associated with a lifetime or borrowing system. memory is still passed by value and not by reference, but, similarly, mutability in lichen addresses for namespace _and_ value.
+lichen addresses for mutability. unlike rust, this system is not associated with a lifetime or borrowing system. memory is still passed by value and not by reference, but, similarly to rust, mutability in lichen addresses for namespace _and_ value.
 ```rust
 let x = 4; // can't reassign to `x`, will always be 4
 let mut y = x;
@@ -946,29 +990,29 @@ other_rec = { rec | field_2 = 5 }; // can reassign to `other_rec`
 ```
 see more about this `{ rec | field_2 = 5 }` syntax in [this section](#records).
 
-except for strings, all primitives are singletons - axioms - things that are values as themselves, not able to change. that is, you can't change the value of the numeric literal `4`. in these cases, it's safe to drop immutability on assignments once changing b won't affect a, as shown:
+passing a mutable variable to another function, in the other hand, is different and always passed by reference. that means that if a function updates a field of a record or writes to an array, the original variable also changes, once they carry the same value:
 ```rust
-let constant u32 = 4;
-let mut variable = constant;
+type person = record {
+    age u8,
+    name str,
+}
 
-variable = 5; // constant is still 4
-```
-but for strings, arrays and other aggregated types such as records, this rule doesn't apply, once changing the field of a record changes the field of all references to it:
-```rust
-let mut foo some_rec = { field_1 = 4, field_2 = 5 };
-let mut bar = foo; // rebinds to bar, but it is still the same record
+// x is marked as mutable, then the
+// function is marked with a given tag
+fn age(mut p person, years u8 = 1) unit = chn {
+    p.age = p.age + years;
+};
 
-foo.field_2 = 5;
-test bar.field_1 == bar.field_2;
-```
-so assigning a constant value to a mutable namespace makes the value not constant anymore, and assigning a mutable value to a immutable namespace does not make the value immutable.
+pub fn main() void = chn {
+    let mut mary = person { age = 12, name = "mary" };
+    age(mary);
+    test mary.age == 13;
 
-duplicating the value, unlikely, permits the immutability dropping:
-```rust
-let original some_rec = {field_1 = 5, ... };
-let mut copy = new original;
+    age(mary, 13);
+    test mary.age == 26;
+};
 ```
-see more about records on [this section](#records).
+both tests succeeds when the code is run.
 
 # error and propagation
 errors are the other side of partial types, as an invalid state with `fail` or a memory allocation failure with `nomem`. these singletons can't be operated by any means and not compared to anything, but can be returned, assigned and asserted on:

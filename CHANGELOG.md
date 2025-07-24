@@ -1,2 +1,4 @@
-- added missing casting of strings to c-strings
-- fixed some bugs with the usage of libraries
+- added means to assign to array items
+- added constant test cases
+- added decimal/floating point literals
+- changed assignment semantic for aggregated types
