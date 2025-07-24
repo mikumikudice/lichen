@@ -1,7 +1,7 @@
 // compile this with the -lc flag
 // set, so it links against libc.
 
-fn puts(fmt cstr) u32 = C$puts;
+fn puts(fmt cstr) u32 = C use "puts";
 
 pub fn main() void = C {
     puts("mornin' sailor!\0" cstr);

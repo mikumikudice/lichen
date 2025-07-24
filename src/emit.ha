@@ -155,7 +155,7 @@ fn emit_obj(
     const asm_src = fmt::asprintf("{}{}.s", temp, obj_name)!;
     defer free(asm_src);
     const obj_out = fmt::asprintf("{}{}.o", temp, obj_name)!;
-    append(link_args, obj_out)!;
+    append(link_args, strings::dup(obj_out)!)!;
     // a final executable
     if(!static_lib && !shared_lib){
         for(let l .. ["-o", target_file]){
@@ -179,7 +179,9 @@ fn emit_obj(
         };
         append(link_args, fmt::asprintf("{}.so", obj_name)!)!;
     };
-    append(link_args, also_link...)!;
+    for(let obj .. also_link){
+        append(link_args, strings::dup(obj)!)!;
+    };
 
     // create temporary directory
     run_cmd(silent, "mkdir", "-p", temp);
@@ -825,7 +827,14 @@ fn assign_memb(
     const (val, tpe, skip) = 
         match(memb.val){
         case let const_val: *const_meta =>
-            return emit_constant(ctxt, buff, const_val);
+            if(comp_type(memb.tpe, primitive::CSTR) && const_val.val is str){
+                fmt::fprintfln(buff, "\t{} =l add $str.{}, 8", dest,
+                    push_lit(ctxt, const_val.val as str))!;
+                fmt::fprintfln(buff, "\t{0} =l loadl {0}", dest)!;
+                return "";
+            } else {
+                return emit_constant(ctxt, buff, const_val);
+            };
         case let var: *var_meta =>
             yield (fix_nm(ctxt, buff, var.nm), var.nm.tpe, false);
         case let call: *funcall_meta =>
@@ -964,7 +973,17 @@ fn gen_cast(
     };
     if(src_t.base is primitive &&  !src_t.fail && dest_t.base is primitive &&
         !dest_t.fail){
-        if(!comp_type(src_t, dest_t) && size_mismatch(src_t, dest_t)){
+        if(comp_type(src_t, primitive::STR) || comp_type(dest_t, primitive::STR)){
+            if(comp_type(src_t, dest_t)){
+                fmt::fprintfln(buff, "\t{} =l copy {}", dest, src)!;
+                return;
+            } else {
+                assert(comp_type(dest_t, primitive::CSTR));
+                fmt::fprintfln(buff, "\t{} =l add {}, 8", dest, src)!;
+                fmt::fprintfln(buff, "\t{0} =l loadl {0}", dest)!;
+                return;
+            };
+        } else if(!comp_type(src_t, dest_t) && size_mismatch(src_t, dest_t)){
             // cast between integers
             if(is_subtype(src_t, primitive::NUMBER) &&
                 (is_subtype(dest_t, primitive::NUMBER) ||

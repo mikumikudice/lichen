@@ -1,1 +1,2 @@
-- implemented missing assertion for pure functions' unused returns and updated tests accordingly
+- added missing casting of strings to c-strings
+- fixed some bugs with the usage of libraries
