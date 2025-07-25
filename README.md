@@ -98,7 +98,7 @@ roadmap:
     - [undone] grammar spec
 - [partial] parser
     - [partial] type system
-        - [undone] mutable parameters / arguments matching
+        - [done] mutable parameters / arguments matching
         - [done] expression types and operator expression validation
         - [done] function call effect validation
         - [done] unhandled error assertion
@@ -135,11 +135,11 @@ roadmap:
             - [done] effect tag matching assertion
             - [done] FFI
             - [undone] first-class type declaration
-        - [partial] variables
+        - [done] variables
             - [done] declaration
-            - [undone] reassignment
-            - [undone] mutable notation
-            - [undone] mutability assertion
+            - [done] reassignment
+            - [done] mutable notation
+            - [done] mutability assertion
         - [undone] records
             - [undone] declaration
             - [undone] literal
