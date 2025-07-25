@@ -66,12 +66,12 @@ pub fn fprint(handle u32, mut data str) !unit = rt {
 // returns `fail` oif any error occurs during memory reading
 // returns `nomem` if buffer is too small
 pub fn read_to(mut buffer []u8) !unit = rt & write {
-    return fread(stdin, buffer)?;
+    return fread_to(stdin, buffer)?;
 };
 
 // reads from a given handle and places in the given buffer
 pub fn fread_to(handle u32, mut buffer []u8) !unit = rt & write {
-    if code = rt_read(handle, buff); code < 0 {
+    if code = rt_read(handle, buffer); code < 0 {
         return fail;
     };
 };

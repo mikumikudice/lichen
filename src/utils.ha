@@ -37,6 +37,10 @@ fn add_color(path: []u8) *memio::stream = {
     for(let c = 0z; c < len(path); c += 1){
         const chr = path[c];
         if(chr == '%'){
+            if(no_color){
+                c += 1;
+                continue;
+            };
             switch(path[c + 1]){
             case 'd' =>
                 fmt::fprintf(buffer, "\x1b[0m")!;
@@ -81,7 +85,7 @@ fn add_color(path: []u8) *memio::stream = {
             fmt::fprint(buffer, chr: rune)!;
         };
     };
-    fmt::fprint(buffer, "\x1b[0m")!;
+    if(!no_color) fmt::fprint(buffer, "\x1b[0m")!;
     return buffer;
 };
 
@@ -104,8 +108,19 @@ fn color(fmt: str, args: fmt::field...) void = {
 
 // prints a colorized string to stderr
 fn color_error(fmt: str, args: fmt::field...) never = {
-    color(fmt, args...);
-    os::exit(1);
+    const path =
+        if(len(args) > 0){
+            yield strings::toutf8(fmt::asprintf(fmt, args...)!);
+        } else {
+            yield strings::toutf8(fmt::asprint(fmt)!);
+        };
+    defer free(path);
+
+    const buffer = add_color(path);
+    defer free(buffer);
+    defer io::close(buffer)!;
+
+    fmt::fatal(memio::string(buffer)!);
 };
 
 // halts on a TODO item

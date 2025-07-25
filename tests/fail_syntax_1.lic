@@ -1,0 +1,7 @@
+// parsing test to address wrong
+// behaviour for scope skipping
+
+pub fn main() void = {
+    if false {
+    }
+};

@@ -104,8 +104,9 @@ type symbol = enum u8 {
     LFT_SQUARE, RGT_SQUARE,
 };
 
+type eof = void;
 type tk_val =
-    (size | f64 | str | namespace | keyword | primitive | operator | symbol);
+    (size | f64 | str | namespace | keyword | primitive | operator | symbol | eof);
 
 type token = struct {
     pos: size,

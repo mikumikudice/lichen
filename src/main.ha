@@ -5,8 +5,8 @@ use memio;
 use os;
 use strings;
 
-const temp = "lcc_temp/";
-const version = "0.14.1";
+const temp = ".lcc_temp/";
+const version = "0.14.2";
 const help =
     "\n%gflags usage:%d\n"
     "\n %g-h\t\t"
@@ -32,14 +32,15 @@ const help =
     "\n %g-E\t\t"
     "%y-- only checks for compile errors and generates no output files"
 
-    "\n %g-vb\t\t"
-    "%y-- prompts each substep. if %g-c%y is also set, dumps qbe IR instead"
+    "\n %g-verbose\t\t"
+    "%y-- logs each compilation step. if %g-c%y is also set, dumps qbe IR instead"
     
     "\n %g-t\t\t"
     "%y-- keeps temporary files at %gtmp/%y folder"
     "\n%gget help on learning how to use lichen in "
     "%bhttps://git.sr.ht/~mikaela-md/lcc/tree/main/doc/tut.md";
 
+let no_color = false;
 export fn main() void = {
     let prompt_log = false;
     let keep_temps = false;
@@ -108,6 +109,9 @@ export fn main() void = {
             case "-verbose" =>
                 prompt_log = true;
                 continue;
+            case "-clean" =>
+                no_color = true;
+                continue;
             // parse-only mode
             case "-E" =>
                 just_check = true;
@@ -148,9 +152,11 @@ export fn main() void = {
         free_path = true;
     };
     defer free(stdlib_path);
+    const is_main = !(shared_lib || static_lib ||
+            strings::hassuffix(source_file, ".lim"));
     const object =
-        match(compile(source_file, stdlib_path,
-            !(shared_lib || static_lib))){
+        match(compile(source_file, stdlib_path, is_main,
+        !is_main && just_check)){
         case let obj: *context => yield obj;
         case let err: ERROR => report(err);
         };
@@ -165,8 +171,10 @@ export fn main() void = {
         return;
     };
     emit_obj(&qbe_ir, also_link, target_file, stdlib_path,
-        shared_lib, static_lib, !prompt_log);
+        shared_lib, static_lib, keep_temps, !prompt_log);
 
     // delete all temp files if not set otherwise
-    if(!keep_temps) run_cmd(!prompt_log, "rm", "-r", temp);
+    if(!keep_temps){
+        run_cmd(!prompt_log, "rm", "-r", temp);
+    };
 };

@@ -123,7 +123,6 @@ fn itof(int_t: lichen_t, float_t: lichen_t) str = {
 fn ftoi(float_t: lichen_t, int_t: lichen_t) str = {
     // unsigned
     if(is_subtype(primitive::U8, int_t)){
-        fmt::println(strtype(float_t), strtype(int_t))!;
         if(type_size(int_t) == 4) return "stoui";
         return "dtoui";
     // signed
@@ -140,7 +139,8 @@ fn emit_obj(
     lib_path: str,
     shared_lib: bool,
     static_lib: bool,
-    silent: bool
+    keep_temps: bool,
+    silent: bool,
 ) void = {
     const link_args = []: []str;
     defer free(link_args);
@@ -187,7 +187,13 @@ fn emit_obj(
     };
 
     // create temporary directory
-    run_cmd(silent, "mkdir", "-p", temp);
+    if(keep_temps){
+        // ignore prefix dot if the folder should be kept
+        run_cmd(silent, "mkdir", "-p", strings::sub(temp, 1));
+    } else {
+        // otherwise create it hidden
+        run_cmd(silent, "mkdir", "-p", temp);
+    };
     // emit final IR file
     const object =
         match(os::create(qbe_out, fs::mode::USER_RWX)){
@@ -1128,7 +1134,6 @@ fn gen_cast(
                         dest, dest_qbe_t, itof(src_t, dest_t), src)!;
                 };
             } else {
-                fmt::println(strtype(src_t), strtype(dest_t))!;
                 fmt::fprintfln(buff, "\t{} ={} cast {}", dest, dest_qbe_t,
                     src)!;
             };

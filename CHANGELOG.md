@@ -1,2 +1,8 @@
-- implemented string comparison by value
-- minor code improvement on expression code gen
+- added end of file literal token
+- added `-clean` compilation flag
+- disable missing entry point error for `.lim` files
+- enable all-file parsing when checking a module with `-E` flag
+- removed unintended debug logging code
+- fixed wrong behaviour with scopes parsing and added related test
+- made temp folder be hidden unless set to be kept
+- fixed soundless compilation errors of unused functions from stdlib

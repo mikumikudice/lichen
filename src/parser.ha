@@ -93,6 +93,8 @@ fn strtoken(tok: tk_val) str = {
         return fmt::asprintf("{} operator", oper_value[oper: int])!;
     case let sym: symbol =>
         return strings::dup(sym_value[sym])!;
+    case eof =>
+        return strings::dup("end of file")!;
     };
 };
 
@@ -170,6 +172,8 @@ fn comp_tk(lft: tk_val, rgt: tk_val) bool = {
         return rgt is operator && opr == rgt as operator;
     case let sym: symbol =>
         return rgt is symbol && sym == rgt as symbol;
+    case eof =>
+        return rgt is eof;
     };
 };
 
@@ -282,6 +286,7 @@ fn dummy_nm(val: str) namespace = namespace {
 fn compile(filename: str,
     stdlib_path: str,
     has_main: bool,
+    mod_check: bool,
     literals: (*[]str | void) = void,
 ) (*context | ERROR) = {
     // open source file
@@ -778,6 +783,7 @@ fn compile(filename: str,
         return fail("the file \"{}\" is empty%d\n\n%gtry adding:\n\n%d{}",
             filename, fn_demo);
     };
+    append(ctxt.tokens, new_tk(ctxt, eof))!;
     // parse
     eval_program(&ctxt)?;
     // check if it's defined
@@ -839,7 +845,8 @@ fn compile(filename: str,
     for(let meta .. ctxt.global.defs){
         match(meta){
         case let fun_def: *fun_meta =>
-            if(fun_def.fun.ffi is void && fun_def.used &&
+            if(fun_def.fun.ffi is void &&
+                (fun_def.used || mod_check) &&
                 fun_def.fun.name != "main"){
                 // assign current scope host
                 ctxt.host_fun = fun_def;
@@ -865,7 +872,7 @@ fn compile(filename: str,
             for(let meta .. module.ctxt.global.defs){
                 match(meta){
                 case let fun_def: *fun_meta =>
-                    if(fun_def.fun.ffi is void && fun_def.used){
+                    if(fun_def.fun.ffi is void && (fun_def.used || mod_check)){
                         // assign current scope host
                         module.ctxt.host_fun = fun_def;
                         // evaluate function scope
@@ -946,6 +953,7 @@ fn eval_program(ctxt: *context) (void | ERROR) = {
                 const (decl, end) = eval_const_def(ctxt, t)?;
                 t = end;
             };
+        case eof => break;
         case =>
             move_ptr(ctxt, tk);
             return error(ctxt, "unexpected token");
@@ -1113,7 +1121,7 @@ fn eval_module(ctxt: *context, at: size) ((*module_meta, size) | ERROR) = {
         freed = false,
         parsed = false,
         emitted = false,
-        ctxt = compile(path, ctxt.path, false, ctxt.literals)?,
+        ctxt = compile(path, ctxt.path, false, false, ctxt.literals)?,
     })!;
     push_def(ctxt, ctxt.tokens[at], bind, module)?;
     return (module, end);
@@ -1339,7 +1347,7 @@ fn skip_scope(ctxt: *context, at: size) (size | ERROR) = {
         "expected %bvalid scope definition%r, but got %y{}")?;
     for(end < max; end += 1){
         if(comp_tk(ctxt.tokens[end].val, symbol::LFT_CURLY)){
-            end = skip_scope(ctxt, end)?;
+            end = skip_scope(ctxt, end)? - 1;
         } else if(comp_tk(ctxt.tokens[end].val, symbol::RGT_CURLY)){
             return end + 1;
         };
@@ -1708,6 +1716,12 @@ fn eval_ifelse(ctxt: *context, at: size) ((*branch_meta, size) | ERROR) = {
             };
             // check if all branches return
             if(!body.rets) rets = false;
+        } else {
+            move_ptr(ctxt, tk);
+            const arg = strtoken(tk.val);
+            defer free(arg);
+            return error(ctxt,
+                "expected %belse block%r or %bend of line%r, but got %y{}", arg);
         };
     };
     move_ptr(ctxt, ctxt.tokens[at]);
@@ -1909,7 +1923,6 @@ fn eval_member(
     };
     match(tk.val){
     case let sym: symbol =>
-        fmt::println(strtoken(sym))!;
         switch(sym){
         case symbol::LFT_PAR =>
             const (exp, _end) = eval_expression(ctxt, at + 1,
@@ -2784,12 +2797,7 @@ fn assert_cast(
 
 // pulls next token from token array and asserts for buffer overflow/eof
 fn next_tk(ctxt: *context, at: size, msg: str) (token | ERROR) = {
-    if(at == len(ctxt.tokens)){
-        const tk = ctxt.tokens[at - 1];
-        ctxt.ptr = tk.pos;
-        ctxt.begin = tk.begin;
-        return error(ctxt, msg, "%end of file");
-    };
+    assert(at < len(ctxt.tokens));
     return ctxt.tokens[at];
 };
 
