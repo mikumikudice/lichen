@@ -120,7 +120,7 @@ fn color_error(fmt: str, args: fmt::field...) void = {
     defer free(buffer);
     defer io::close(buffer)!;
 
-    fmt::error(memio::string(buffer)!)!;
+    fmt::errorln(memio::string(buffer)!)!;
 };
 
 // halts on a TODO item

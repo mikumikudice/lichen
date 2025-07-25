@@ -1,2 +1,1 @@
-- fix invalid use after free due to defers on error reporting
-- fix module library emit mode not producing all symbols
+- fix missing line feed at end of error reporting
