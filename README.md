@@ -104,8 +104,8 @@ roadmap:
         - [done] unhandled error assertion
         - [done] unused pure function call result assertion
         - [partial] partial type assertion and bubbling
-            - [undone] error assertion piping to statement
-            - [undone] error bubbling piping to default value fallback
+            - [done] error assertion piping to statement
+            - [done] error bubbling piping to default value fallback
             - [undone] error piping variation tagging
         - [undone] array indexing partials
         - [undone] default values

@@ -565,7 +565,7 @@ crashes the program on an error, but this:
 ```rust
 let file = fs::open("file.text", fs::flags.READONLY) !> io::println("could not open file. want to try another one?")!;
 ```
-executes the subsequent code on a fail.
+executes the subsequent code on a fail, assigning the zeroed value to the variable instead of the valid result.
 
 you may also chain handlers depending on the error variant:
 ```rust

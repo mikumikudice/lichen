@@ -190,12 +190,14 @@ type scope_meta = struct {
 
 type hand_t = (*hand_meta | *member_meta | *ternary_meta | *expr_meta);
 
+type propagation = (operator, (void | path_meta));
+
 type expr_meta = struct {
     pos: size,
     tpe: lichen_t,
     pre: (void | operator),
     val: (void | hand_t),
-    prop: (void | operator),
+    prop: (void | propagation),
 };
 
 type hand_meta = struct {
@@ -211,7 +213,7 @@ type member_meta = struct {
     tpe: lichen_t,
     pre: (void | operator),
     val: (*const_meta | *var_meta | *funcall_meta | keyword),
-    prop: (void | operator),
+    prop: (void | propagation),
 };
 
 type branch_meta = struct {

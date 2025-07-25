@@ -27,6 +27,7 @@ local tests = {
     { src = "fail_io_bad_handle", code = 1, nocomp = false },
     { src = "fail_io_from_result", code = 1, nocomp = false },
     { src = "no_prop", code = 0 },
+    { src = "assert", output = "test 1 ok\ntest 2 ok\ntest 3 ok\n", code = 0 },
     -- parser --
     { src = "vars", code = 0 },
     { src = "funcs", code = 0 },
@@ -45,7 +46,7 @@ local tests = {
     { src = "hello", output = "mornin' sailor!\n", code = 0 },
     -- others --
     { src = "stress",
-        output = "branch other\ny is even\ncomputing factorial...\nfactorial(5) ok\nresult is:\nz failed\n", 
+        output = "branch 1 ok\ny is even\ncomputing factorial...\nfactorial(5) ok\nresult is:\nz computed ok\n", 
         code = 0 },
 }
 

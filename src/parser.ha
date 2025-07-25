@@ -1472,6 +1472,7 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
         case keyword::LET =>
             end += 1;
             const (decl, _end) = eval_var_def(ctxt, end)?;
+            push_def(ctxt, ctxt.tokens[end], decl.var.nm, decl)?;
             end = pop_assert(ctxt, _end, symbol::EOL,
                 "expected %bend of line%r, but got %y{}")?;
             return (decl, end);
@@ -1620,7 +1621,6 @@ fn eval_var_def(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
         })!,
         val = val,
     })!;
-    push_def(ctxt, ctxt.tokens[at], name, out)?;
     return (out, end);
 };
 
@@ -1653,6 +1653,7 @@ fn eval_ifelse(ctxt: *context, at: size) ((*branch_meta, size) | ERROR) = {
                 end = pop_assert(ctxt, _end, symbol::EOL,
                     "expected %bend of line%r, but got %y{}")?;
                 local_set = true;
+                push_def(ctxt, tk, local.var.nm, local)?;
                 append(locals, local)!;
             };
         };
@@ -1660,7 +1661,7 @@ fn eval_ifelse(ctxt: *context, at: size) ((*branch_meta, size) | ERROR) = {
             quick_t(primitive::BOOL))?;
         append(conds, cond)!;
         end = _end;
-        const (body, _end) = eval_scope(ctxt, end, locals)?;
+        const (body, _end) = eval_scope(ctxt, end)?;
         end = _end;
         if(local_set){
             append(bodies, (locals[len(locals) - 1], body))!;
@@ -1694,11 +1695,11 @@ fn eval_ifelse(ctxt: *context, at: size) ((*branch_meta, size) | ERROR) = {
                     const (local, _end) = eval_var_def(ctxt, end)?;
                     end = pop_assert(ctxt, _end, symbol::EOL,
                         "expected %bend of line%r, but got %y{}")?;
-                    local_set = true;
+                    local_set = true;push_def(ctxt, tk, local.var.nm, local)?;
                     append(locals, local)!;
                 };
             };
-            const (else_body, _end) = eval_scope(ctxt, end, locals)?;
+            const (else_body, _end) = eval_scope(ctxt, end)?;
             end = _end;
             if(local_set){
                 append(bodies, (locals[len(locals) - 1], else_body))!;
@@ -1798,12 +1799,11 @@ fn eval_expression(
         tk = next_tk(ctxt, end,
             "expected %bexpression member%r, but got %y{}")?;
     };
-    // assert for expected expression type
-    // assign a possible less-untyped type
-
     let (val, tpe) = reduce_members(ctxt, at, members)?;
-    assert_hint(ctxt, ctxt.tokens[at], tpe, hint)?;
+    // assign a possible less-untyped type
     if(untyped(tpe)) tpe = hint;
+    // assert for expected expression type
+    assert_hint(ctxt, ctxt.tokens[at], tpe, hint)?;
     const out = alloc(expr_meta {
         pos = at,
         tpe = tpe,
@@ -1909,7 +1909,7 @@ fn eval_member(
     };
     match(tk.val){
     case let sym: symbol =>
-        if(comp_tk(sym, symbol::EOL)) return (void, at, true);
+        fmt::println(strtoken(sym))!;
         switch(sym){
         case symbol::LFT_PAR =>
             const (exp, _end) = eval_expression(ctxt, at + 1,
@@ -2312,11 +2312,12 @@ fn wrap_primitive(tpe: (primitive | lichen_t)) lichen_t =
 
 // assert for any type casting and if it's a valid cast
 // returns `current` if no cast was found
+let logging = false;
 fn eval_cast(
     ctxt: *context,
     current: lichen_t,
     at: size,
-) ((lichen_t, (void | operator), size) | ERROR) = {
+) ((lichen_t, (void | propagation), size) | ERROR) = {
     let tpe = current;
     let end = at;
     if(!comp_tk(ctxt.tokens[end].val, symbol::EOL) &&
@@ -2329,10 +2330,14 @@ fn eval_cast(
             end = some.1;
         case => void;
         };
-    const tk = next_tk(ctxt, end,
+    let tk = next_tk(ctxt, end,
         "expected %bpropagation operator%r, %bexpression continuation%r or %bend of line%r, but gor %y{}")?;
-    const prop =
-        if(comp_tk(tk.val, operator::BANG) || comp_tk(tk.val, operator::BUBBLE)){
+    
+    const after = next_tk(ctxt, end + 1,
+        "expected %berror assertion piping%r, %bexpression continuation%r or %bend of line%r, but gor %y{}")?;
+    const prop: (void | propagation) =
+        if(comp_tk(tk.val, operator::BANG) ||
+            comp_tk(tk.val, operator::BUBBLE)){
             end += 1;
             move_ptr(ctxt, tk);
             if(!tpe.fail){
@@ -2344,7 +2349,8 @@ fn eval_cast(
             };
             const caller = ctxt.host_fun as *fun_meta;
             if(!caller.fun.tpe.fail &&
-                comp_tk(tk.val, operator::BUBBLE)){
+                comp_tk(tk.val, operator::BUBBLE) &&
+                !comp_tk(after.val, operator::GTT)){
                 const arg1 = strtype(caller.fun.tpe);
                 defer free(arg1);
                 const arg2 = strtype(tpe);
@@ -2353,8 +2359,24 @@ fn eval_cast(
                     "caller function of type %b{}%r cannot bubble up fail state from %b{}",
                     arg1, arg2);
             };
+            const op = tk.val as operator;
             tpe.fail = false;
-            yield tk.val as operator;
+
+            const exp: (void | path_meta) =
+                if(comp_tk(after.val, operator::GTT)){
+                    end += 1;
+                    yield if(op == operator::BUBBLE){
+                        const (exp, _end) = eval_expression(ctxt, end, tpe)!;
+                        end = _end;
+                        yield exp;
+                    } else {
+                        logging = true;
+                        const (stt, _end) = eval_statement(ctxt, end)!;
+                        end = _end - 1;
+                        yield stt;
+                    };
+                };
+            yield (op, exp);
         };
     return (tpe, prop, end);
 };

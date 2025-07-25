@@ -7,6 +7,6 @@ pub fn main() void = io {
     if x == 120 + 4.3 && pi > 4.16 - 1.02 {
         io::println("test ok")!;
     } else {
-        io::println("test failed")!;
+        io::println("test fail")!;
     };
 };

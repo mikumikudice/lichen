@@ -513,18 +513,34 @@ fn gen_stt(ctxt: *context, buff: *memio::stream, stt: path_meta) void = {
             defer free(memb);
             if(ret.tpe.fail && ret.tpe.base is primitive &&
                 ret.val.val is hand_t && assert_no_error_val(ret.val.val as hand_t)){
+                // allocate partial type
                 fmt::fprintfln(buff, "\t{}.wrap =l alloc8 16", temp)!;
+                // set as valid
+                fmt::fprintfln(buff, "\tstorel 1, {}.wrap", temp)!;
+                // offset to point to data
+                fmt::fprintfln(buff, "\t{0}.wrap =l add {0}.wrap, 8", temp)!;
+                // store data
                 fmt::fprintfln(buff, "\tstore{} {}, {}.wrap",
                     qbe_t(quick_t(ret.val.tpe.base as primitive)),
                     memb, temp)!;
+                // undo offset
+                fmt::fprintfln(buff, "\t{0}.wrap =l sub {0}.wrap, 8", temp)!;
                 fmt::fprintfln(buff, "\tret {}.wrap", temp)!;
             } else {
                 fmt::fprintfln(buff, "\tret {}", memb)!;
             };
         } else if(ret.tpe.fail && ret.tpe.base is primitive){
+            // allocate partial type
             fmt::fprintfln(buff, "\t{}.wrap =l alloc8 16", temp)!;
+            // set as valid
+            fmt::fprintfln(buff, "\tstorel 1, {}.wrap", temp)!;
+            // offset to point to data
+            fmt::fprintfln(buff, "\t{0}.wrap =l add {0}.wrap, 8", temp)!;
+            // store data
             fmt::fprintfln(buff, "\tstore{0} {1}, {1}.wrap",
                 qbe_t(quick_t(ret.val.tpe.base as primitive)), temp)!;
+            // undo offset
+            fmt::fprintfln(buff, "\t{0}.wrap =l sub {0}.wrap, 8", temp)!;
             fmt::fprintfln(buff, "\tret {}.wrap", temp)!;
         } else {
             fmt::fprintfln(buff, "\tret {}", temp)!;
@@ -896,8 +912,8 @@ fn assign_memb(
                 fmt::fatal("assign_memb: unreachable");
             };
         };
-    if(memb.prop is operator){
-        const prop = memb.prop as operator;
+    if(memb.prop is propagation){
+        const prop = memb.prop as propagation;
         if(tpe.base is primitive){
             fmt::fprintfln(buff, "\t%fail.code =l loadl {}", val)!;
             fmt::fprintln(buff, "\t%assert.fail =l csltl %fail.code, 1")!;
@@ -905,16 +921,41 @@ fn assign_memb(
             if(tpe.base is primitive){
                 fmt::fprintfln(buff, "\t%assert.fail =l csltl {}, 1", val)!;
             };
-
         };
-        if(prop == operator::BUBBLE){
-            fmt::fprintfln(buff, "\tjnz %assert.fail, @bubble.{0}, @ok.{0}",
-                memb.pos)!;
-            fmt::fprintfln(buff, "@bubble.{0}\n\tret {1}\n@ok.{0}",
-                memb.pos, val)!;
+        // no assertion expression
+        if(prop.1 is void){
+            if(prop.0 == operator::BUBBLE){
+                fmt::fprintfln(buff, "\tjnz %assert.fail, @bubble.{0}, @ok.{0}",
+                    memb.pos)!;
+                fmt::fprintfln(buff, "@bubble.{0}\n\tret {1}\n@ok.{0}",
+                    memb.pos, val)!;
+            } else {
+                fmt::fprintfln(buff, "\tjnz %assert.fail, @fail, @ok.{0}\n@ok.{0}",
+                    memb.pos)!;
+            };
         } else {
-            fmt::fprintfln(buff, "\tjnz %assert.fail, @fail, @ok.{0}\n@ok.{0}",
-                memb.pos)!;
+            if(prop.0 == operator::BUBBLE){
+                const exp = prop.1 as *expr_meta;
+                fmt::fprintfln(buff,
+                    "\tjnz %assert.fail, @bubble.{0}, @ok.{0}\n@bubble.{0}",
+                    memb.pos)!;
+                const wrap = fmt::asprint("%default.{}", memb.pos)!;
+                defer free(wrap);
+                const val = gen_exp(ctxt, buff, wrap, memb.tpe, exp);
+                fmt::fprintfln(buff,
+                    "\t{1} ={2} copy {3}\n\tjmp @skip.{0}\n@ok.{0}",
+                    memb.pos, dest, qbe_t(exp_t, mode::ASSIGN), val)!;
+            } else {
+                const stt = prop.1 as path_meta;
+                fmt::fprintfln(buff, "\tjnz %assert.fail, @fail.{0}, @ok.{0}",
+                    memb.pos)!;
+                const zero = zeroed_value(ctxt, buff, exp_t);
+                defer free(zero);
+                fmt::fprintfln(buff, "@fail.{}\n\t{} ={} copy {}",
+                    memb.pos, dest, qbe_t(exp_t, mode::ASSIGN), zero)!;
+                gen_stt(ctxt, buff, stt);
+                fmt::fprintfln(buff, "\tjmp @skip.{0}\n@ok.{0}", memb.pos)!;
+            };
         };
     };
     if(!skip){
@@ -924,6 +965,12 @@ fn assign_memb(
             gen_cast(buff, temp, memb.tpe, dest, exp_t);
         } else {
             gen_cast(buff, val, tpe, dest, exp_t);
+        };
+    };
+    if(memb.prop is propagation){
+        const prop = memb.prop as propagation;
+        if(prop.1 is path_meta){
+            fmt::fprintfln(buff, "@skip.{}", memb.pos)!;
         };
     };
     return "";
@@ -1218,4 +1265,21 @@ fn true_size(lit: str) size = {
         ("\\'", "'"))!;
     defer free(fixed);
     return len(fixed);
+};
+
+fn zeroed_value(ctxt: *context, buff: *memio::stream, tpe: lichen_t) str = {
+    if(tpe.base is primitive){
+        if(is_aggregated(tpe)){
+            return strings::dup("$rt.zero")!;
+        } else {
+            return strings::dup("0")!;
+        };
+    } else if(tpe.base is *array){
+        return strings::dup("$rt.zero")!;
+    } else if(tpe.base is *enum_t){
+        const e = tpe.base as *enum_t;
+        return fix_nm(ctxt, buff, e.variant[0]);
+    } else {
+        todo("default values for records");
+    };
 };
