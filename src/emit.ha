@@ -61,7 +61,10 @@ fn qbe_t(tpe: lichen_t, md: mode = mode::REAL) str = {
 
 // gets the given type's in memory type
 fn type_size(tpe: lichen_t) size = {
-    assert(!untyped(tpe));
+    const arg = strtype(tpe);
+    defer free(arg);
+    assert(!untyped(tpe), arg);
+
     if(tpe.base is primitive){
         switch(tpe.base as primitive){
         case primitive::UNIT, primitive::VOID => return 0;
@@ -97,6 +100,7 @@ fn type_size(tpe: lichen_t) size = {
 fn size_mismatch(src: lichen_t, dest: lichen_t) bool = {
     if(is_subtype(src, primitive::NUMBER) &&
         is_subtype(dest, primitive::NUMBER)){
+        if(untyped(src) || untyped(dest)) return false;
         return type_size(src) < type_size(dest);
     };
     return type_size(src) != type_size(dest);
@@ -104,7 +108,6 @@ fn size_mismatch(src: lichen_t, dest: lichen_t) bool = {
 
 // casts an integer to a floating type
 fn itof(int_t: lichen_t, float_t: lichen_t) str = {
-    if(type_size(int_t) == type_size(float_t)) return "cast";
     // unsigned
     if(is_subtype(primitive::U8, int_t)){
         if(type_size(int_t) == 4) return "uwtof";
@@ -118,9 +121,9 @@ fn itof(int_t: lichen_t, float_t: lichen_t) str = {
 
 // casts a floating type to an integer
 fn ftoi(float_t: lichen_t, int_t: lichen_t) str = {
-    if(type_size(int_t) == type_size(float_t)) return "cast";
     // unsigned
     if(is_subtype(primitive::U8, int_t)){
+        fmt::println(strtype(float_t), strtype(int_t))!;
         if(type_size(int_t) == 4) return "stoui";
         return "dtoui";
     // signed
@@ -537,7 +540,7 @@ fn gen_decl(ctxt: *context, buff: *memio::stream, decl: *decl_meta) void = {
     defer free(name);
     match(decl.val){
     case let const_val: *const_meta =>
-        const val = emit_constant(ctxt, buff, const_val);
+        const val = emit_constant(ctxt, buff, const_val, decl.var.nm.tpe);
         defer free(val);
         fmt::fprintfln(buff, "\t{} ={} copy {}", name,
             qbe_t(decl.var.nm.tpe, mode::ASSIGN), val)!;
@@ -560,9 +563,7 @@ fn gen_exp(
 ) str = {
     match(exp){
     case let hand: *hand_meta =>
-        if(hand.opr != operator::BAND && hand.opr != operator::BOR){
-            gen_arithmetic(ctxt, buff, dest, exp_t, hand);
-        };
+        gen_arithmetic(ctxt, buff, dest, exp_t, hand);
     case let memb: *member_meta =>
         const wrap = assign_memb(ctxt, buff, dest, exp_t, memb);
         if(memb.pre is operator){
@@ -751,6 +752,10 @@ fn gen_arithmetic(
             gen_cast(buff, lft_h, lft_t, dest, exp_t);
             fmt::fprintf(buff, "\t{0} ={1} {2} {0}, {3}\n",
                 dest, asg_t, inst, rgt_h)!;
+        // boolean comparison
+        } else if(comp_type(exp_t, primitive::BOOL)){
+            fmt::fprintf(buff, "\t{} ={} {} {}, {}\n",
+                dest, asg_t, inst, lft_h, rgt_h)!;
         // at least one member require casting
         } else {
             gen_cast(buff, lft_h, lft_t, dest, exp_t);
@@ -833,7 +838,7 @@ fn assign_memb(
                 fmt::fprintfln(buff, "\t{0} =l loadl {0}", dest)!;
                 return "";
             } else {
-                return emit_constant(ctxt, buff, const_val);
+                return emit_constant(ctxt, buff, const_val, memb.tpe);
             };
         case let var: *var_meta =>
             yield (fix_nm(ctxt, buff, var.nm), var.nm.tpe, false);
@@ -968,8 +973,33 @@ fn gen_cast(
 ) void = {
     const dest_qbe_t = qbe_t(dest_t, mode::ASSIGN);
     if(untyped(src_t)){
-        fmt::fprintfln(buff, "\t{} ={} copy {}", dest, dest_qbe_t, src)!;
-        return;
+        const d_tpe_p =
+            if(!untyped(dest_t)){
+                yield dest_t;
+            } else if(is_subtype(dest_t, primitive::U64)){
+                yield quick_t(primitive::U64);
+            } else if(is_subtype(dest_t, primitive::I64)){
+                yield quick_t(primitive::I64);
+            } else if(is_subtype(dest_t, primitive::F64)){
+                yield quick_t(primitive::F64);
+            } else {
+                todo("gen_cast: other default types for untyped");
+            };
+        if(is_subtype(src_t, primitive::NUMBER) && is_ratio(dest_t)){
+            fmt::fprintfln(buff, "\t{} ={} {} {}", dest,
+                qbe_t(dest_t, mode::ASSIGN),
+                itof(quick_t(primitive::I64), d_tpe_p), src)!;
+            return;
+        } else if(is_ratio(src_t) &&
+            is_subtype(dest_t, primitive::NUMBER)){
+            fmt::fprintfln(buff, "\t{} ={} {} {}", dest,
+                qbe_t(dest_t, mode::ASSIGN),
+                ftoi(quick_t(primitive::F64), d_tpe_p), src)!;
+            return;
+        } else {
+            fmt::fprintfln(buff, "\t{} ={} copy {}", dest, dest_qbe_t, src)!;
+            return;
+        };
     };
     if(src_t.base is primitive && !src_t.fail && dest_t.base is primitive &&
         !dest_t.fail){
@@ -984,18 +1014,19 @@ fn gen_cast(
             };
         } else if(!comp_type(src_t, dest_t) && size_mismatch(src_t, dest_t)){
             // cast between integers
-            if(is_subtype(src_t, primitive::NUMBER) &&
+            if((is_subtype(src_t, primitive::NUMBER) ||
+                is_subtype(src_t, primitive::BOOL)) &&
                 (is_subtype(dest_t, primitive::NUMBER) ||
                 is_subtype(dest_t, primitive::BOOL))){
                 fmt::fprintfln(buff, "\t{} ={} ext{} {}",
                     dest, dest_qbe_t, qbe_t(src_t, mode::LOAD), src)!;
             // cast of integer to float
-            } else if(is_subtype(src_t, primitive::NUMBER) &&
-                is_subtype(dest_t, primitive::RATIO)){
+            } else if((is_subtype(src_t, primitive::NUMBER) ||
+                is_subtype(src_t, primitive::BOOL)) && is_ratio(dest_t)){
                 fmt::fprintfln(buff, "\t{} ={} {} {}",
                     dest, dest_qbe_t, itof(src_t, dest_t), src)!;
             // cast of float to integer
-            } else if(is_subtype(src_t, primitive::RATIO) &&
+            } else if(is_ratio(src_t) &&
                 (is_subtype(dest_t, primitive::NUMBER) ||
                 is_subtype(dest_t, primitive::BOOL))){
                 fmt::fprintfln(buff, "\t{} ={} {} {}",
@@ -1009,6 +1040,22 @@ fn gen_cast(
                     fmt::fprintfln(buff, "\t{} ={} truncd {}",
                         dest, dest_qbe_t, src)!;
                 };
+            };
+        } else if(!is_subtype(src_t, dest_t) &&
+            (is_ratio(src_t) || is_ratio(dest_t))){
+            if(is_subtype(src_t, primitive::NUMBER) &&
+                is_subtype(dest_t, primitive::NUMBER)){
+                if(is_ratio(src_t)){
+                    fmt::fprintfln(buff, "\t{} ={} {} {}",
+                        dest, dest_qbe_t, ftoi(src_t, dest_t), src)!;
+                } else {
+                    fmt::fprintfln(buff, "\t{} ={} {} {}",
+                        dest, dest_qbe_t, itof(src_t, dest_t), src)!;
+                };
+            } else {
+                fmt::println(strtype(src_t), strtype(dest_t))!;
+                fmt::fprintfln(buff, "\t{} ={} cast {}", dest, dest_qbe_t,
+                    src)!;
             };
         } else {
             fmt::fprintfln(buff, "\t{} ={} copy {}",
@@ -1076,7 +1123,12 @@ fn fix_nm(ctxt: *context, buff: *memio::stream, nm: namespace) str = {
     };
 };
 
-fn emit_constant(ctxt: *context, buff: *memio::stream, c: *const_meta) str = {
+fn emit_constant(
+    ctxt: *context, 
+    buff: *memio::stream, 
+    c: *const_meta,
+    hint: lichen_t,
+) str = {
     match(c.val){
     case let num: size =>
         if(c.pre is operator){
@@ -1093,6 +1145,26 @@ fn emit_constant(ctxt: *context, buff: *memio::stream, c: *const_meta) str = {
             };
         } else {
             return fmt::asprint(num)!;
+        };
+    case let flt: f64 =>
+        const prefix =
+            if(comp_type(hint, primitive::F32)){
+                yield "s_";
+            } else {
+                yield "d_";
+            };
+        if(c.pre is operator){
+            const op = c.pre as operator;
+            switch(op){
+            case operator::PLS =>
+                return fmt::asprintf("{}{}", prefix, flt)!;
+            case operator::MIN =>
+                return fmt::asprintf("{}{}", prefix, -flt)!;
+            case =>
+                fmt::fatal("emit_constant: unreachable");
+            };
+        } else {
+            return fmt::asprintf("{}{}", prefix, flt)!;
         };
     case let txt: str =>
         if(c.pre is operator){

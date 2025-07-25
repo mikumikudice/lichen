@@ -1,2 +1,3 @@
-- now unit is castable into void, but not the other way around
-- strings are still castable into cstr, but not subtypes
+- implemented floating point literals
+- fixed type validation for bitwise operators
+- fixed type checking and IR emitting for casting

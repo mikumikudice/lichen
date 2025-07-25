@@ -28,6 +28,7 @@ local tests = {
     -- parser --
     { src = "vars", code = 0 },
     { src = "funcs", code = 0 },
+    { src = "float", output = "test ok\n", code = 0 },
     -- branching --
     { src = "if-else",
         output = "test 0 ok\ntest 1 ok\ntest 2 ok\ntest 3 ok\ntest 4 ok\ntest 5 ok\ntest 6 ok\n",

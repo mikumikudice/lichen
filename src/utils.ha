@@ -140,7 +140,13 @@ fn error(ctxt: *context, fmt: str, args: fmt::field...) ERROR = {
     return alloc(buff)!;
 };
 
-fn error_hint(ctxt: *context, hint: str, fmt: str, args: fmt::field...) ERROR = {
+fn error_hint(
+    ctxt: *context,
+    hint: str, 
+    fmt: str,
+    args:
+    fmt::field...
+) ERROR = {
     const buff = memio::dynamic();
     fmt::fprintf(&buff, "%R{}:%r ", gen_pos(ctxt))!;
     fmt::fprintf(&buff, fmt, args...)!;

@@ -76,6 +76,8 @@ fn strtoken(tok: tk_val) str = {
         return fmt::asprintf("identifier \"{}\"", nm.name)!;
     case let num: size =>
         return fmt::asprintf("numeric literal {}", num)!;
+    case let flt: f64 =>
+        return fmt::asprintf("floating point literal {}", flt)!;
     case let txt: str =>
         return fmt::asprintf("string literal \"{}\"", txt)!;
     case let kwd: keyword =>
@@ -148,6 +150,13 @@ fn comp_tk(lft: tk_val, rgt: tk_val) bool = {
         if(rgt is size){
             const r = rgt as size;
             return num == r;
+        } else {
+            return false;
+        };
+    case let flt: f64 =>
+        if(rgt is f64){
+            const r = rgt as f64;
+            return flt == r;
         } else {
             return false;
         };
@@ -343,7 +352,7 @@ fn compile(filename: str,
             inc_ptr(&ctxt);
             continue;
         };
-        let path = ctxt.src[ctxt.ptr..end];
+        let path = ctxt.src[ctxt.ptr .. end];
         // numeric literal
         if(is_numeric(path[0])){
             end = ctxt.ptr;
@@ -351,8 +360,30 @@ fn compile(filename: str,
             for(end < max && is_alpha(ctxt.src[end]) ||
                 is_numeric(ctxt.src[end]) || ctxt.src[end] == '_') end += 1;
             assert(end != ctxt.ptr);
-            path = ctxt.src[ctxt.ptr..end];
+            path = ctxt.src[ctxt.ptr .. end];
 
+            // decimal point literal
+            if(ctxt.src[end] == '.'){
+                end += 1;
+                for(end < max && is_numeric(ctxt.src[end]) ||
+                    ctxt.src[end] == '_') end += 1;
+                path = ctxt.src[ctxt.ptr .. end];
+
+                const num = strings::replace(
+                    strings::fromutf8(path)!, "_", "")!;
+                defer free(num);
+
+                match(strconv::stof64(num)){
+                case let f: f64 =>
+                    append(ctxt.tokens, new_tk(ctxt, f: f64))!;
+                    inc_ptr(&ctxt, end - ctxt.ptr);
+                    continue;
+                case strconv::overflow =>
+                    return error(&ctxt, "64-bit floating point literal overflow");
+                case =>
+                    return error(&ctxt, "invalid floating point literal");
+                };
+            };
             const num = strings::replace(
                 strings::fromutf8(path)!, "_", "")!;
             defer free(num);
@@ -1019,6 +1050,8 @@ fn validate_const(
         assert_hint(ctxt, val, hint, primitive::NUMBER)?;
     case str =>
         assert_hint(ctxt, val, hint, primitive::STR)?;
+    case f64 =>
+        assert_hint(ctxt, val, hint, primitive::RATIO)?;
     case let kwd: keyword =>
         switch(kwd){
         case keyword::TRUE, keyword::FALSE =>
@@ -1847,6 +1880,11 @@ fn eval_member(
         end = _end;
         memb.tpe = quick_t(primitive::NUMBER);
         memb.val = val;
+    case let flt: f64 =>
+        const (val, _end) = eval_constant(ctxt, at, hint)?;
+        end = _end;
+        memb.tpe = quick_t(primitive::RATIO);
+        memb.val = val;
     case let txt: str =>
         const (val, _end) = eval_constant(ctxt, at, hint)?;
         end = _end;
@@ -2466,7 +2504,7 @@ fn _castable(_this: lichen_t, _that: lichen_t) bool = {
         case primitive::BOOL =>
             return this == primitive::BOOL ||
                 (is_subtype(this, primitive::NUMBER) &&
-                !is_subtype(this, primitive::RATIO));
+                !is_ratio(quick_t(this)));
         case =>
             return this == that;
         };
@@ -2507,7 +2545,7 @@ fn extract_root(exp: *expr_meta) (void | path_meta) = {
 fn valid_exp(oper: operator, lft_t: lichen_t, rgt_t: lichen_t) bool = {
     switch(oper){
     case operator::EQL, operator::NEQ, operator::LEQ, operator::GEQ,
-        operator::LST, operator::GTT, operator::SHL, operator::SHR =>
+        operator::LST, operator::GTT =>
         if(untyped(lft_t) || untyped(rgt_t)){
             return is_subtype(lft_t, rgt_t);
         } else {
@@ -2516,13 +2554,17 @@ fn valid_exp(oper: operator, lft_t: lichen_t, rgt_t: lichen_t) bool = {
     case operator::LOR, operator::LAND =>
         return is_subtype(lft_t, primitive::BOOL) &&
             is_subtype(rgt_t, primitive::BOOL);
-    case operator::BOR, operator::BAND, operator::PLS, operator::MIN,
+    case operator::BOR, operator::BAND, operator::SHL, operator::SHR =>
+        if(is_ratio(lft_t) || is_ratio(rgt_t)) return false;
+        if(untyped(lft_t) || untyped(rgt_t)){
+            return is_subtype(lft_t, primitive::NUMBER) &&
+                is_subtype(rgt_t, primitive::NUMBER);
+        } else {
+            return comp_type(lft_t, rgt_t);
+        };
+    case operator::PLS, operator::MIN,
         operator::MUL, operator::DIV, operator::MOD =>
         if(untyped(lft_t) || untyped(rgt_t)){
-            if((is_ratio(lft_t) && untyped(lft_t) && untyped(rgt_t)) ||
-                (is_ratio(rgt_t) && untyped(rgt_t) && untyped(lft_t))){
-                return false;
-            };
             return is_subtype(lft_t, primitive::NUMBER) &&
                 is_subtype(rgt_t, primitive::NUMBER);
         } else {
@@ -2539,14 +2581,19 @@ fn reduce_exp_t(oper: operator, lft_t: lichen_t, rgt_t: lichen_t) lichen_t = {
     case operator::EQL, operator::NEQ, operator::LEQ, operator::GEQ,
         operator::LST, operator::GTT, operator::LOR, operator::LAND =>
         return quick_t(primitive::BOOL);
-    case operator::BOR, operator::BAND, operator::PLS, operator::MIN,
-        operator::MUL, operator::DIV, operator::MOD =>
+    case operator::BOR, operator::BAND, operator::SHL, operator::SHR,
+        operator::PLS, operator::MIN, operator::MUL, operator::DIV,
+        operator::MOD =>
         if(is_ratio(lft_t) && !untyped(lft_t)){
+            return lft_t;
+        } else if(is_ratio(lft_t) && !untyped(lft_t)){
             return lft_t;
         } else if(is_ratio(rgt_t) && !untyped(rgt_t)){
             return rgt_t;
-        } else if(is_ratio(lft_t) && is_ratio(rgt_t)){
+        } else if(is_ratio(lft_t) && !untyped(rgt_t)){
             return lft_t;
+        } else if(is_ratio(rgt_t) && !untyped(lft_t)){
+            return rgt_t;
         } else {
             if(!untyped(lft_t)) return lft_t;
             return rgt_t;

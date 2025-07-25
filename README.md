@@ -105,8 +105,8 @@ roadmap:
             - [done] bin
         - [done] boolean
         - [done] fail and nomem
-        - [undone] decimal numbers
-            - [undone] decimal point
+        - [partial] decimal numbers
+            - [done] decimal point
             - [undone] scientific notation
         - [undone] array literals
             - [undone] spreading
