@@ -1,0 +1,16 @@
+// various tests for string operations
+
+io mod = use "std/io.lim";
+
+pub fn main() void = io {
+    let text = "mornin' sailor!";
+    let text' = "mornin' sailor!";
+    let length = #text;
+    let comp = text == text';
+
+    if comp {
+        io::print("test ok\n")!;
+    } else {
+        io::print("test fail\n")!;
+    };
+};

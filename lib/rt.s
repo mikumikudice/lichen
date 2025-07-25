@@ -229,13 +229,13 @@ rt.strcmp:
     push   %rbx
     push   %rcx
     push   %rdx
-    mov    0x8(%rdi),%rbx
-    mov    0x8(%rsi),%rcx
+    mov    (%rdi),%rbx
+    mov    (%rsi),%rcx
     cmp    %rcx,%rbx
     jne    rt.strcmp.f
     mov    %rbx,%rdx
-    add    $0x10,%rdi
-    add    $0x10,%rsi
+    mov    0x8(%rdi),%rdi
+    mov    0x8(%rsi),%rsi
     rt.strcmp.rpt:
     cmp    $0x0,%rdx
     je     rt.strcmp.t

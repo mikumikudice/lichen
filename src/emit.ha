@@ -785,12 +785,21 @@ fn gen_arithmetic(
         if(comp_type(lft_t, rgt_t) && is_subtype(lft_t, exp_t) &&
             !size_mismatch(lft_t, exp_t)){
             gen_cast(buff, lft_h, lft_t, dest, exp_t);
-            fmt::fprintf(buff, "\t{0} ={1} {2} {0}, {3}\n",
+            fmt::fprintfln(buff, "\t{0} ={1} {2} {0}, {3}",
                 dest, asg_t, inst, rgt_h)!;
         // boolean comparison
         } else if(comp_type(exp_t, primitive::BOOL)){
-            fmt::fprintf(buff, "\t{} ={} {} {}, {}\n",
-                dest, asg_t, inst, lft_h, rgt_h)!;
+            if(comp_type(lft_t, primitive::STR) && hand.opr == operator::EQL){
+                fmt::fprintfln(buff, "\t{} =l call $rt.strcmp(l {}, l {})",
+                    dest, lft_h, rgt_h)!;
+            } else if(comp_type(lft_t, primitive::STR) && hand.opr == operator::NEQ){
+                fmt::fprintfln(buff, "\t{} =l call $rt.strcmp(l {}, l {})",
+                    dest, lft_h, rgt_h)!;
+                fmt::fprintfln(buff, "\t{0} =l ceql {0}, 0", dest)!;
+            } else {
+                fmt::fprintfln(buff, "\t{} ={} {} {}, {}",
+                    dest, asg_t, inst, lft_h, rgt_h)!;
+            };
         // at least one member require casting
         } else {
             gen_cast(buff, lft_h, lft_t, dest, exp_t);
@@ -798,10 +807,10 @@ fn gen_arithmetic(
             defer free(rgt_wrap);
             if(short_r == ""){
                 gen_cast(buff, rgt_h, rgt_t, rgt_wrap, exp_t);
-                fmt::fprintf(buff, "\t{0} ={1} {2} {0}, {3}\n",
+                fmt::fprintfln(buff, "\t{0} ={1} {2} {0}, {3}",
                     dest, asg_t, inst, rgt_wrap)!;
             } else {
-                fmt::fprintf(buff, "\t{0} ={1} {2} {0}, {3}\n",
+                fmt::fprintfln(buff, "\t{0} ={1} {2} {0}, {3}",
                     dest, asg_t, inst, rgt_h)!;
             };
         };

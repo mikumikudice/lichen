@@ -1,3 +1,2 @@
-- implemented error assertion piping expressions
-- fixed scoping and declaration of local variables for if-else chains
-- fixed unwrapping not being emitted correctly
+- implemented string comparison by value
+- minor code improvement on expression code gen
