@@ -97,6 +97,21 @@ roadmap:
     - [partial] BNF syntax
     - [undone] grammar spec
 - [partial] parser
+    - [partial] type system
+        - [undone] mutable parameters / arguments matching
+        - [done] expression types and operator expression validation
+        - [done] function call effect validation
+        - [done] unhandled error assertion
+        - [done] unused pure function call result assertion
+        - [partial] partial type assertion and bubbling
+            - [undone] error assertion piping to statement
+            - [undone] error bubbling piping to default value fallback
+            - [undone] error piping variation tagging
+        - [undone] array indexing partials
+        - [undone] default values
+            - [undone] for functions
+            - [undone] for record fields
+        - [undone] record field assignment exhaustiveness
     - [partial] literals
         - [done] strings and runes
         - [done] integer numbers
@@ -173,6 +188,9 @@ roadmap:
             - [undone] concatenation
             - [undone] nomem error
             - [undone] first class object
+        - [undone] test block
+            - [undone] static/global
+            - [undone] dynamic/local
     - [partial] partial types
         - [partial] assertion
             - [done] basing assert and bubble
@@ -190,9 +208,9 @@ roadmap:
     - [partial] os
         - [undone] exec
     - [undone] vect
-- [undone] strings library
-    - [undone] encode
-    - [undone] strconv
+    - [undone] str
+        - [undone] encode
+        - [undone] conv
 - [undone] os library
     - bios syscalls FFI
     - bsd

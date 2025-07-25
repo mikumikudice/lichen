@@ -434,6 +434,25 @@ fn gen_stt(ctxt: *context, buff: *memio::stream, stt: path_meta) void = {
     match(stt){
     case let decl: *decl_meta =>
         gen_decl(ctxt, buff, decl);
+    case let asg: *assign_meta =>
+        move_ptr(ctxt, ctxt.tokens[asg.pos]);
+        const (l, c) = get_pos(ctxt);
+        fmt::fprintfln(buff, "\tdbgloc {}, {}", l, c)!;
+        const wrap = fmt::asprintf("%asg.val")!;
+        defer free(wrap);
+        const val = gen_exp(ctxt, buff, wrap, asg.var.nm.tpe,
+            asg.val);
+        if(val != ""){
+            fmt::fprintfln(buff, "\t{} ={} copy {}",
+                fix_nm(ctxt, buff, asg.var.nm),
+                qbe_t(asg.var.nm.tpe, mode::ASSIGN),
+                val)!;
+        } else {
+            fmt::fprintfln(buff, "\t{} ={} copy {}",
+                fix_nm(ctxt, buff, asg.var.nm),
+                qbe_t(asg.var.nm.tpe, mode::ASSIGN),
+                wrap)!;
+        };
     case let branch: *branch_meta =>
         move_ptr(ctxt, ctxt.tokens[branch.pos]);
         const (l, c) = get_pos(ctxt);

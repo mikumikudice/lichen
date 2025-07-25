@@ -354,6 +354,18 @@ mutable records can have fields reassigned, but constants can't, as a [mutabilit
 let immutable = my_record { field_1 = true, field_2 = 4 };
 let mut mutable = { immutable | field_1 = false, field_2 = 5 };
 ```
+field assignment in record literals require exhaustiveness i.e. all fields must be explicitly assigned or explicitly set to be zeroed-defaulted:
+```rust
+type foo = record {
+    bar u32,
+    egg u32,
+    baz u32 = 4,
+};
+
+x foo = foo { bar = 4 }; // invalid. `egg` and `baz` are left unassigned
+y foo = foo { bar = 4, egg = 3, ... }; // valid. baz defaults to 4
+z foo = foo { ... }; // also valid. baz is set to 4 and all other fields are set to zero
+```
 
 records can also implement subtyping as a manner of implementing some generic behaviour, often found in types like tagged unions in hare or enums in rust. except it carries all its variants in memory at all time. when using `use` in record fields, these field names become variants - assignable by type:
 ```rust

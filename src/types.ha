@@ -135,18 +135,25 @@ type scope = struct {
     upper: nullable *scope,
 };
 
-type path_meta = (*const_meta | *decl_meta | *var_meta | *fun_meta |
-    *funcall_meta | *scope_meta | *expr_meta | *hand_meta | *member_meta |
-    *branch_meta | *ternary_meta | *return_meta | *module_meta);
+type path_meta = (*const_meta | *decl_meta | *assign_meta | *var_meta | 
+    *fun_meta | *funcall_meta | *scope_meta | *expr_meta | *hand_meta |
+    *member_meta | *branch_meta | *ternary_meta | *return_meta |
+    *module_meta);
+
+type const_meta = struct {
+    pre: (void | operator),
+    val: tk_val,
+};
 
 type decl_meta = struct {
     var: *var_meta,
     val: (void | *const_meta | ...hand_t),
 };
 
-type const_meta = struct {
-    pre: (void | operator),
-    val: tk_val,
+type assign_meta = struct {
+    pos: size,
+    var: *var_meta,
+    val: *expr_meta,
 };
 
 type var_meta = struct {

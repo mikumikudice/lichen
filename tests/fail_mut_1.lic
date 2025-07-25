@@ -1,0 +1,12 @@
+// parsing test for asserting
+// mutability or function
+// parameters
+
+fn take_ref(mut x u32) unit = {
+    x = 4;
+};
+
+pub fn main() void = {
+    let y u32 = 4;
+    take_ref(y);
+};

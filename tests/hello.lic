@@ -1,11 +1,11 @@
 // parsing test for global data parsing
 // and FFI linking
 
-msg str = "mornin' sailor!\n";
 stdout u32 = use "rt.stdout";
 
-fn puts(handle u32, data str) u32 = rt use "rt.write";
+fn puts(handle u32, mut data str) u32 = rt use "rt.write";
 
 pub fn main() void = do {
+    let mut msg = "mornin' sailor!\n";
     puts(stdout, msg);
 };

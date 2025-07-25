@@ -1,0 +1,13 @@
+fn take_ref(mut x str) unit = m {
+    x = "egg";
+};
+
+pub fn main() void = m {
+    let mut x = "foo";
+    x = "bar";
+
+    let y u32 = 4;
+    let mut z = y;
+
+    take_ref(x);
+};

@@ -1,3 +1,3 @@
-- implemented floating point literals
-- fixed type validation for bitwise operators
-- fixed type checking and IR emitting for casting
+- implemented mutability semantics
+- implemented reassignment
+- implemented mutability assertion for functions

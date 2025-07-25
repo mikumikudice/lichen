@@ -989,7 +989,7 @@ fn eval_const_def(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
         if(!(tk.val is str)){
             move_ptr(ctxt, tk);
             return error_hint(ctxt,
-                "%gFFI syntax:%d\n\n\tmodule mod = use \"path/to/module\";",
+                "\n%gFFI syntax:%d\n\n\tmodule mod = use \"path/to/module\";",
                 "expected %bFFI symbol%r, but got %y{}");
         };
         end += 1;
@@ -1144,6 +1144,9 @@ fn eval_fun_def(ctxt: *context, at: size) ((*fun_meta, size) | ERROR) = {
         "expected %bparameter%r or %bend of parameter list%r, but got %y{}")?;
 
     let variadic = false;
+    let all_muts = true;
+    let any_muts = false;
+    let first_mut = 0z;
     const params: []*decl_meta = [];
     // evaluate parameter declarations
     for(!comp_tk(tk.val, symbol::RGT_PAR)){
@@ -1163,8 +1166,19 @@ fn eval_fun_def(ctxt: *context, at: size) ((*fun_meta, size) | ERROR) = {
             };
         const (param, _end) = eval_declaration(ctxt, end)?;
         param.var.nm.mut = mut;
+        // assert for FFI aggregated parameters' mutation
+        if(is_aggregated(param.var.nm.tpe)){
+            if(mut){
+                first_mut = end;
+                any_muts = true;
+            } else {
+                all_muts = false;
+            };
+        };
+        // append to parameter list
         append(params, param)!;
         end = _end;
+
         tk = next_tk(ctxt, end,
             "expected %bnext parameter%r or %bend of parameter list%r, but got %y{}")?;
 
@@ -1201,9 +1215,18 @@ fn eval_fun_def(ctxt: *context, at: size) ((*fun_meta, size) | ERROR) = {
     // eval effect tags
     const (efx, _end) = eval_efx(ctxt, end)?;
     end = _end;
+
+    // assert mutability
+    if(len(efx) == 0 && any_muts){
+        move_ptr(ctxt, ctxt.tokens[first_mut]);
+        return error_hint(ctxt,
+            "\na mutable reference may mutate the data it carries, generating side-effects",
+            "this function %btakes mutable references%r of values, but it %ydeclares no effects");
+    };
     const begins = end;
     tk = next_tk(ctxt, end,
         "expected %bFFI symbol%r or %bscope declaration%r, but got %y{}")?;
+    // FFI function
     if(comp_tk(tk.val, keyword::USE)){
         end += 1;
         const symb = next_tk(ctxt, end,
@@ -1217,6 +1240,12 @@ fn eval_fun_def(ctxt: *context, at: size) ((*fun_meta, size) | ERROR) = {
                 "expected %bFFI symbol%r, but got %y{}", arg);
         };
         name.ffi = symb.val as str;
+        if(!all_muts){
+            move_ptr(ctxt, tk);
+            return error_hint(ctxt,
+                "\ncompiler cannot guarantee this foreign function won't mutate aggregated parameters",
+                "this function is declared as foreign, but not all of its aggregated-typed parameters are declared as mutable");
+        };
     } else if(comp_tk(tk.val, symbol::LFT_CURLY)){
         end = skip_scope(ctxt, end)?;
     } else {
@@ -1362,6 +1391,8 @@ fn eval_scope(
             last_tpe = decl.var.nm.tpe;
         case let exp: *expr_meta =>
             last_tpe = exp.tpe;
+        case let asg: *assign_meta =>
+            last_tpe = quick_t(primitive::UNIT);
         case let branch: *branch_meta =>
             if(branch.rets){
                 last_tpe = host.fun.tpe;
@@ -1380,8 +1411,8 @@ fn eval_scope(
         if(last_tpe.fail && !(stt is *decl_meta) && !rets){
             move_ptr(ctxt, tk);
             return error_hint(ctxt,
-                "%gtry bubbling the error with %d?%g or asserting it with %d!",
-                "cannot %yignore error value in here");
+                "\n%gtry bubbling the error with %d?%g or asserting it with %d!",
+                "cannot %yignore error value%r in here");
         };
         // address for unassigned pure functions
         if(stt is *expr_meta){
@@ -1390,17 +1421,17 @@ fn eval_scope(
                 const call = root as *funcall_meta;
                 if(len(call.fun.effect) == 0){
                     move_ptr(ctxt, tk);
-                    if(call.fun.origin != ctxt.file){
+                    if(call.fun.origin == ctxt.file){
                         return error_hint(ctxt,
                             "%\nbtry assigning it to a variable or comparing it in a if block",
-                            "the function %b{}()%d is pure, but its value is never used",
+                            "the function %b{}()%r is %ypure%r, but its value is %ynever used",
                             call.fun.fun.name);
                     } else {
                         const mod = strings::rcut(
                             strings::rcut(call.fun.origin, "/").1, ".").0;
                         return error_hint(ctxt,
                             "\n%btry assigning it to a variable or comparing it in a if block",
-                            "the function %b{}::{}()%d is pure, but its value is never used",
+                            "the function %b{}::{}()%r is %ypure%r, but its value is %ynever used",
                             mod, call.fun.fun.name);
                     };
                 };
@@ -1486,6 +1517,48 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
             defer free(arg);
             return error(ctxt, "unexpected %y{}", arg);
         };
+    case let var: namespace =>
+        const begin = end;
+        tk = next_tk(ctxt, end + 1,
+            "expected %bassignment%r or %bexpression continuation%r, but got %y{}")?;
+        if(comp_tk(tk.val, operator::ASG)){
+            end += 2;
+            match(get_def(ctxt, var, ctxt.scp)){
+            case let var_def: *decl_meta =>
+                if(!var_def.var.nm.mut){
+                    move_ptr(ctxt, tk);
+                    return error(ctxt,
+                        "cannot %breassign to immutable%r variable %y{}",
+                        var.name);
+                };
+                const (val, _end) = eval_expression(ctxt, end, var_def.var.nm.tpe)?;
+                end = pop_assert(ctxt, _end, symbol::EOL,
+                    "expected %bend of line%r, but got %y{}")?;
+                const asg = assign_meta {
+                    pos = begin,
+                    var = var_def.var,
+                    val = val,
+                };
+                return (alloc(asg)!, end);
+            case let fun_def: *fun_meta =>
+                move_ptr(ctxt, ctxt.tokens[begin]);
+                return error(ctxt,
+                    "cannot reassign to function %b{}%r", fun_def.fun.name);
+            case let module: *module_meta =>
+                move_ptr(ctxt, ctxt.tokens[begin]);
+                return error(ctxt,
+                    "cannot reassign to module binding %b{}%r", module.name);
+            case void =>
+                move_ptr(ctxt, ctxt.tokens[begin]);
+                return error(ctxt,
+                    "namespace %b{}%r undefined at this point", var.name);
+            };
+        } else {
+            const (exp, _end) = eval_expression(ctxt, end, quick_t(primitive::ANY))?;
+            end = pop_assert(ctxt, _end, symbol::EOL,
+                "expected %bend of line%r, but got %y{}")?;
+            return (exp: path_meta, end);
+        };
     case =>
         const (exp, _end) = eval_expression(ctxt, end, quick_t(primitive::ANY))?;
         end = pop_assert(ctxt, _end, symbol::EOL,
@@ -1499,7 +1572,16 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
 fn eval_var_def(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
     let end = at;
     let tk = next_tk(ctxt, end,
-        "expected %bvariable namespace%r, but got %y{}")?;
+        "expected %bvariable namespace%r or %bmut keyword%r, but got %y{}")?;
+     const mut =
+        if(comp_tk(tk.val, keyword::MUT)){
+            end += 1;
+            tk = next_tk(ctxt, end,
+                "expected %bvariable namespace%r, but got %y{}")?;
+            yield true;
+        } else {
+            yield false;
+        };
     // validate namespace
     if(!(tk.val is namespace)){
         move_ptr(ctxt, tk);
@@ -1525,6 +1607,7 @@ fn eval_var_def(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
     const (val, _end) = eval_expression(ctxt, end, name.tpe)?;
     end = _end;
     name.tpe = val.tpe;
+    name.mut = mut;
     // assert for typing
     if(untyped(name.tpe)){
         move_ptr(ctxt, ctxt.tokens[eq]);
@@ -2082,14 +2165,25 @@ fn eval_funcall(
     for(!comp_tk(tk.val, symbol::RGT_PAR)){
         if(arg_count > max || max == 0){
             move_ptr(ctxt, tk);
-            const hint = fmt::asprintf("%gthe function %b{} takes {} {}",
+            const hint = fmt::asprintf("\n%gthe function %b{} takes {} {}",
                 fun.fun.name, max, fix_plural("parameters", max))!;
             defer free(hint);
             return error_hint(ctxt, hint, "too many arguments in function call");
         };
         const (arg, _end) = eval_expression(ctxt, end,
             fun.params[arg_count].var.nm.tpe)?;
+        // assert for mutability matching
+        if(arg.val is hand_t && extract_root(arg) is *var_meta){
+            const var = extract_root(arg) as *var_meta;
+            if(fun.params[arg_count].var.nm.mut && !var.nm.mut){
+                move_ptr(ctxt, ctxt.tokens[end]);
+                return error(ctxt,
+                "function takes a %bmutable reference%r, but variable %b{}%r is not mutable",
+                var.nm.name);
+            };
+        };
         end = _end;
+
         append(arg_list, arg)!;
         arg_count += 1;
 
@@ -2300,7 +2394,7 @@ fn eval_type(ctxt: *context, at: size) ((lichen_t, size) | ERROR) = {
                 const arg = strtoken(tk.val);
                 defer free(arg);
                 return error_hint(ctxt,
-                    "%gthe syntax for array is%d [ %boptional constant%d ]%btype",
+                    "\n%gthe syntax for arrays is%d [ %boptional constant%d ]%btype",
                     "expected %bconstant%r or %bclosing brackets%r, but got %y{}",
                     arg);
             };
@@ -2335,7 +2429,7 @@ fn eval_type(ctxt: *context, at: size) ((lichen_t, size) | ERROR) = {
                 const arg = strtoken(tk.val);
                 defer free(arg);
                 return error_hint(ctxt,
-                    "%gthe syntax for array is%d ( type %b(, type)%d )",
+                    "\n%gthe syntax for tuples is%d ( type %b(, type)%d )",
                     "expected %bclosing parenthesis%r, but got %y{}",
                     arg);
             };
@@ -2391,8 +2485,14 @@ fn comp_type(
     if(this.fail != that.fail) return false;
     if(this.base is primitive && that.base is primitive){
         return this.base as primitive == that.base as primitive;
+    } else if(this.base is *record && that.base is *record){
+        return this.base as *record == that.base as *record;
+    } else if(this.base is *array && that.base is *array){
+        return this.base as *array == that.base as *array;
+    } else if(this.base is *enum_t && that.base is *enum_t){
+        return this.base as *enum_t == that.base as *enum_t;
     } else {
-        return is_subtype(this, that);
+        return false;
     };
 };
 
@@ -2611,6 +2711,12 @@ fn untyped(tpe: lichen_t) bool = {
     return comp_type(tpe, primitive::ANY) ||
         comp_type(tpe, primitive::NUMBER) ||
         comp_type(tpe, primitive::RATIO);
+};
+
+fn is_aggregated(tpe: lichen_t) bool = {
+    return tpe.fail || is_subtype(tpe, primitive::STR) ||
+        is_subtype(tpe, primitive::CSTR) || tpe.base is *record ||
+        tpe.base is *array;
 };
 
 // assert if given type matches type hint
