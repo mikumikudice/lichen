@@ -53,6 +53,7 @@ fn qbe_t(tpe: lichen_t, md: mode = mode::REAL) str = {
         case =>
             color_error("%Runreachable:%r unknown type %y{}",
                 prim_value[tpe.base as primitive]);
+            os::exit(1);
         };
     } else {
         return "l";
@@ -142,6 +143,10 @@ fn emit_obj(
     keep_temps: bool,
     silent: bool,
 ) void = {
+    // unhide temp folder if it should be kept
+    if(keep_temps){
+        temp = strings::sub(temp, 1);
+    };
     const link_args = []: []str;
     defer free(link_args);
     defer for(let obj ..& link_args) free(obj);
@@ -187,13 +192,7 @@ fn emit_obj(
     };
 
     // create temporary directory
-    if(keep_temps){
-        // ignore prefix dot if the folder should be kept
-        run_cmd(silent, "mkdir", "-p", strings::sub(temp, 1));
-    } else {
-        // otherwise create it hidden
-        run_cmd(silent, "mkdir", "-p", temp);
-    };
+    run_cmd(silent, "mkdir", "-p", temp);
     // emit final IR file
     const object =
         match(os::create(qbe_out, fs::mode::USER_RWX)){
@@ -201,6 +200,7 @@ fn emit_obj(
         case let e: fs::error =>
             color_error("%Robject emition error:%b {}%r: {}",
                 qbe_out, fs::strerror(e));
+            os::exit(1);
         };
     io::write(object, strings::toutf8(memio::string(ir)!))!;
     io::close(object)!;

@@ -286,7 +286,7 @@ fn dummy_nm(val: str) namespace = namespace {
 fn compile(filename: str,
     stdlib_path: str,
     has_main: bool,
-    mod_check: bool,
+    mod_emit: bool,
     literals: (*[]str | void) = void,
 ) (*context | ERROR) = {
     // open source file
@@ -846,7 +846,7 @@ fn compile(filename: str,
         match(meta){
         case let fun_def: *fun_meta =>
             if(fun_def.fun.ffi is void &&
-                (fun_def.used || mod_check) &&
+                (fun_def.used || mod_emit) &&
                 fun_def.fun.name != "main"){
                 // assign current scope host
                 ctxt.host_fun = fun_def;
@@ -872,7 +872,7 @@ fn compile(filename: str,
             for(let meta .. module.ctxt.global.defs){
                 match(meta){
                 case let fun_def: *fun_meta =>
-                    if(fun_def.fun.ffi is void && (fun_def.used || mod_check)){
+                    if(fun_def.fun.ffi is void && fun_def.used){
                         // assign current scope host
                         module.ctxt.host_fun = fun_def;
                         // evaluate function scope

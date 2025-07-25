@@ -107,7 +107,7 @@ fn color(fmt: str, args: fmt::field...) void = {
 };
 
 // prints a colorized string to stderr
-fn color_error(fmt: str, args: fmt::field...) never = {
+fn color_error(fmt: str, args: fmt::field...) void = {
     const path =
         if(len(args) > 0){
             yield strings::toutf8(fmt::asprintf(fmt, args...)!);
@@ -120,7 +120,7 @@ fn color_error(fmt: str, args: fmt::field...) never = {
     defer free(buffer);
     defer io::close(buffer)!;
 
-    fmt::fatal(memio::string(buffer)!);
+    fmt::error(memio::string(buffer)!)!;
 };
 
 // halts on a TODO item
@@ -213,8 +213,10 @@ fn run_cmd(noprint: bool, cmd: str, args: str...) void = {
         case let e: exec::error =>
             if(e is exec::nocmd){
                 color_error("%Rmissing dependency:%b {}", cmd);
+                os::exit(1);
             } else {
                 color_error("%r{} failed", cmd);
+                os::exit(1);
             };
         };
     const proc = exec::start(&exe)!;

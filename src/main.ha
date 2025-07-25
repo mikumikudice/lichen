@@ -6,7 +6,7 @@ use os;
 use strings;
 
 const temp = ".lcc_temp/";
-const version = "0.14.2";
+const version = "0.14.4";
 const help =
     "\n%gflags usage:%d\n"
     "\n %g-h\t\t"
@@ -34,6 +34,9 @@ const help =
 
     "\n %g-verbose\t\t"
     "%y-- logs each compilation step. if %g-c%y is also set, dumps qbe IR instead"
+
+    "\n %g-clean\t\t"
+    "%y-- prompts error messages without escape characters for coloring"
     
     "\n %g-t\t\t"
     "%y-- keeps temporary files at %gtmp/%y folder"
@@ -66,6 +69,7 @@ export fn main() void = {
         if(strings::hasprefix(arg, "-")){
             if(arg == "-l"){
                 color_error("%rmissing link object name with %y-l");
+                os::exit(1);
             };
             if(strings::hasprefix(arg, "-l")){
                 append(also_link, arg)!;
@@ -94,15 +98,18 @@ export fn main() void = {
                     continue;
                 } else {
                     color_error("%rmissing lib path for -std flag");
+                    os::exit(1);
                 };
             case "-static" =>
                 if(shared_lib){
                     color_error("%rcannot set both static and shared flags");
+                    os::exit(1);
                 };
                 static_lib = true;
             case "-shared" =>
                 if(static_lib){
                     color_error("%rcannot set both static and shared flags");
+                    os::exit(1);
                 };
                 shared_lib = true;
             // verbose mode
@@ -122,6 +129,7 @@ export fn main() void = {
                 continue;
             case =>
                 color_error("%runknown flag %g{}", arg);
+                os::exit(1);
             };
         } else {
             // input file
@@ -132,6 +140,7 @@ export fn main() void = {
                 // define only once
                 if(target_file != ""){
                     color_error("%rmultiple output files given");
+                    os::exit(1);
                 };
                 target_file = arg;
             };
@@ -139,6 +148,7 @@ export fn main() void = {
     };
     if(source_file == ""){
         color_error("%rno input file given");
+        os::exit(1);
     };
     // set the output filename to default if not set
     if(target_file == ""){
@@ -156,7 +166,7 @@ export fn main() void = {
             strings::hassuffix(source_file, ".lim"));
     const object =
         match(compile(source_file, stdlib_path, is_main,
-        !is_main && just_check)){
+        strings::hassuffix(source_file, ".lim"))){
         case let obj: *context => yield obj;
         case let err: ERROR => report(err);
         };
