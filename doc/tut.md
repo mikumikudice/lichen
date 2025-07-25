@@ -354,7 +354,7 @@ mutable records can have fields reassigned, but constants can't, as a [mutabilit
 let immutable = my_record { field_1 = true, field_2 = 4 };
 let mut mutable = { immutable | field_1 = false, field_2 = 5 };
 ```
-field assignment in record literals require exhaustiveness i.e. all fields must be explicitly assigned or explicitly set to be zeroed-defaulted:
+field assignment in record literals require exhaustiveness i.e. all fields must be explicitly assigned or explicitly set to be zeroed or defaulted:
 ```rust
 type foo = record {
     bar u32,
@@ -699,7 +699,7 @@ the index is optional, but must be placed after the iteration variable. it can b
 
 once it's safe to assume the for loop will never go out of bounds with an array, when the iteration item is marked as mutable, it can be used to assign to a particular index of the array, as follows:
 ```rust
-let mut arr = [1, 2, 3, 4, 5] u32;
+let mut list = [1, 2, 3, 4, 5] u32;
 
 for mut item, index .. list {
     item = list[index + 1] ?> 0;
