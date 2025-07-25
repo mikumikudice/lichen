@@ -4,7 +4,7 @@ pub fn main() void = io {
     let x f64 = 124.3;
     let pi f64 = 355 / 113;
 
-    if x == 120 + 4.3 && pi > 3.14 {
+    if x == 120 + 4.3 && pi > 4.16 - 1.02 {
         io::println("test ok")!;
     } else {
         io::println("test failed")!;

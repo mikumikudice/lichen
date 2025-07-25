@@ -1159,7 +1159,7 @@ fn emit_constant(
             case operator::PLS =>
                 return fmt::asprintf("{}{}", prefix, flt)!;
             case operator::MIN =>
-                return fmt::asprintf("{}{}", prefix, -flt)!;
+                return fmt::asprintf("-{}{}", prefix, flt)!;
             case =>
                 fmt::fatal("emit_constant: unreachable");
             };
