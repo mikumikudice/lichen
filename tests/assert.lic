@@ -1,3 +1,6 @@
+// parsing test for error assertion
+// and error state piping syntax
+
 io mod = use "std/io.lim";
 
 fn div(x u32, y u32) !u32 = {

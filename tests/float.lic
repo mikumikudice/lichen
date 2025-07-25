@@ -1,3 +1,6 @@
+// parsing test for floating points
+// syntax and operations
+
 io mod = use "std/io.lim";
 
 pub fn main() void = io {

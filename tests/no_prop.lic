@@ -1,5 +1,6 @@
 // parsing test for unhandled but
 // assigned error types
+
 pub fn main() void = {
     let foo = bar();
 };
