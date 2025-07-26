@@ -2305,7 +2305,7 @@ fn eval_array_lit(
                     return error(ctxt, "expected %bu64 literal number%r for length");
                 };
             } else {
-                return error(ctxt, "array lengh %yset multiple times");
+                return error(ctxt, "array length %yset multiple times");
             };
             end += 1;
             tk = next_tk(ctxt, end,
@@ -3079,6 +3079,18 @@ fn is_aggregated(tpe: lichen_t) bool = {
     return tpe.fail || is_subtype(tpe, primitive::STR) ||
         is_subtype(tpe, primitive::CSTR) || tpe.base is *record ||
         tpe.base is *array;
+};
+
+fn size_known(tpe: lichen_t) bool = {
+    match(tpe.base){
+    case let prim: primitive =>
+        return !is_subtype(prim, primitive::STR) &&
+            !is_subtype(prim, primitive::CSTR);
+    case let arr: *array =>
+        return arr.length is size;
+    case =>
+        return true;
+    };
 };
 
 // assert if given type matches type hint

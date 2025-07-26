@@ -448,16 +448,24 @@ fn gen_stt(ctxt: *context, buff: *memio::stream, stt: path_meta) void = {
         defer free(wrap);
         const val = gen_exp(ctxt, buff, wrap, asg.var.nm.tpe,
             asg.val);
-        if(val != ""){
-            fmt::fprintfln(buff, "\t{} ={} copy {}",
-                fix_nm(ctxt, buff, asg.var.nm),
-                qbe_t(asg.var.nm.tpe, mode::ASSIGN),
-                val)!;
+        const asg_val =
+            if(val != ""){
+                yield val;
+            } else {
+                yield wrap;
+            };
+        const name = fix_nm(ctxt, buff, asg.var.nm);
+        defer free(name);
+        if(asg.var.nm.mut &&
+            is_aggregated(asg.var.nm.tpe) &&
+            size_known(asg.var.nm.tpe)){
+            const mem_size = type_size(asg.var.nm.tpe);
+            fmt::fprintfln(buff, "\t%dup =l alloc8 {}", mem_size)!;
+            fmt::fprintfln(buff, "\tblit {}, %dup, {}", val, mem_size)!;
+            fmt::fprintfln(buff, "\t{} =l copy %dup", name)!;
         } else {
-            fmt::fprintfln(buff, "\t{} ={} copy {}",
-                fix_nm(ctxt, buff, asg.var.nm),
-                qbe_t(asg.var.nm.tpe, mode::ASSIGN),
-                wrap)!;
+            fmt::fprintfln(buff, "\t{} ={} copy {}", name,
+                qbe_t(asg.var.nm.tpe, mode::ASSIGN), asg_val)!;
         };
     case let branch: *branch_meta =>
         move_ptr(ctxt, ctxt.tokens[branch.pos]);
@@ -579,14 +587,35 @@ fn gen_decl(ctxt: *context, buff: *memio::stream, decl: *decl_meta) void = {
 
     const name = fix_nm(ctxt, buff, decl.var.nm);
     defer free(name);
-    match(decl.val){
-    case let const_val: *const_meta =>
+    const val_exp = decl.val as hand_t;
+    // value is a literal of something
+    if(val_exp is *expr_meta &&
+        extract_root(val_exp as *expr_meta) is *const_meta){
+        // extract const
+        const const_val = extract_root(val_exp as *expr_meta) as *const_meta;
+        // emit
         const val = emit_constant(ctxt, buff, const_val, decl.var.nm.tpe);
         defer free(val);
-        fmt::fprintfln(buff, "\t{} ={} copy {}", name,
-            qbe_t(decl.var.nm.tpe, mode::ASSIGN), val)!;
-    case let hand: hand_t =>
-        const memb = gen_exp(ctxt, buff, name, decl.var.nm.tpe, hand);
+        // assert if a copy is needed
+        if(decl.var.nm.mut && is_aggregated(decl.var.nm.tpe) &&
+            (size_known(decl.var.nm.tpe) || strings::hasprefix(val, "$str."))){
+            if(strings::hasprefix(val, "$str.")){
+                const mem_size = len(const_val.val as str);
+                fmt::fprintfln(buff, "\t%dup =l alloc8 {}", mem_size)!;
+                fmt::fprintfln(buff, "\tblit {}, %dup, {}", val, mem_size)!;
+                fmt::fprintfln(buff, "\t{} =l copy %dup", name)!;
+            } else {
+                const mem_size = type_size(decl.var.nm.tpe);
+                fmt::fprintfln(buff, "\t%dup =l alloc8 {}", mem_size)!;
+                fmt::fprintfln(buff, "\tblit {}, %dup, {}", val, mem_size)!;
+                fmt::fprintfln(buff, "\t{} =l copy %dup", name)!;
+            };
+        } else {
+            fmt::fprintfln(buff, "\t{} ={} copy {}", name,
+                qbe_t(decl.var.nm.tpe, mode::ASSIGN), val)!;
+        };
+    } else {
+        const memb = gen_exp(ctxt, buff, name, decl.var.nm.tpe, val_exp);
         if(memb != ""){
             defer free(memb);
             fmt::fprintfln(buff, "\t{} ={} copy {}", name,

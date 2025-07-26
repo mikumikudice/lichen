@@ -4,11 +4,9 @@ io mod = use "std/io.lim";
 
 pub fn main() void = io {
     let text = "mornin' sailor!";
-    let text' = "mornin' sailor!";
-    let length = #text;
-    let comp = text == text';
+    let mut text' = "mornin' sailor!";
 
-    if comp {
+    if text == text' && #text == #text' {
         io::print("test ok\n")!;
     } else {
         io::print("test fail\n")!;
