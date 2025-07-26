@@ -25,6 +25,11 @@ local tests = {
     { src = "fail_mut_2", code = 1, nocomp = true },
     { src = "fail_mut_3", code = 1, nocomp = true },
     { src = "fail_mut_4", code = 1, nocomp = true },
+    { src = "fail_array_1", code = 1, nocomp = true },
+    { src = "fail_array_2", code = 1, nocomp = true },
+    { src = "fail_array_3", code = 1, nocomp = true },
+    { src = "fail_array_4", code = 1, nocomp = true },
+    { src = "fail_array_5", code = 1, nocomp = true },
     -- fail assertion --
     { src = "fail_io_bad_handle", code = 1, nocomp = false },
     { src = "fail_io_from_result", code = 1, nocomp = false },
@@ -36,6 +41,7 @@ local tests = {
     { src = "float", output = "test ok\n", code = 0 },
     { src = "mut", code = 0 },
     { src = "strings", output = "test ok\n", code = 0 },
+    { src = "array", code = 0 },
     -- branching --
     { src = "if-else",
         output = "test 0 ok\ntest 1 ok\ntest 2 ok\ntest 3 ok\ntest 4 ok\ntest 5 ok\ntest 6 ok\n",

@@ -1,0 +1,6 @@
+// parsing test for invalid array
+// length
+
+pub fn main() void = {
+    let arr [4]u32 = [0; 1, 2, 3, 4, 5];
+};

@@ -221,7 +221,10 @@ fn run_cmd(noprint: bool, cmd: str, args: str...) void = {
         };
     const proc = exec::start(&exe)!;
     const stat = exec::wait(&proc)!;
-    if(stat.status != 0) color_error("%r{} failed", cmd);
+    if(stat.status != 0){
+        color_error("%r{} failed", cmd);
+        os::exit(1);
+    };
 };
 
 fn ordnum(n: u64) str = {

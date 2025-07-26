@@ -95,7 +95,7 @@ const sym_value = [
     "module field access",
     "open parenthesis", "close parenthesis",
     "scope definition", "end of scope",
-    "indexing", "end of indexing",
+    "open square brackets", "close square brackets",
 ];
 
 type symbol = enum u8 {
@@ -136,14 +136,20 @@ type scope = struct {
     upper: nullable *scope,
 };
 
-type path_meta = (*const_meta | *decl_meta | *assign_meta | *var_meta | 
-    *fun_meta | *funcall_meta | *scope_meta | *expr_meta | *hand_meta |
-    *member_meta | *branch_meta | *ternary_meta | *return_meta |
+type path_meta = (*const_meta | *array_lit_meta | *decl_meta | *assign_meta |
+    *var_meta | *fun_meta | *funcall_meta | *scope_meta | *expr_meta |
+    *hand_meta | *member_meta | *branch_meta | *ternary_meta | *return_meta |
     *type_meta | *module_meta);
 
 type const_meta = struct {
     pre: (void | operator),
     val: tk_val,
+};
+
+type array_lit_meta = struct {
+    tpe: lichen_t,
+    items: []*expr_meta,
+    spreads_at: (void | size),
 };
 
 type decl_meta = struct {
@@ -215,7 +221,7 @@ type member_meta = struct {
     pos: size,
     tpe: lichen_t,
     pre: (void | operator),
-    val: (*const_meta | *var_meta | *funcall_meta | keyword),
+    val: (*const_meta | *array_lit_meta | *var_meta | *funcall_meta | keyword),
     prop: (void | propagation),
 };
 

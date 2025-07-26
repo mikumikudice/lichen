@@ -21,12 +21,24 @@ fn free_context(ctxt: *context, main: bool = false) void = {
     if(main){
         free(ctxt.literals);
     };
+    free_arrays();
     free(ctxt);
 };
 
 fn free_nodes(this: path_meta) void = {
     match(this){
     case let meta: *const_meta =>
+        free(meta);
+    case let meta: *array_lit_meta =>
+        const max =
+            match(meta.spreads_at){
+            case let e: size => yield e + 1;
+            case void => yield len(meta.items);
+            };
+        for(let i = 0z; i < max; i += 1){
+            free_nodes(meta.items[i]);
+        };
+        free(meta.items);
         free(meta);
     case let meta: *decl_meta =>
         if(!(meta.val is void))
@@ -67,7 +79,12 @@ fn free_nodes(this: path_meta) void = {
         free(meta);
     case let meta: *member_meta =>
         if(!(meta.val is keyword))
-            free_nodes(meta.val as (*var_meta | *const_meta | *funcall_meta));
+            free_nodes(meta.val as
+                (*const_meta | *array_lit_meta | *var_meta | *funcall_meta));
+        if(meta.prop is propagation){
+            const prop = meta.prop as propagation;
+            if(prop.1 is path_meta) free_nodes(prop.1 as path_meta);
+        };
         free(meta);
     case let meta: *branch_meta =>
         for(let cond .. meta.conds){

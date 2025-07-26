@@ -3,3 +3,6 @@
 - fixed error assertion for too many function call parameters
 - optimized module parsing to avoid duplicates
 - added parsing for cast to named types
+- fix tokenization of `0...` falsely as a floating point
+- fixed some memory leaks
+- added back undefined namespace hints

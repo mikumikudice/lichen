@@ -890,6 +890,66 @@ fn assign_memb(
             } else {
                 return emit_constant(ctxt, buff, const_val, memb.tpe);
             };
+        case let arr_lit: *array_lit_meta =>
+            const as_arr = arr_lit.tpe.base as *array;
+            fmt::fprintfln(buff,
+                "\t{0}.val =l alloc8 {1}\n\t{0}.val.ptr =l copy {0}.val",
+                dest, type_size(as_arr.base) * len(arr_lit.items))!;
+            const spread =
+                match(arr_lit.spreads_at){
+                case let e: size => yield e;
+                case void => yield len(arr_lit.items);
+                };
+            let last_val = "";
+            let last_set = false;
+            for(let i = 0z; i < len(arr_lit.items); i += 1){
+                if(i < spread){
+                    const wrap = fmt::asprintf("{}.itm.{}", dest, i)!;
+                    defer free(wrap);
+                    const val = gen_exp(ctxt, buff, wrap, as_arr.base,
+                        arr_lit.items[i]);
+                    defer free(val);
+                    if(val != ""){
+                        last_set = false;
+                        fmt::fprintfln(buff, "\tstore{} {}, {}.val.ptr",
+                            qbe_t(as_arr.base), val, dest)!;
+                    } else {
+                        last_set = true;
+                        fmt::fprintfln(buff, "\tstore{} {}, {}.val.ptr",
+                            qbe_t(as_arr.base), wrap, dest)!;
+                    };
+                } else {
+                    const wrap = fmt::asprintf("{}.itm.{}", dest, spread)!;
+                    defer free(wrap);
+                    if(i == 0 || !last_set){
+                        last_val = gen_exp(ctxt, buff, wrap, as_arr.base,
+                            arr_lit.items[i]);
+                        if(last_val != ""){
+                            fmt::fprintfln(buff, "\tstore{} {}, {}.val.ptr",
+                                qbe_t(as_arr.base), last_val, dest)!;
+                        } else {
+                            fmt::fprintfln(buff, "\tstore{} {}, {}.val.ptr",
+                                qbe_t(as_arr.base), wrap, dest)!;
+                        };
+                    } else if(last_val != ""){
+                            fmt::fprintfln(buff, "\tstore{} {}, {}.val.ptr",
+                            qbe_t(as_arr.base), last_val, dest)!;
+                    } else {
+                        fmt::fprintfln(buff, "\tstore{} {}, {}.val.ptr",
+                            qbe_t(as_arr.base), wrap, dest)!;
+                    };
+                };
+                //if(last_val != "") free(last_val);
+                fmt::fprintfln(buff,
+                    "\t{0}.val.ptr =l add {0}.val.ptr, 8\n", dest)!;
+            };
+            fmt::fprintfln(buff, "\t{} =l alloc8 16", dest)!;
+            fmt::fprintfln(buff, "\t{0}.ptr =l copy {0}", dest)!;
+            fmt::fprintfln(buff,
+                "\tstorel {}, {}.ptr", len(arr_lit.items), dest)!;
+            fmt::fprintfln(buff, "\t{0}.ptr =l add {0}.ptr, 8", dest)!;
+            fmt::fprintfln(buff, "\tstorel {0}.val, {0}.ptr", dest)!;
+            yield ("", arr_lit.tpe, true);
         case let var: *var_meta =>
             yield (fix_nm(ctxt, buff, var.nm), var.nm.tpe, false);
         case let call: *funcall_meta =>

@@ -379,7 +379,8 @@ fn compile(filename: str,
             path = ctxt.src[ctxt.ptr .. end];
 
             // decimal point literal
-            if(ctxt.src[end] == '.'){
+            if(ctxt.src[end] == '.' && end + 1 < max &&
+                is_numeric(ctxt.src[end + 1])){
                 end += 1;
                 for(end < max && is_numeric(ctxt.src[end]) ||
                     ctxt.src[end] == '_') end += 1;
@@ -648,7 +649,12 @@ fn compile(filename: str,
                 start += 1;
                 inc_ptr(&ctxt);
             case '.' =>
-                if(start < end - 1 && ctxt.src[start + 1] == '.'){
+                if(start < end - 2 && ctxt.src[start + 1] == '.' &&
+                    ctxt.src[start + 2] == '.'){
+                    append(ctxt.tokens, new_tk(ctxt, operator::SPREAD))!;
+                    start += 3;
+                    inc_ptr(&ctxt, 3);
+                } else if(start < end - 1 && ctxt.src[start + 1] == '.'){
                     append(ctxt.tokens, new_tk(ctxt, operator::RANGE))!;
                     start += 2;
                     inc_ptr(&ctxt, 2);
@@ -792,7 +798,7 @@ fn compile(filename: str,
     };
     // report on empty file
     if(len(ctxt.tokens) == 0){
-        return fail("the file \"{}\" is empty%d\n\n%gtry adding:\n\n%d{}",
+        return fail("the file \"{}\" is empty%d\n\n%gtry adding:\n\n%d{}\n",
             filename, fn_demo);
     };
     append(ctxt.tokens, new_tk(ctxt, eof))!;
@@ -1863,6 +1869,9 @@ fn eval_expression(
     for(tk.val is operator){
         const oper = tk.val as operator;
         if(!is_binary_op(oper)){
+            // halt on invalid state
+            if(comp_tk(oper, operator::SPREAD)) break;
+            // report error otherwise
             move_ptr(ctxt, tk);
             const arg = strtoken(oper);
             defer free(arg);
@@ -1900,9 +1909,11 @@ fn eval_expression(
     };
     let (val, tpe) = reduce_members(ctxt, at, members)?;
     // assign a possible less-untyped type
-    if(untyped(tpe)) tpe = hint;
+    if(untyped(tpe) && !comp_type(hint, primitive::ANY)) tpe = hint;
     // assert for expected expression type
     assert_hint(ctxt, ctxt.tokens[at], tpe, hint)?;
+    assert(!comp_type(tpe, primitive::ANY));
+
     const out = alloc(expr_meta {
         pos = at,
         tpe = tpe,
@@ -2028,6 +2039,11 @@ fn eval_member(
             exp.prop = prop;
             end = _end;
             return (exp, end, false);
+        case symbol::LFT_SQUARE =>
+            const (arr, _end) = eval_array_lit(ctxt, at, possible)?;
+            end = _end;
+            memb.tpe = arr.tpe;
+            memb.val = arr;
         case =>
             return (void, at, true);
         };
@@ -2196,9 +2212,31 @@ fn eval_member(
                 todo("first class modules");
             };
         case =>
+            // fetch missing symbol possible hint
+            const hint =
+                if(comp_tk(ctxt.tokens[end + 1].val, symbol::FIELD)){
+                    yield fmt::asprintf(
+                        "\n%gtry using:\n\n"
+                        "\t%d{0} mod = use \"std/{0}.lim\";\n"
+                        "\n%gat global scope\n", nm.name)!;
+                } else if(comp_tk(ctxt.tokens[end + 1].val, symbol::LFT_PAR)){
+                    const fn_help = undef_tip(nm.name);
+                    yield if(fn_help != ""){
+                        yield strings::dup(fn_help)!;
+                    } else {
+                        yield "";
+                    };
+                } else {
+                    yield "";
+                };
             move_ptr(ctxt, tk);
-            return error(ctxt,
-                "namespace %b{}%r undefined at this point", nm.name);
+            if(hint != ""){
+                return error_hint(ctxt, hint,
+                    "namespace %b{}%r undefined at this point", nm.name);
+            } else {
+                return error_hint(ctxt,
+                    "namespace %b{}%r undefined at this point", nm.name);
+            };
         };
     case =>
         return (void, at, true);
@@ -2211,6 +2249,134 @@ fn eval_member(
     assert(!comp_type(memb.tpe, primitive::ANY));
 
     return (alloc(memb)!, end, false);
+};
+
+fn eval_array_lit(
+    ctxt: *context,
+    at: size,
+    hint: lichen_t,
+) ((*array_lit_meta, size) | ERROR) = {
+    // assert correct position
+    assert(comp_tk(ctxt.tokens[at].val, symbol::LFT_SQUARE));
+
+    let end = at + 1;
+    let tk = next_tk(ctxt, end,
+        "expected %barray item%r or %bend of array%r, but got %y{}")?;
+
+    // assure expression type is an array and extract
+    // array item type for further parsing
+    let (tpe, itm_tpe) = wrap_array(hint);
+    let spreads_at: (void | size) = void;
+
+    const items: []*expr_meta = [];
+    const as_arr = tpe.base as *array;
+    // iterate until end of array
+    for(!comp_tk(tk.val, symbol::RGT_SQUARE)){
+        const begin = end;
+        const (itm, _end) = eval_expression(ctxt, end,
+            quick_t(primitive::ANY))?;
+        end = _end;
+        tk = next_tk(ctxt, end,
+            "expected %bnext array item%r or %bend of array%r, but got %y{}")?;
+
+        // value is actually the array length
+        if(comp_tk(tk.val, symbol::EOL)){
+            move_ptr(ctxt, ctxt.tokens[begin]);
+            // assert it's a valid length type
+            if(!is_subtype(itm.tpe, primitive::U64)){
+                const arg1 = strtype(quick_t(primitive::U64));
+                defer free(arg1);
+                const arg2 = strtype(itm.tpe);
+                defer free(arg2);
+                return error(ctxt,
+                    "expected %btype {}%r as array length, but got %ytype {}",
+                    arg1, arg2);
+            };
+            // assert if the array length is not set
+            if(as_arr.length is void){
+                // extract expression root and assert for its kind
+                const root = extract_root(itm);
+                // if it's a number literal
+                if(root is *const_meta){
+                    const val = root as *const_meta;
+                    as_arr.length = val.val as size;
+                // something else
+                } else {
+                    return error(ctxt, "expected %bu64 literal number%r for length");
+                };
+            } else {
+                return error(ctxt, "array lengh %yset multiple times");
+            };
+            end += 1;
+            tk = next_tk(ctxt, end,
+                "expected %bnext array item%r or %bend of array%r, but got %y{}")?;
+            continue;
+        } else if(comp_tk(tk.val, operator::SPREAD)){
+            if(as_arr.length is void){
+                move_ptr(ctxt, tk);
+                return error(ctxt,
+                    "cannot %bfill items%r with array of %yundefined size");
+            } else {
+                assert_hint(ctxt, ctxt.tokens[begin], itm.tpe, itm_tpe)?;
+                if(untyped(itm_tpe)) itm_tpe = itm.tpe;
+                spreads_at = len(items);
+                for(let i = len(items); i < as_arr.length as size; i += 1){
+                    append(items, itm)!;
+                };
+            };
+            end += 1;
+            tk = next_tk(ctxt, end,
+                "expected %bnext array item%r or %bend of array%r, but got %y{}")?;
+        } else {
+            assert_hint(ctxt, ctxt.tokens[begin], itm.tpe, itm_tpe)?;
+            if(untyped(itm_tpe)) itm_tpe = itm.tpe;
+            // assert for array length
+            if(as_arr.length is size && len(items) == as_arr.length as size){
+                move_ptr(ctxt, ctxt.tokens[begin]);
+                return error(ctxt, "too many items in array of %blength {}",
+                    as_arr.length as size);
+            };
+            append(items, itm)!;
+        };
+
+        if(comp_tk(tk.val, symbol::RGT_SQUARE)) break;
+        end += 1;
+        if(!comp_tk(tk.val, symbol::COMMA)){
+            move_ptr(ctxt, tk);
+            const arg = strtoken(tk.val);
+            defer free(arg);
+            return error(ctxt,
+                "expected %bcomma%r, bug got %y{}", arg);
+        };
+        tk = next_tk(ctxt, end,
+            "expected %barray item%r or %bend of array%r, but got %y{}")?;
+    };
+    // assert for array length
+    if(as_arr.length is size && len(items) > as_arr.length as size){
+        move_ptr(ctxt, tk);
+        return error(ctxt, "too many items in array of %blength {}",
+            as_arr.length as size);
+    };
+    end = pop_assert(ctxt, end, symbol::RGT_SQUARE,
+        "expected %bend of array%r, but got %y{}")?;
+
+    const (cast, prop, _end) = eval_cast(ctxt, itm_tpe, end)?;
+    as_arr.base = cast;
+    if(untyped(as_arr.base)){
+        move_ptr(ctxt, ctxt.tokens[at]);
+        return error(ctxt, "cannot deduce array type");
+    };
+    if(prop is propagation){
+        move_ptr(ctxt, ctxt.tokens[end]);
+        return error(ctxt, "cannot %ypropagate%r array items %yerror state");
+    };
+    end = _end;
+    const out = array_lit_meta {
+        tpe = tpe,
+        items = items,
+        spreads_at = spreads_at,
+    };
+    return (alloc(out)!, end);
 };
 
 fn eval_ternary(
@@ -2410,12 +2576,55 @@ fn eval_declaration(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
     return (alloc(meta)!, end);
 };
 
-// guarantees a given type is always a complete type
+// guarantees a given type is always represented as lichen_t
 fn wrap_primitive(tpe: (primitive | lichen_t)) lichen_t =
     match(tpe){
     case let prim: primitive => return quick_t(prim);
     case let tp: lichen_t => return tp;
     };
+
+let allocs: []*array = [];
+
+// helper function for anonymous array types
+fn alloc_array(arr: array) *array = {
+    for(let a ..& allocs){
+        if(((a.length is void && arr.length is void) ||
+            (a.length is void && arr.length is size) ||
+            (a.length is size && arr.length is size &&
+            a.length as size == arr.length as size)) &&
+            comp_type(a.base, arr.base)){
+            return a;
+        };
+    };
+    const res = alloc(arr)!;
+    append(allocs, res)!;
+    return res;
+};
+
+fn free_arrays() void = {
+    for(let tpe .. allocs){
+        free(tpe);
+    };
+    free(allocs);
+};
+
+// guarantees a given type is always a  
+fn wrap_array(_tpe: (primitive | lichen_t)) (lichen_t, lichen_t) = {
+    const tpe = wrap_primitive(_tpe);
+    match(tpe.base){
+    case let arr: *array =>
+        return (tpe, arr.base);
+    case =>
+        const arr = lichen_t {
+            fail = false,
+            base = alloc_array(array {
+                length = void,
+                base = tpe,
+            }),
+        };
+        return (arr, tpe);
+    };
+};
 
 // assert for any type casting and if it's a valid cast
 // returns `current` if no cast was found
@@ -2656,13 +2865,16 @@ fn is_subtype(
 };
 
 fn _is_subtype(_this: lichen_t, _that: lichen_t) bool = {
+    // any is a subtype of anything
+    if(comp_type(_this, primitive::ANY) ||
+        comp_type(_that, primitive::ANY)) return true;
     // an optional type cannot be a subtype of a solid type
-    if(!untyped(_this) && !untyped(_that) && _this.fail && !_that.fail) return false;
+    if(!untyped(_this) && !untyped(_that) &&
+        _this.fail && !_that.fail) return false;
     // primitive comparison
     if(_this.base is primitive && _that.base is primitive){
         const this = _this.base as primitive;
         const that = _that.base as primitive;
-        if(this == primitive::ANY || that == primitive::ANY) return true;
         switch(that){
         case primitive::U8, primitive::U16, primitive::U32,
             primitive::U64 =>
@@ -2785,7 +2997,8 @@ fn extract_root(exp: *expr_meta) (void | path_meta) = {
     case let memb: *member_meta =>
         match(memb.val){
         case keyword => void;
-        case => return memb.val as (*const_meta | *var_meta | *funcall_meta);
+        case => return memb.val as
+            (*const_meta | *array_lit_meta | *var_meta | *funcall_meta);
         };
     };
 };
@@ -2930,4 +3143,26 @@ fn pop_assert(
         return error(ctxt, msg, arg);
     };
     return at + 1;
+};
+
+// returns a tip for a given undefined function
+fn undef_tip(name: str) str = {
+    if(name == "print"){
+        return "\n%gtry using the module %yio%g with "
+            "%p\"%bio%d::%bprint%d()%p\"";
+    } else if(name == "printf"){
+        return "\n%gtry using the module %yio%g with "
+            "%p\"%bio%d::%bprintf%d()%p\"";
+    } else if(name == "println"){
+        return "\n%gtry using the module %yio%g with "
+            "%p\"%bio%d::%bprintln%d()%p\"";
+    } else if(name == "scan"){
+        return "\n%gtry using the module %yio%g with "
+            "%p\"%bio%d::%bscan%d()%p\"";
+    } else if(name == "scanf"){
+        return "\n%gtry using the module %yio%g with "
+            "%p\"%bio%d::%bscan%d()%p\"";
+    } else {
+        return "";
+    };
 };
