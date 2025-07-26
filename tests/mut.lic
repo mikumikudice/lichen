@@ -1,9 +1,7 @@
 // parsing test for all mutable
 // semantics and syntax
 
-fn take_ref(mut x str) unit = m {
-    x = "egg";
-};
+fn take_ref(mut x str) unit = m { };
 
 pub fn main() void = m {
     let mut x = "foo";

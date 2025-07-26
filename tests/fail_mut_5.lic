@@ -1,0 +1,12 @@
+// parsing test for asserting
+// reassignments to function
+// parameters
+
+fn take_ref(mut x str) unit = m {
+    x = "bar";
+};
+
+pub fn main() void = m {
+    let mut y str = "abc";
+    take_ref(y);
+};

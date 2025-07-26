@@ -1029,6 +1029,7 @@ fn gen_funcall(
                 ffi = void,
                 ...
             },
+            owner = ctxt,
             pos = exp.pos,
         };
         append(defs, alloc(temp)!)!;

@@ -23,6 +23,8 @@ local tests = {
     { src = "fail_unused", code = 1, nocomp = true },
     { src = "fail_mut_1", code = 1, nocomp = true },
     { src = "fail_mut_2", code = 1, nocomp = true },
+    { src = "fail_mut_3", code = 1, nocomp = true },
+    { src = "fail_mut_4", code = 1, nocomp = true },
     -- fail assertion --
     { src = "fail_io_bad_handle", code = 1, nocomp = false },
     { src = "fail_io_from_result", code = 1, nocomp = false },

@@ -6,7 +6,7 @@ use os;
 use strings;
 
 const temp = ".lcc_temp/";
-const version = "0.14.5";
+const version = "0.15.0";
 const help =
     "\n%gflags usage:%d\n"
     "\n %g-h\t\t"
@@ -39,8 +39,8 @@ const help =
     "%y-- prompts error messages without escape characters for coloring"
     
     "\n %g-t\t\t"
-    "%y-- keeps temporary files at %gtmp/%y folder"
-    "\n%gget help on learning how to use lichen in "
+    "%y-- keeps temporary files at %glcc_temp/%y folder"
+    "\n\n%gget help on learning how to use lichen in "
     "%bhttps://git.sr.ht/~mikaela-md/lcc/tree/main/doc/tut.md";
 
 let no_color = false;

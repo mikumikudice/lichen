@@ -1,0 +1,9 @@
+// parsing test for asserting
+// assignments of immutable
+// data to mutable variables
+
+pub fn main() void = m {
+    let x = "foo";
+    let mut y = "bar";
+    y = x;
+};

@@ -4,6 +4,7 @@ type namespace = struct {
     pub: bool,
     mut: bool,
     glob: bool,
+    param: bool,
     name: str,
     ffi: (str | void),
     tpe: lichen_t,
@@ -125,21 +126,20 @@ type context = struct {
     begin: size,
     tokens: []token,
     literals: *[]str,
-    typedefs: []lichen_t,
     host_fun: nullable *fun_meta,
     global: *scope,
     scp: *scope,
 };
 
 type scope = struct {
-    defs: [](*fun_meta | *decl_meta | *module_meta),
+    defs: [](*fun_meta | *decl_meta | *type_meta | *module_meta),
     upper: nullable *scope,
 };
 
 type path_meta = (*const_meta | *decl_meta | *assign_meta | *var_meta | 
     *fun_meta | *funcall_meta | *scope_meta | *expr_meta | *hand_meta |
     *member_meta | *branch_meta | *ternary_meta | *return_meta |
-    *module_meta);
+    *type_meta | *module_meta);
 
 type const_meta = struct {
     pre: (void | operator),
@@ -159,11 +159,13 @@ type assign_meta = struct {
 
 type var_meta = struct {
     nm: namespace,
+    owner: *context,
     pos: size,
 };
 
 type fun_meta = struct {
     fun: namespace,
+    owner: *context,
     pos: size,
     begins: size,
     origin: str,
@@ -239,8 +241,16 @@ type return_meta = struct {
     pos: size,
 };
 
+type type_meta = struct {
+    owner: *context,
+    pos: size,
+    name: str,
+    self: lichen_t,
+};
+
 type module_meta = struct {
     name: str,
+    owner: *context,
     pos: size,
     pub: bool,
     freed: bool,

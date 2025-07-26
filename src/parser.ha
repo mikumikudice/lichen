@@ -185,24 +185,32 @@ fn check_shadowing(
 ) (void | ERROR) = {
     match(get_def(ctxt, nm, ctxt.scp)){
     case let fun_def: *fun_meta =>
-        move_ptr(ctxt, ctxt.tokens[fun_def.pos]);
-        const dup_pos = gen_pos(ctxt);
+        move_ptr(fun_def.owner, fun_def.owner.tokens[fun_def.pos]);
+        const dup_pos = gen_pos(fun_def.owner);
         defer free(dup_pos);
         move_ptr(ctxt, pos);
         return error(ctxt,
             "a function defined at %b{}%r is already using the namespace %y{}",
             dup_pos, nm.name);
     case let decl: *decl_meta =>
-        move_ptr(ctxt, ctxt.tokens[decl.var.pos]);
-        const dup_pos = gen_pos(ctxt);
+        move_ptr(decl.var.owner, decl.var.owner.tokens[decl.var.pos]);
+        const dup_pos = gen_pos(decl.var.owner);
         defer free(dup_pos);
         move_ptr(ctxt, pos);
         return error(ctxt,
             "a variable defined at %b{}%r is already using the namespace %y{}",
             dup_pos, nm.name);
+    case let tpe: *type_meta =>
+        move_ptr(tpe.owner, tpe.owner.tokens[tpe.pos]);
+        const dup_pos = gen_pos(tpe.owner);
+        defer free(dup_pos);
+        move_ptr(ctxt, pos);
+        return error(ctxt,
+            "a type declaration defined at %b{}%r is already using the namespace %y{}",
+            dup_pos, nm.name);
     case let module: *module_meta =>
-        move_ptr(ctxt, ctxt.tokens[module.pos]);
-        const dup_pos = gen_pos(ctxt);
+        move_ptr(module.owner, module.owner.tokens[module.pos]);
+        const dup_pos = gen_pos(module.owner);
         defer free(dup_pos);
         move_ptr(ctxt, pos);
         return error(ctxt,
@@ -218,7 +226,7 @@ fn push_def(
     ctxt: *context,
     pos: token,
     name: namespace,
-    meta: (*fun_meta | *decl_meta | *module_meta),
+    meta: (*fun_meta | *decl_meta | *type_meta | *module_meta),
 ) (void | ERROR) = {
     // assert for dups
     check_shadowing(ctxt, pos, name)?;
@@ -235,7 +243,7 @@ fn get_def(
     ctxt: *context,
     nm: namespace,
     scp: *scope,
-) ((*fun_meta | *decl_meta | *module_meta) | void) = {
+) ((*fun_meta | *decl_meta | *type_meta| *module_meta) | void) = {
     for(let meta ..& scp.defs){
         match(meta){
         case let fun_def: *fun_meta =>
@@ -245,6 +253,10 @@ fn get_def(
         case let decl: *decl_meta =>
             if(decl.var.nm.name == nm.name){
                 return decl;
+            };
+        case let tpe: *type_meta =>
+            if(tpe.name == nm.name){
+                return tpe;
             };
         case let module: *module_meta =>
             if(module.name == nm.name){
@@ -328,7 +340,6 @@ fn compile(filename: str,
             } else {
                 yield alloc([]: []str)!;
             },
-        typedefs = [],
         host_fun = null,
         global = glob,
         scp = glob,
@@ -478,6 +489,7 @@ fn compile(filename: str,
                 pub = false,
                 mut = false,
                 glob = false,
+                param = false,
                 name = strings::fromutf8(ctxt.src[ctxt.ptr..end])!,
                 ffi = void,
                 tpe = quick_t(primitive::ANY),
@@ -1010,6 +1022,7 @@ fn eval_const_def(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
     const out = alloc(decl_meta {
         var = alloc(var_meta {
             nm = name,
+            owner = ctxt,
             pos = at,
         })!,
         val = out_val,
@@ -1114,14 +1127,27 @@ fn eval_module(ctxt: *context, at: size) ((*module_meta, size) | ERROR) = {
         move_ptr(ctxt, ctxt.tokens[at]);
         return error(ctxt, "cannot %yrecursively import main file");
     };
+    let mod_ctxt: nullable *context = null;
+    for(let mod .. ctxt.global.defs){
+        if(mod is *module_meta){
+            const meta = mod as *module_meta;
+            if(meta.ctxt.file == path){
+                mod_ctxt = meta.ctxt;
+            };
+        };
+    };
+    if(mod_ctxt == null){
+        mod_ctxt = compile(path, ctxt.path, false, false, ctxt.literals)?;
+    };
     const module = alloc(module_meta {
         name = bind.name,
+        owner = ctxt,
         pos = at,
         pub = false,
         freed = false,
         parsed = false,
         emitted = false,
-        ctxt = compile(path, ctxt.path, false, false, ctxt.literals)?,
+        ctxt = mod_ctxt as *context,
     })!;
     push_def(ctxt, ctxt.tokens[at], bind, module)?;
     return (module, end);
@@ -1174,6 +1200,7 @@ fn eval_fun_def(ctxt: *context, at: size) ((*fun_meta, size) | ERROR) = {
             };
         const (param, _end) = eval_declaration(ctxt, end)?;
         param.var.nm.mut = mut;
+        param.var.nm.param = true;
         // assert for FFI aggregated parameters' mutation
         if(is_aggregated(param.var.nm.tpe)){
             if(mut){
@@ -1182,6 +1209,11 @@ fn eval_fun_def(ctxt: *context, at: size) ((*fun_meta, size) | ERROR) = {
             } else {
                 all_muts = false;
             };
+        } else if(mut){
+            move_ptr(ctxt, ctxt.tokens[end - 1]);
+            return error_hint(ctxt,
+                "\n%bonly %yarrays, records and strings%b can mutate its value",
+                "mutability is %bnot applicable%r to %ynon-aggregated types");
         };
         // append to parameter list
         append(params, param)!;
@@ -1267,6 +1299,7 @@ fn eval_fun_def(ctxt: *context, at: size) ((*fun_meta, size) | ERROR) = {
     // create a new AST node
     const out = alloc(fun_meta {
         fun = name,
+        owner = ctxt,
         pos = pos,
         begins = begins,
         origin = ctxt.file,
@@ -1534,6 +1567,21 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
             end += 2;
             match(get_def(ctxt, var, ctxt.scp)){
             case let var_def: *decl_meta =>
+                // assert for parameters
+                if(var_def.var.nm.param){
+                    move_ptr(ctxt, ctxt.tokens[begin]);
+                    if(var_def.var.nm.mut){
+                        return error_hint(ctxt,
+                            "\n%bparameter mutability refers to its data, not the namespace",
+                            "cannot %breassign%r to %ymutable%r parameter %b{}",
+                            var_def.var.nm.name);
+                    } else {
+                        return error(ctxt,
+                            "cannot %breassign%r to %yimmutable%y parameter %b{}",
+                            var_def.var.nm.name);
+                    };
+                };
+                // assert for mutability
                 if(!var_def.var.nm.mut){
                     move_ptr(ctxt, tk);
                     return error(ctxt,
@@ -1541,6 +1589,24 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
                         var.name);
                 };
                 const (val, _end) = eval_expression(ctxt, end, var_def.var.nm.tpe)?;
+                const root = extract_root(val);
+                // assert for immutability dropping
+                if(root is *var_meta){
+                    const pass = root as *var_meta;
+                    if((is_subtype(var_def.var.nm.tpe, primitive::STR) ||
+                        is_subtype(var_def.var.nm.tpe, primitive::CSTR) ||
+                        var_def.var.nm.tpe.base is *array) && !pass.nm.mut){
+                        move_ptr(ctxt, tk);
+                        const hint = fmt::asprintf(
+                            "\n%baggregated types such as strings and arrays cannot be copied to the stack.\n"
+                            "try using:\n\n\t%d{} = new ! {} @ arena",
+                            var_def.var.nm.name, pass.nm.name)!;
+                        defer free(hint);
+                        return error_hint(ctxt,
+                        hint,
+                        "cannot copy this %bimmutable aggregated value%r to %ymutable variable");
+                    };
+                };
                 end = pop_assert(ctxt, _end, symbol::EOL,
                     "expected %bend of line%r, but got %y{}")?;
                 const asg = assign_meta {
@@ -1614,6 +1680,24 @@ fn eval_var_def(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
         "expected %bdeclaration value assignment%r, but got %y{}")?;
     // eval variable assignment expression value
     const (val, _end) = eval_expression(ctxt, end, name.tpe)?;
+    const root = extract_root(val);
+    // assert for immutability dropping
+    if(root is *var_meta){
+        const pass = root as *var_meta;
+        if((is_subtype(val.tpe, primitive::STR) ||
+            is_subtype(val.tpe, primitive::CSTR) ||
+            val.tpe.base is *array) && !pass.nm.mut){
+            move_ptr(ctxt, ctxt.tokens[end]);
+            const hint = fmt::asprintf(
+                "\n%baggregated types such as strings and arrays cannot be copied to the stack."
+                "\ntry using:\n\n\t%dlet mut {} = new ! {} @ arena",
+                name.name, pass.nm.name)!;
+            defer free(hint);
+            return error_hint(ctxt,
+            hint,
+            "cannot copy this %bimmutable aggregated value%r to %ymutable variable");
+        };
+    };
     end = _end;
     name.tpe = val.tpe;
     name.mut = mut;
@@ -1625,6 +1709,7 @@ fn eval_var_def(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
     const out = alloc(decl_meta {
         var = alloc(var_meta {
             nm = name,
+            owner = ctxt,
             pos = pos,
         })!,
         val = val,
@@ -2176,7 +2261,7 @@ fn eval_funcall(
     let arg_list: []*expr_meta = [];
     const max = len(fun.params);
     for(!comp_tk(tk.val, symbol::RGT_PAR)){
-        if(arg_count > max || max == 0){
+        if(arg_count >= max || max == 0){
             move_ptr(ctxt, tk);
             const hint = fmt::asprintf("\n%gthe function %b{} takes {} {}",
                 fun.fun.name, max, fix_plural("parameters", max))!;
@@ -2213,6 +2298,14 @@ fn eval_funcall(
                 "expected %bcomma%r or %bend of argument list%r, but got %y{}");
         };
     };
+    if(arg_count > max){
+        move_ptr(ctxt, tk);
+        const hint = fmt::asprintf("\n%gthe function %b{} takes {} {}",
+            fun.fun.name, max, fix_plural("parameters", max))!;
+        defer free(hint);
+        return error_hint(ctxt, hint, "too many arguments in function call");
+    };
+
     end = pop_assert(ctxt, end, symbol::RGT_PAR,
         "expected %bclosing parenthesis%r, but got %y{}")?;
 
@@ -2307,6 +2400,7 @@ fn eval_declaration(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
     name.tpe = tpe;
     const var = var_meta {
         nm = name,
+        owner = ctxt,
         pos = _end,
     };
     const meta = decl_meta {
@@ -2410,7 +2504,27 @@ fn eval_type(ctxt: *context, at: size) ((lichen_t, size) | ERROR) = {
         };
     match(tk.val){
     case let prim: primitive => return (quick_t(prim, fail), end);
-    case let name: namespace => todo("custom types");
+    case let name: namespace =>
+        move_ptr(ctxt, tk);
+        match(get_def(ctxt, name, ctxt.scp)){
+        case let tpe: *type_meta =>
+            return (tpe.self, end);
+        case *fun_meta =>
+            return error(ctxt,
+                "the namespace %b{}%r is currently defined as a %bfunction%r, not a %ytype",
+                name.name);
+        case *decl_meta =>
+            return error(ctxt,
+                "the namespace %b{}%r is currently defined as a %bvariable%r, not a %ytype",
+                name.name);
+        case *module_meta =>
+            return error(ctxt,
+                "the namespace %b{}%r is currently defined as a %bmodule binding%r, not a %ytype",
+                name.name);
+        case void =>
+            return error(ctxt,
+                "no type by the name %b{}%r is currently defined", name.name);
+        };
     case let sym: symbol =>
         switch(sym){
         case symbol::LFT_SQUARE =>
@@ -2665,7 +2779,7 @@ fn extract_hand_type(hand: hand_t) lichen_t = {
 
 fn extract_root(exp: *expr_meta) (void | path_meta) = {
     match(exp.val){
-    case let hand: *hand_meta => return  hand;
+    case let hand: *hand_meta => return hand;
     case let ternary: *ternary_meta => return ternary;
     case let exp: *expr_meta => return extract_root(exp);
     case let memb: *member_meta =>

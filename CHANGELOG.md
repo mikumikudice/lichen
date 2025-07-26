@@ -1,1 +1,5 @@
+- changed mutability rules for function parameters
 - fix missing line feed at end of error reporting
+- fixed error assertion for too many function call parameters
+- optimized module parsing to avoid duplicates
+- added parsing for cast to named types

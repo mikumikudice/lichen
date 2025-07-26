@@ -235,7 +235,7 @@ fn ordnum(n: u64) str = {
 
 fn fix_plural(obj: str, count: size) str = {
     if(count > 1) return obj;
-    return strings::sub(obj, 0, len(obj) - 2);
+    return strings::sub(obj, 0, len(obj) - 1);
 };
 
 const fn_demo = "pub fn main() void = {\n\t// your code goes here!%d\n};";
