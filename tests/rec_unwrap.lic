@@ -14,17 +14,14 @@ fn bar'(x u32) !u32 = {
 
 pub fn main() void = io {
     let r = foo { bar = bar'(1) };
-    let u = r.bar!;
-    if u == 1 {
+    if r.bar! == 1 {
         io::println("test 1 ok")!;
     } else {
         io::println("test 1 fail")!;
     };
 
     let r' = foo { bar = bar'(0) };
-    let u' = r'.bar? or 0;
-
-    if u' == 0 {
+    if (r'.bar? or 0) == 0 {
         io::println("test 2 ok")!;
     } else {
         io::println("test 2 fail")!;
