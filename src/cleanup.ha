@@ -40,6 +40,19 @@ fn free_nodes(this: path_meta) void = {
         };
         free(meta.items);
         free(meta);
+    case let meta: *record_lit_meta =>
+        for(let val .. meta.values){
+            free_nodes(val.1);
+        };
+        free(meta.values);
+        free(meta);
+    case let meta: *field_meta =>
+        if(meta.before is *field_meta)
+            free_nodes(meta.before as *field_meta);
+
+        if(meta.base is *member_meta)
+            free_nodes(meta.base as *member_meta);
+        free(meta);
     case let meta: *decl_meta =>
         if(!(meta.val is void))
             free_nodes(meta.val as (*const_meta | ...hand_t));
@@ -79,11 +92,11 @@ fn free_nodes(this: path_meta) void = {
         free(meta);
     case let meta: *member_meta =>
         if(!(meta.val is keyword))
-            free_nodes(meta.val as
-                (*const_meta | *array_lit_meta | *var_meta | *funcall_meta));
+            free_nodes(meta.val as member_t);
         if(meta.prop is propagation){
             const prop = meta.prop as propagation;
-            if(prop.1 is path_meta) free_nodes(prop.1 as path_meta);
+            if(prop.1 is path_meta)
+                free_nodes(prop.1 as path_meta);
         };
         free(meta);
     case let meta: *branch_meta =>
@@ -105,6 +118,12 @@ fn free_nodes(this: path_meta) void = {
         free(meta);
     case let meta: *return_meta =>
         free_nodes(meta.val);
+        free(meta);
+    case let meta: *type_meta =>
+        if(meta.self.base is *record){
+            const rec = meta.self.base as *record;
+            free(rec.export_name);
+        };
         free(meta);
     case let meta: *module_meta => assert(false);
     };

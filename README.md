@@ -36,8 +36,8 @@ pub fn main() void = io {
         // allocate string buffer
         let name mut = new [size; 0] @ buffer;
         // read from user
-        io::read(size, name!) !>
-            io::fatal("failed to read from user");
+        io::read(size, name!)!
+            or io::fatal("failed to read from user");
         // greetings!
         io::printfln("hello %s!", name str)!;
     }!;
@@ -55,24 +55,24 @@ pub fn main() void = fs & io {
     let args = os::args();
 
     // assert for arguments
-    let file_name = args[1] ?>
-        io::fatal("line number not given");
-    let line_number = args[2] ?>
-        io::fatal("line number not given");
+    let file_name = args[1]?
+        or io::fatal("line number not given");
+    let line_number = args[2]?
+        or io::fatal("line number not given");
 
     // allocate buffer for file lines array
     mem line_buffer | count << 16 {
         // convert given argument as string to number
-        let line_number' = conv::to_u64(line_number, line_buffer)
-            !> fail | io::fatalf("invalid line number %s", line_number);
-            !> nomem | io::fatal("buffer for line number not big enough");
+        let line_number' = conv::to_u64(line_number, line_buffer)!
+            or fail | io::fatalf("invalid line number %s", line_number);
+            or nomem | io::fatal("buffer for line number not big enough");
         // set max size for file buffer
         let max = 128 << 16;
         // allocate buffer for file
         mem file_buffer | max {
             // try to open given file
-            let file = fs::open(file_name, fs::flags.READONLY)
-                !> io::fatalf("file %s could not be opened", file_name);
+            let file = fs::open(file_name, fs::flags.READONLY)!
+                or io::fatalf("file %s could not be opened", file_name);
             // read entire file by lines
             let lines = fs::read_lines(file, file_buffer)!;
             // check if line number is valid
@@ -84,7 +84,7 @@ pub fn main() void = fs & io {
             // print it
             io::println(line)!;
         // assert for memory allocation failure
-        } !> io::fatal("failed to create file buffer");
+        }! or io::fatal("failed to create file buffer");
     }!;
 };
 ```

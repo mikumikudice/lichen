@@ -1,0 +1,17 @@
+io mod = use "std/io.lim";
+
+type person = record {
+    name str;
+    age u8;
+};
+
+pub fn main() void = io {
+    let bob = person { name = "bob", age = 24 };
+    let age = bob.age;
+
+    if age == 24 && bob.name == "bob" {
+        io::println("test ok")!;
+    } else {
+        io::println("test fail")!;
+    };
+};

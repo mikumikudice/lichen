@@ -553,7 +553,7 @@ let x u32 = may_fail(4)?;
 ```
 returns any error to the upper stack, but this:
 ```rust
-let x u32 = may_fail(4) ?> 1;
+let x u32 = may_fail(4)? or 1;
 ```
 defaults x to `1` on an error.
 
@@ -563,21 +563,21 @@ let file = fs::open("file.text", fs::flags.READONLY)!;
 ```
 crashes the program on an error, but this:
 ```rust
-let file = fs::open("file.text", fs::flags.READONLY) !> io::println("could not open file. want to try another one?")!;
+let file = fs::open("file.text", fs::flags.READONLY)! or io::println("could not open file. want to try another one?")!;
 ```
 executes the subsequent code on a fail, assigning the zeroed value to the variable instead of the valid result.
 
 you may also chain handlers depending on the error variant:
 ```rust
-let foo str = may_also_fail("hi")
-    ?> nomem | "allocation failed";
-    ?> fail | "something went wrong";
+let foo str = may_also_fail("hi")?
+    or nomem | "allocation failed";
+    or fail | "something went wrong";
 ```
 these chains are not required to be exhaustive i.e. cover all errors. on this case, the resulting type is still partial.
 ```rust
 mem buffer | 128 << 8 {
-    let number !u64 = strconv::to_u64("128", buffer)
-        !> nomem | io::fail("buffer not large enough");
+    let number !u64 = strconv::to_u64("128", buffer)!
+        or nomem | io::fail("buffer not large enough");
 }!;
 ```
 this `buffer` is a memory arena. see more about it in [this section](#memory-arenas).
@@ -686,14 +686,14 @@ optionally, the index may also be iterated over:
 let people = ["mary", "peter", "sus", "john", "luke"];
 
 for person, index .. people {
-    let before = people[indexing - 1] ?> "no one";
-    let after = people[indexing + 1] ?> "no one";
+    let before = people[indexing - 1]? or "no one";
+    let after = people[indexing + 1]? or "no one";
 
     io::println("%s is before %s and %s is after them",
         before, person after)!;
 };
 ```
-see more about the `?>` syntax in [this](#error-assertion) and [this](#error-and-propagation) sections.
+see more about the `or` keyword in [this](#error-assertion) and [this](#error-and-propagation) sections.
 
 the index is optional, but must be placed after the iteration variable. it can be named anything nevertheless. the type of the indexing variable is always `u64`.
 
@@ -702,10 +702,10 @@ once it's safe to assume the for loop will never go out of bounds with an array,
 let mut list = [1, 2, 3, 4, 5] u32;
 
 for mut item, index .. list {
-    item = list[index + 1] ?> 0;
+    item = list[index + 1]? or 0;
 };
 ```
-this code left-shifts the array by one, appending a zero at the end with the use of `?>`. for an array item reassignment, it is mandatory for the iteration array also be mutable.
+this code left-shifts the array by one, appending a zero at the end with the use of `or`. for an array item reassignment, it is mandatory for the iteration array also be mutable.
 
 ## test
 the test statement asserts for a boolean expression to be true, optionally prompting an error message, and then halting the program execution on fail.
@@ -746,8 +746,8 @@ mem input | 512 {
     let file_name = new ! [512; 0...] @ input;
     io::read_to(file_name)!;
     mem file_buffer | 128 << 16 {
-        let file = fs::open(file_name str, fs::flags.READONLY)
-            !> io::fatalf("could not open file \"%s\"", file_name str);
+        let file = fs::open(file_name str, fs::flags.READONLY)!
+            or io::fatalf("could not open file \"%s\"", file_name str);
 
         let data = fs::read_lines(file, file_buffer)!;
         for line .. data {
@@ -922,10 +922,10 @@ os mod = use "std/os.lim";
 
 pub fn main() void = io & os {
     let cmd = os::exec::command("cat", "main.lic")!;
-    cmd.run() !> fail | io::fatal("could not execute command");
+    cmd.run()! or fail | io::fatal("could not execute command");
 };
 ```
-see more about the `!>` syntax in [this section](#error-assertion).
+see more about the `or fail | ...` syntax in [this section](#error-assertion).
 
 even if, semantically, there is no actual difference, once a module is first looked at the standard library at the lib path and, if not found, then looked at the source root folder, it is a convention to use the `.lim` (lichen module) for files you write to provide some resource as an isolated code unit, and the `.lic` (lichen code) extension for main source files, the ones you write to give the program functionality.
 
@@ -965,7 +965,7 @@ fn reduce_array(size u64) !u64 = {
 };
 
 pub fn main() void = io {
-    let total = reduce_array(1_000_000_000) ?> 0; // on a failure, default `total` to zero
+    let total = reduce_array(1_000_000_000)? or 0; // on a failure, default `total` to zero
 };
 ```
 see more about error assertion syntax in [this section](#error-assertion).
@@ -1041,7 +1041,7 @@ fn memory_fail() !unit = {
 pub fn main() void = io {
     let error = state_error();
     let error' !u32 = fail;
-    memory_fail() !> io::fatal("allocation failed");
+    memory_fail()! or io::fatal("allocation failed");
 };
 ```
 when you bubble the error up, the function returning the error shall return a partial type as well:

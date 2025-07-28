@@ -1,0 +1,7 @@
+// parsing test for field access of
+// non-record types
+
+pub fn main() void = io {
+    let bob = "bob";
+    let age = bob.age;
+};

@@ -12,10 +12,13 @@ type mode = enum u8 { REAL, ASSIGN, LOAD, RETURN };
 // returns the qbe equivalent of a given type. changing the mode to
 // ASSIGN rounds types smaller than a word to a word, and to LOAD
 // adds a sign prefix to the type
-fn qbe_t(tpe: lichen_t, md: mode = mode::REAL) str = {
+fn qbe_t(ctxt: *context, tpe: lichen_t, md: mode = mode::REAL) str = {
     if(tpe.base is primitive){
         assert(tpe.base as primitive != primitive::ANY);
-        if(tpe.fail && md == mode::RETURN) return ":opt";
+        if(tpe.fail){
+            if(md == mode::RETURN) return ":opt";
+            return "l";
+        };
         switch(tpe.base as primitive){
         case primitive::U8 =>
             if(md == mode::ASSIGN) return "w";
@@ -55,20 +58,28 @@ fn qbe_t(tpe: lichen_t, md: mode = mode::REAL) str = {
                 prim_value[tpe.base as primitive]);
             os::exit(1);
         };
+    } else if(tpe.base is *record){
+        if(md == mode::RETURN){
+            const rec = tpe.base as *record;
+            return rec.export_name;
+        };
+        return "l";
     } else {
         return "l";
     };
 };
 
 // gets the given type's in memory type
-fn type_size(tpe: lichen_t) size = {
+fn type_size(tpe: lichen_t, ignore_fail: bool = false) size = {
     const arg = strtype(tpe);
     defer free(arg);
     assert(!untyped(tpe), arg);
 
+    if(tpe.fail && !ignore_fail) return 16;
+
     if(tpe.base is primitive){
         switch(tpe.base as primitive){
-        case primitive::UNIT, primitive::VOID => return 0;
+        case primitive::UNIT, primitive::VOID => return 8;
         case primitive::U8, primitive::I8 => return 1;
         case primitive::U16, primitive::I16 => return 2;
         case primitive::U32, primitive::I32,
@@ -83,7 +94,12 @@ fn type_size(tpe: lichen_t) size = {
     } else if(tpe.base is *record){
         const rec = tpe.base as *record;
         let length = 0z;
-        todo("records");
+        for(let field .. rec.fields){
+            const real = type_size(field.1.var.nm.tpe);
+            const off = 4 - real % 4;
+            length += real + off;
+        };
+        return length;
     } else if(tpe.base is *array){
         const arr = tpe.base as *array;
         if(arr.length is void){
@@ -95,6 +111,27 @@ fn type_size(tpe: lichen_t) size = {
         assert(false, "unreachable");
         return 0;
     };
+};
+
+fn field_offset(rec: *record, field_name: str) size = {
+    let acc = 0z;
+    let found = false;
+    for(let field .. rec.fields){
+        if(field.1.var.nm.name == field_name){
+            found = true;
+            break;
+        };
+        const real = type_size(field.1.var.nm.tpe);
+        const off =
+            if(real % 4 != 0){
+                yield 4 - real % 4;
+            } else {
+                yield 0z;
+            };
+        acc += real + off;
+    };
+    assert(found);
+    return acc;
 };
 
 // checks if there's a type mismatch for assignment between two given types
@@ -267,7 +304,7 @@ fn emit_obj(
 fn gen_qbe_ir(ctxt: *context) memio::stream = {
     const ir = memio::dynamic();
     fmt::fprintfln(&ir, "# code emitted by lcc v{}", version)!;
-    fmt::fprint(&ir, "type :opt = { l, l }")!;
+    fmt::fprintln(&ir, "type :opt = { l, l }")!;
     gen_module(ctxt, &ir);
     for(let m .. ctxt.global.defs){
         if(m is *module_meta){
@@ -318,20 +355,20 @@ fn gen_module(ctxt: *context, buff: *memio::stream) void = {
                         yield switch(val_meta.pre as operator){
                         case operator::NOT =>
                             yield fmt::asprintf("{} {}",
-                                qbe_t(meta.var.nm.tpe), ~num)!;
+                                qbe_t(ctxt, meta.var.nm.tpe), ~num)!;
                         case operator::PLS =>
                             yield fmt::asprintf("{} {}",
-                                qbe_t(meta.var.nm.tpe), num)!;
+                                qbe_t(ctxt, meta.var.nm.tpe), num)!;
                         case operator::MIN =>
                             yield fmt::asprintf("{} {}",
-                                qbe_t(meta.var.nm.tpe), -(num: i64))!;
+                                qbe_t(ctxt, meta.var.nm.tpe), -(num: i64))!;
                         case =>
                             assert(false);
                             yield "";
                         };
                     } else {
                         yield fmt::asprintf("{} {}",
-                            qbe_t(meta.var.nm.tpe), num)!;
+                            qbe_t(ctxt, meta.var.nm.tpe), num)!;
                     };
                 case let txt: str =>
                     yield if(val_meta.pre is operator){
@@ -348,6 +385,8 @@ fn gen_module(ctxt: *context, buff: *memio::stream) void = {
             // skip functions that should not be emitted
             if(meta.fun.ffi is str || meta.body == null) continue;
             fmt::fprint(buff, "\n")!;
+            const base_name = strings::replace(meta.fun.name, "'", ".q")!;
+            defer free(base_name);
             const name =
                 if(meta.fun.ffi is str){
                     yield fmt::asprintf("${}",
@@ -356,9 +395,9 @@ fn gen_module(ctxt: *context, buff: *memio::stream) void = {
                     const mod = strings::rcut(
                         strings::rcut(meta.origin, "/").1, ".").0;
                     yield fmt::asprintf("${}.{}", mod,
-                        meta.fun.name)!;
+                        base_name)!;
                 } else {
-                    yield fmt::asprintf("${}", meta.fun.name)!;
+                    yield fmt::asprintf("${}", base_name)!;
                 };
             // emit linking flags
             if(meta.fun.pub){
@@ -377,7 +416,7 @@ fn gen_module(ctxt: *context, buff: *memio::stream) void = {
             fmt::fprint(buff, name)!;
         } else {
             fmt::fprintf(buff, "{} {}",
-                qbe_t(meta.fun.tpe, mode::RETURN), name)!;
+                qbe_t(ctxt, meta.fun.tpe, mode::RETURN), name)!;
         };
         const params: []*var_meta = [];
         defer free(params);
@@ -391,19 +430,30 @@ fn gen_module(ctxt: *context, buff: *memio::stream) void = {
             append(params, dup)!;
         };
         // gen parameter list
-        gen_list(buff, params);
+        gen_list(ctxt, buff, params);
         // gen function body scope
         gen_scope(ctxt, buff, meta.body as *scope_meta, "@start", true);
+        case let tpe: *type_meta =>
+            match(tpe.self.base){
+            case let rec: *record =>
+                fmt::fprintf(buff, "type {} = align 8 {{ ", rec.export_name)!;
+                for(let field .. rec.fields){
+                    const tpe = field.1.var.nm.tpe;
+                    fmt::fprintf(buff, "{}, ", qbe_t(ctxt, tpe))!;
+                };
+                fmt::fprintln(buff, "}")!;
+            case => todo("enums emitting");
+            };
         case let meta: *module_meta => void;
         };
     };
 };
 
-fn gen_list(buff: *memio::stream, names: []*var_meta) void = {
+fn gen_list(ctxt: *context, buff: *memio::stream, names: []*var_meta) void = {
     fmt::fprint(buff, "(")!;
     for(let n .. names){
         fmt::fprintf(buff, "{} {}, ",
-            qbe_t(n.nm.tpe, mode::ASSIGN), n.nm.name)!;
+            qbe_t(ctxt, n.nm.tpe, mode::ASSIGN), n.nm.name)!;
     };
     fmt::fprint(buff, ")")!;
 };
@@ -446,14 +496,15 @@ fn gen_stt(ctxt: *context, buff: *memio::stream, stt: path_meta) void = {
         fmt::fprintfln(buff, "\tdbgloc {}, {}", l, c)!;
         const wrap = fmt::asprintf("%asg.val")!;
         defer free(wrap);
-        const val = gen_exp(ctxt, buff, wrap, asg.var.nm.tpe,
-            asg.val);
+        const val = gen_exp(ctxt, buff, wrap, asg.var.nm.tpe, asg.val);
         const asg_val =
             if(val != ""){
                 yield val;
             } else {
                 yield wrap;
             };
+        defer if(val != "") free(val);
+
         const name = fix_nm(ctxt, buff, asg.var.nm);
         defer free(name);
         if(asg.var.nm.mut &&
@@ -465,7 +516,7 @@ fn gen_stt(ctxt: *context, buff: *memio::stream, stt: path_meta) void = {
             fmt::fprintfln(buff, "\t{} =l copy %dup", name)!;
         } else {
             fmt::fprintfln(buff, "\t{} ={} copy {}", name,
-                qbe_t(asg.var.nm.tpe, mode::ASSIGN), asg_val)!;
+                qbe_t(ctxt, asg.var.nm.tpe, mode::ASSIGN), asg_val)!;
         };
     case let branch: *branch_meta =>
         move_ptr(ctxt, ctxt.tokens[branch.pos]);
@@ -535,7 +586,7 @@ fn gen_stt(ctxt: *context, buff: *memio::stream, stt: path_meta) void = {
                 fmt::fprintfln(buff, "\t{0}.wrap =l add {0}.wrap, 8", temp)!;
                 // store data
                 fmt::fprintfln(buff, "\tstore{} {}, {}.wrap",
-                    qbe_t(quick_t(ret.val.tpe.base as primitive)),
+                    qbe_t(ctxt, quick_t(ret.val.tpe.base as primitive)),
                     memb, temp)!;
                 // undo offset
                 fmt::fprintfln(buff, "\t{0}.wrap =l sub {0}.wrap, 8", temp)!;
@@ -552,7 +603,7 @@ fn gen_stt(ctxt: *context, buff: *memio::stream, stt: path_meta) void = {
             fmt::fprintfln(buff, "\t{0}.wrap =l add {0}.wrap, 8", temp)!;
             // store data
             fmt::fprintfln(buff, "\tstore{0} {1}, {1}.wrap",
-                qbe_t(quick_t(ret.val.tpe.base as primitive)), temp)!;
+                qbe_t(ctxt, quick_t(ret.val.tpe.base as primitive)), temp)!;
             // undo offset
             fmt::fprintfln(buff, "\t{0}.wrap =l sub {0}.wrap, 8", temp)!;
             fmt::fprintfln(buff, "\tret {}.wrap", temp)!;
@@ -612,14 +663,14 @@ fn gen_decl(ctxt: *context, buff: *memio::stream, decl: *decl_meta) void = {
             };
         } else {
             fmt::fprintfln(buff, "\t{} ={} copy {}", name,
-                qbe_t(decl.var.nm.tpe, mode::ASSIGN), val)!;
+                qbe_t(ctxt, decl.var.nm.tpe, mode::ASSIGN), val)!;
         };
     } else {
         const memb = gen_exp(ctxt, buff, name, decl.var.nm.tpe, val_exp);
         if(memb != ""){
             defer free(memb);
             fmt::fprintfln(buff, "\t{} ={} copy {}", name,
-                qbe_t(decl.var.nm.tpe, mode::ASSIGN), memb)!;
+                qbe_t(ctxt, decl.var.nm.tpe, mode::ASSIGN), memb)!;
         };
     };
 };
@@ -645,20 +696,20 @@ fn gen_exp(
             case operator::MIN =>
                 if(wrap != ""){
                     fmt::fprintln(buff, "\t{} ={} neg {}",
-                        dest, qbe_t(exp_t, mode::ASSIGN), wrap)!;
+                        dest, qbe_t(ctxt, exp_t, mode::ASSIGN), wrap)!;
                 } else {
                     fmt::fprintln(buff, "\t{0} ={1} neg {0}",
-                        dest, qbe_t(exp_t, mode::ASSIGN))!;
+                        dest, qbe_t(ctxt, exp_t, mode::ASSIGN))!;
                 };
             case operator::NOT =>
                 if(wrap != ""){
                     fmt::fprintln(buff,
                         "\t{} ={} xor {}, 18446744073709551615",
-                        dest, qbe_t(exp_t, mode::ASSIGN), wrap)!;
+                        dest, qbe_t(ctxt, exp_t, mode::ASSIGN), wrap)!;
                 } else {
                     fmt::fprintln(buff,
                         "\t{0} ={1} xor {0}, 18446744073709551615",
-                        dest, qbe_t(exp_t, mode::ASSIGN))!;
+                        dest, qbe_t(ctxt, exp_t, mode::ASSIGN))!;
                 };
             case operator::LENGTH =>
                 if(wrap != ""){
@@ -683,9 +734,9 @@ fn gen_exp(
             const memb = gen_exp(ctxt, buff, temp, pre_cast,
                 exp.val as hand_t);
             if(memb != ""){
-                gen_cast(buff, memb, pre_cast, dest, exp_t);
+                gen_cast(ctxt, buff, memb, pre_cast, dest, exp_t);
             } else {
-                gen_cast(buff, temp, pre_cast, dest, exp_t);
+                gen_cast(ctxt, buff, temp, pre_cast, dest, exp_t);
             };
         } else if(exp.val is hand_t){
             return gen_exp(ctxt, buff, dest, exp_t, exp.val as hand_t);
@@ -701,13 +752,13 @@ fn gen_exp(
         const pos_val = fmt::asprintf("%positive.{}", ternary.pos)!;
         defer free(pos_val);
         gen_exp(ctxt, buff, pos_val, ternary.tpe, ternary.positive);
-        gen_cast(buff, pos_val, ternary.tpe, dest, exp_t);
+        gen_cast(ctxt, buff, pos_val, ternary.tpe, dest, exp_t);
         fmt::fprintfln(buff, "\tjmp @end.{0}\n@false.val.{0}", ternary.pos)!;
 
         const neg_val = fmt::asprintf("%negative.{}", ternary.pos)!;
         defer free(neg_val);
         gen_exp(ctxt, buff, neg_val, ternary.tpe, ternary.negative);
-        gen_cast(buff, neg_val, ternary.tpe, dest, exp_t);
+        gen_cast(ctxt, buff, neg_val, ternary.tpe, dest, exp_t);
         fmt::fprintfln(buff, "\tjmp @end.{0}\n@end.{0}", ternary.pos)!;
     };
     return "";
@@ -721,7 +772,7 @@ fn gen_arithmetic(
     hand: *hand_meta
 ) void = {
     if(hand.opr > operator::LAND){
-        const asg_t = qbe_t(exp_t, mode::ASSIGN);
+        const asg_t = qbe_t(ctxt, exp_t, mode::ASSIGN);
         const lft_h = fmt::asprintf("%l.{}", hand.pos)!;
         const lft_t = extract_hand_type(hand.lft);
         const short_l = gen_exp(ctxt, buff, lft_h, lft_t, hand.lft);
@@ -744,45 +795,45 @@ fn gen_arithmetic(
             switch(hand.opr){
             case operator::EQL =>
                 needs_free = true;
-                yield fmt::asprintf("ceq{}", qbe_t(lft_t))!;
+                yield fmt::asprintf("ceq{}", qbe_t(ctxt, lft_t, mode::ASSIGN))!;
             case operator::NEQ =>
                 needs_free = true;
-                yield fmt::asprintf("cne{}", qbe_t(lft_t))!;
+                yield fmt::asprintf("cne{}", qbe_t(ctxt, lft_t, mode::ASSIGN))!;
             case operator::LEQ =>
                 needs_free = true;
                 yield if(is_subtype(lft_t, primitive::U64)){
-                    yield fmt::asprintf("cule{}", qbe_t(lft_t))!;
+                    yield fmt::asprintf("cule{}", qbe_t(ctxt, lft_t, mode::ASSIGN))!;
                 } else if(is_subtype(lft_t, primitive::I64)){
-                    yield fmt::asprintf("csle{}", qbe_t(lft_t))!;
+                    yield fmt::asprintf("csle{}", qbe_t(ctxt, lft_t, mode::ASSIGN))!;
                 } else {
-                    yield fmt::asprintf("cle{}", qbe_t(lft_t))!;
+                    yield fmt::asprintf("cle{}", qbe_t(ctxt, lft_t, mode::ASSIGN))!;
                 };
             case operator::GEQ =>
                 needs_free = true;
                 yield if(is_subtype(lft_t, primitive::U64)){
-                    yield fmt::asprintf("cuge{}", qbe_t(lft_t))!;
+                    yield fmt::asprintf("cuge{}", qbe_t(ctxt, lft_t, mode::ASSIGN))!;
                 } else if(is_subtype(lft_t, primitive::I64)){
-                    yield fmt::asprintf("csge{}", qbe_t(lft_t))!;
+                    yield fmt::asprintf("csge{}", qbe_t(ctxt, lft_t, mode::ASSIGN))!;
                 } else {
-                    yield fmt::asprintf("cge{}", qbe_t(lft_t))!;
+                    yield fmt::asprintf("cge{}", qbe_t(ctxt, lft_t, mode::ASSIGN))!;
                 };
             case operator::LST =>
                 needs_free = true;
                 yield if(is_subtype(lft_t, primitive::U64)){
-                    yield fmt::asprintf("cult{}", qbe_t(lft_t))!;
+                    yield fmt::asprintf("cult{}", qbe_t(ctxt, lft_t, mode::ASSIGN))!;
                 } else if(is_subtype(lft_t, primitive::I64)){
-                    yield fmt::asprintf("cslt{}", qbe_t(lft_t))!;
+                    yield fmt::asprintf("cslt{}", qbe_t(ctxt, lft_t, mode::ASSIGN))!;
                 } else {
-                    yield fmt::asprintf("clt{}", qbe_t(lft_t))!;
+                    yield fmt::asprintf("clt{}", qbe_t(ctxt, lft_t, mode::ASSIGN))!;
                 };
             case operator::GTT =>
                 needs_free = true;
                 yield if(is_subtype(lft_t, primitive::U64)){
-                    yield fmt::asprintf("cugt{}", qbe_t(lft_t))!;
+                    yield fmt::asprintf("cugt{}", qbe_t(ctxt, lft_t, mode::ASSIGN))!;
                 } else if(is_subtype(lft_t, primitive::I64)){
-                    yield fmt::asprintf("csgt{}", qbe_t(lft_t))!;
+                    yield fmt::asprintf("csgt{}", qbe_t(ctxt, lft_t, mode::ASSIGN))!;
                 } else {
-                    yield fmt::asprintf("cgt{}", qbe_t(lft_t))!;
+                    yield fmt::asprintf("cgt{}", qbe_t(ctxt, lft_t, mode::ASSIGN))!;
                 };
             case operator::BAND => yield "and";
             case operator::BOR => yield "or";
@@ -817,9 +868,9 @@ fn gen_arithmetic(
             };
         defer if(needs_free) free(inst);
         // compatible types
-        if(comp_type(lft_t, rgt_t) && is_subtype(lft_t, exp_t) &&
+        if(comp_type(lft_t, rgt_t) && comp_type(lft_t, exp_t) &&
             !size_mismatch(lft_t, exp_t)){
-            gen_cast(buff, lft_h, lft_t, dest, exp_t);
+            gen_cast(ctxt, buff, lft_h, lft_t, dest, exp_t);
             fmt::fprintfln(buff, "\t{0} ={1} {2} {0}, {3}",
                 dest, asg_t, inst, rgt_h)!;
         // boolean comparison
@@ -837,11 +888,11 @@ fn gen_arithmetic(
             };
         // at least one member require casting
         } else {
-            gen_cast(buff, lft_h, lft_t, dest, exp_t);
+            gen_cast(ctxt, buff, lft_h, lft_t, dest, exp_t);
             const rgt_wrap = fmt::asprintf("%r.{}.wrap", hand.pos)!;
             defer free(rgt_wrap);
             if(short_r == ""){
-                gen_cast(buff, rgt_h, rgt_t, rgt_wrap, exp_t);
+                gen_cast(ctxt, buff, rgt_h, rgt_t, rgt_wrap, exp_t);
                 fmt::fprintfln(buff, "\t{0} ={1} {2} {0}, {3}",
                     dest, asg_t, inst, rgt_wrap)!;
             } else {
@@ -850,7 +901,7 @@ fn gen_arithmetic(
             };
         };
     } else if(hand.opr == operator::LAND){
-        const asg_t = qbe_t(exp_t, mode::ASSIGN);
+        const asg_t = qbe_t(ctxt, exp_t, mode::ASSIGN);
         const lft_h = fmt::asprintf("%l.{}", hand.pos)!;
         const lft_t = extract_hand_type(hand.lft);
         const short_l = gen_exp(ctxt, buff, lft_h, lft_t, hand.lft);
@@ -874,7 +925,7 @@ fn gen_arithmetic(
             "@true.{1}\n\t{0} =l copy 1\n\tjmp @end.{1}\n@false.{1}\n\t{0} =l copy 0\n\tjmp @end.{1}\n@end.{1}",
             dest, hand.pos)!;
     } else {
-        const asg_t = qbe_t(exp_t, mode::ASSIGN);
+        const asg_t = qbe_t(ctxt, exp_t, mode::ASSIGN);
         const lft_h = fmt::asprintf("%l.{}", hand.pos)!;
         const lft_t = extract_hand_type(hand.lft);
         const short_l = gen_exp(ctxt, buff, lft_h, lft_t, hand.lft);
@@ -906,7 +957,7 @@ fn assign_memb(
     exp_t: lichen_t,
     memb: *member_meta,
 ) str = {
-    const temp = fmt::asprintf("%tmp.{}", qbe_t(memb.tpe))!;
+    const temp = fmt::asprintf("%tmp.{}", qbe_t(ctxt, memb.tpe))!;
     defer free(temp);
     const (val, tpe, skip) = 
         match(memb.val){
@@ -933,39 +984,40 @@ fn assign_memb(
             let last_set = false;
             for(let i = 0z; i < len(arr_lit.items); i += 1){
                 if(i < spread){
-                    const wrap = fmt::asprintf("{}.itm.{}", dest, i)!;
+                    const wrap = fmt::asprintf("%{}.itm.{}", dest, i)!;
                     defer free(wrap);
                     const val = gen_exp(ctxt, buff, wrap, as_arr.base,
                         arr_lit.items[i]);
-                    defer free(val);
-                    if(val != ""){
-                        last_set = false;
-                        fmt::fprintfln(buff, "\tstore{} {}, {}.val.ptr",
-                            qbe_t(as_arr.base), val, dest)!;
-                    } else {
-                        last_set = true;
-                        fmt::fprintfln(buff, "\tstore{} {}, {}.val.ptr",
-                            qbe_t(as_arr.base), wrap, dest)!;
-                    };
+                    const asg_val =
+                        if(val != ""){
+                            last_set = false;
+                            yield val;
+                        } else {
+                            last_set = true;
+                            yield wrap;
+                        };
+                    defer if(val != "") free(val);
+                    fmt::fprintfln(buff, "\tstore{} {}, {}.val.ptr",
+                        qbe_t(ctxt, as_arr.base), asg_val, dest)!;
                 } else {
-                    const wrap = fmt::asprintf("{}.itm.{}", dest, spread)!;
+                    const wrap = fmt::asprintf("%{}.itm.{}", dest, spread)!;
                     defer free(wrap);
                     if(i == 0 || !last_set){
                         last_val = gen_exp(ctxt, buff, wrap, as_arr.base,
                             arr_lit.items[i]);
                         if(last_val != ""){
                             fmt::fprintfln(buff, "\tstore{} {}, {}.val.ptr",
-                                qbe_t(as_arr.base), last_val, dest)!;
+                                qbe_t(ctxt, as_arr.base), last_val, dest)!;
                         } else {
                             fmt::fprintfln(buff, "\tstore{} {}, {}.val.ptr",
-                                qbe_t(as_arr.base), wrap, dest)!;
+                                qbe_t(ctxt, as_arr.base), wrap, dest)!;
                         };
                     } else if(last_val != ""){
                             fmt::fprintfln(buff, "\tstore{} {}, {}.val.ptr",
-                            qbe_t(as_arr.base), last_val, dest)!;
+                            qbe_t(ctxt, as_arr.base), last_val, dest)!;
                     } else {
                         fmt::fprintfln(buff, "\tstore{} {}, {}.val.ptr",
-                            qbe_t(as_arr.base), wrap, dest)!;
+                            qbe_t(ctxt, as_arr.base), wrap, dest)!;
                     };
                 };
                 //if(last_val != "") free(last_val);
@@ -979,6 +1031,111 @@ fn assign_memb(
             fmt::fprintfln(buff, "\t{0}.ptr =l add {0}.ptr, 8", dest)!;
             fmt::fprintfln(buff, "\tstorel {0}.val, {0}.ptr", dest)!;
             yield ("", arr_lit.tpe, true);
+        case let rec_lit: *record_lit_meta =>
+            fmt::fprintfln(buff, "\t{} =l alloc8 {}", dest,
+                type_size(rec_lit.tpe))!;
+            for(let val .. rec_lit.values){
+                fmt::fprint(buff, "\n")!;
+                if(comp_type(val.1.tpe, primitive::UNIT) ||
+                    comp_type(val.1.tpe, primitive::VOID)) continue;
+
+                const offst = field_offset(rec_lit.tpe.base as *record, val.0);
+                if(offst > 0){
+                    fmt::fprintfln(buff, "\t{0}.ptr =l add {0}, {1}", dest, offst)!;
+                } else {
+                    fmt::fprintfln(buff, "\t{0}.ptr =l copy {0}", dest)!;
+                };
+                const field = fmt::asprintf("%field.{}", val.1.pos)!;
+                defer free(field);
+                const res = gen_exp(ctxt, buff, field, val.1.tpe, val.1);
+                const asg_val =
+                    if(res != ""){
+                        yield res;
+                    } else {
+                        yield field;
+                    };
+                defer if(res != "") free(res);
+                const type_l = type_size(val.1.tpe);
+                if(type_l <= 8){
+                    fmt::fprintfln(buff, "\tstore{} {}, {}.ptr",
+                        qbe_t(ctxt, val.1.tpe), asg_val, dest)!;
+                } else {
+                    fmt::fprintfln(buff, "\tblit {}, {}.ptr, {}",
+                        asg_val, dest, type_l)!;
+                };
+            };
+            yield ("", rec_lit.tpe, true);
+        case let access: *field_meta =>
+            const load_stack: []*field_meta = [];
+            let next: nullable *field_meta = access;
+            let root = access;
+            for(next is *field_meta){
+                const valid = next as *field_meta;
+                root = valid;
+                append(load_stack, valid)!;
+                next = valid.before;
+            };
+            const base = root.base as *member_meta;
+            let last = fmt::asprintf("%rec.{}", root.pos)!;
+            assign_memb(ctxt, buff, last, base.tpe, base);
+
+            for(let f = 0z; f < len(load_stack); f += 1){
+                const this = load_stack[f];
+                const ptr = fmt::asprintf("%rec.ptr.{}", this.pos + f)!;
+                defer free(ptr);
+                const field = fmt::asprintf("%rec.field.{}", this.pos + f)!;
+                const offst = field_offset(this.from_tpe.base as *record, 
+                    this.field.var.nm.name);
+                const val =
+                    if(offst > 0){
+                        fmt::fprintfln(buff, "\t{} =l add {}, {}", ptr,
+                            offst, last)!;
+                        yield ptr;
+                    } else if(f > 0){
+                        fmt::fprintfln(buff, "\t{} =l copy {}", ptr, last)!;
+                        yield ptr;
+                    } else {
+                        yield last;
+                    };
+                const type_l = type_size(this.field.var.nm.tpe);
+                if(type_l <= 8 && !this.field.var.nm.tpe.fail){
+                    fmt::fprintfln(buff, "\t{} ={} load{} {}", field,
+                        qbe_t(ctxt, this.tpe, mode::ASSIGN),
+                        qbe_t(ctxt, this.field.var.nm.tpe, mode::LOAD), val)!;
+                } else if(!this.field.var.nm.tpe.fail){
+                    fmt::fprintfln(buff, "\t{} =l alloc8 {}", field, type_l)!;
+                    fmt::fprintfln(buff, "\tblit {}, {}, {}", val, field, type_l)!;
+                } else {
+                    fmt::fprintfln(buff, "\t{}.wrap =l alloc8 {}", field, type_l)!;
+                    fmt::fprintfln(buff, "\tblit {}, {}.wrap, {}", val, field, type_l)!;
+                    // field has propagation
+                    if(this.prop is propagation){
+                        const prop = this.prop as propagation;
+                        const wrap = fmt::asprintf("{}.wrap", field)!;
+                        defer free(wrap);
+                        gen_prop(ctxt, buff, prop, memb.tpe,
+                            this.tpe, this.pos, field, wrap);
+                        fmt::fprintfln(buff, "\t{0} =l add {0}, 8", wrap)!;
+                        let unwrap_t = this.field.var.nm.tpe;
+                        unwrap_t.fail = false;
+                        const res_type_l = type_size(unwrap_t);
+                        if(res_type_l <= 8){
+                            fmt::fprintfln(buff, "\t{} ={} load{} {}", field,
+                                qbe_t(ctxt, this.tpe, mode::ASSIGN),
+                                qbe_t(ctxt, unwrap_t, mode::LOAD), wrap)!;
+                        } else {
+                            fmt::fprintfln(buff, "\t{} =l alloc8 {}", field, res_type_l)!;
+                            fmt::fprintfln(buff, "\tblit {}, {}, {}", wrap, field, res_type_l)!;
+                        };
+                        if(prop.1 is path_meta){
+                            fmt::fprintfln(buff, "@skip.{}", this.pos)!;
+                        };
+                    };
+                };
+                free(last);
+                last = field;
+            };
+            yield (last, access.tpe, false);
         case let var: *var_meta =>
             yield (fix_nm(ctxt, buff, var.nm), var.nm.tpe, false);
         case let call: *funcall_meta =>
@@ -997,78 +1154,29 @@ fn assign_memb(
             case keyword::FALSE =>
                 return strings::dup("0")!;
             case keyword::NOMEM =>
-                if(exp_t.base is primitive){
-                    fmt::fprintln(buff, "\t%opt =l alloc8 16")!;
-                    fmt::fprintln(buff, "\tstorel 0, %opt")!;
-                    return strings::dup("%opt")!;
-                } else {
-                    return strings::dup("0")!;
-                };
+                fmt::fprintln(buff, "\t%opt =l alloc8 16")!;
+                fmt::fprintln(buff, "\tstorel 0, %opt")!;
+                return strings::dup("%opt")!;
             case keyword::FAIL =>
-                if(exp_t.base is primitive){
-                    fmt::fprintln(buff, "\t%opt =l alloc8 16")!;
-                    fmt::fprintln(buff, "\tstorel -1, %opt")!;
-                    return strings::dup("%opt")!;
-                } else {
-                    return strings::dup("-1")!;
-                };
+                fmt::fprintln(buff, "\t%opt =l alloc8 16")!;
+                fmt::fprintln(buff, "\tstorel -1, %opt")!;
+                return strings::dup("%opt")!;
             case =>
                 fmt::fatal("assign_memb: unreachable");
             };
         };
+    // member has propagation
     if(memb.prop is propagation){
-        const prop = memb.prop as propagation;
-        if(tpe.base is primitive){
-            fmt::fprintfln(buff, "\t%fail.code =l loadl {}", val)!;
-            fmt::fprintln(buff, "\t%assert.fail =l csltl %fail.code, 1")!;
-        } else {
-            if(tpe.base is primitive){
-                fmt::fprintfln(buff, "\t%assert.fail =l csltl {}, 1", val)!;
-            };
-        };
-        // no assertion expression
-        if(prop.1 is void){
-            if(prop.0 == operator::BUBBLE){
-                fmt::fprintfln(buff, "\tjnz %assert.fail, @bubble.{0}, @ok.{0}",
-                    memb.pos)!;
-                fmt::fprintfln(buff, "@bubble.{0}\n\tret {1}\n@ok.{0}",
-                    memb.pos, val)!;
-            } else {
-                fmt::fprintfln(buff, "\tjnz %assert.fail, @fail, @ok.{0}\n@ok.{0}",
-                    memb.pos)!;
-            };
-        } else {
-            if(prop.0 == operator::BUBBLE){
-                const exp = prop.1 as *expr_meta;
-                fmt::fprintfln(buff,
-                    "\tjnz %assert.fail, @bubble.{0}, @ok.{0}\n@bubble.{0}",
-                    memb.pos)!;
-                const wrap = fmt::asprint("%default.{}", memb.pos)!;
-                defer free(wrap);
-                const val = gen_exp(ctxt, buff, wrap, memb.tpe, exp);
-                fmt::fprintfln(buff,
-                    "\t{1} ={2} copy {3}\n\tjmp @skip.{0}\n@ok.{0}",
-                    memb.pos, dest, qbe_t(exp_t, mode::ASSIGN), val)!;
-            } else {
-                const stt = prop.1 as path_meta;
-                fmt::fprintfln(buff, "\tjnz %assert.fail, @fail.{0}, @ok.{0}",
-                    memb.pos)!;
-                const zero = zeroed_value(ctxt, buff, exp_t);
-                defer free(zero);
-                fmt::fprintfln(buff, "@fail.{}\n\t{} ={} copy {}",
-                    memb.pos, dest, qbe_t(exp_t, mode::ASSIGN), zero)!;
-                gen_stt(ctxt, buff, stt);
-                fmt::fprintfln(buff, "\tjmp @skip.{0}\n@ok.{0}", memb.pos)!;
-            };
-        };
+        gen_prop(ctxt, buff, memb.prop as propagation,
+            exp_t, tpe, memb.pos, dest, val);
     };
     if(!skip){
         defer free(val);
         if(!is_subtype(memb.tpe, exp_t)){
-            gen_cast(buff, val, tpe, temp, memb.tpe);
-            gen_cast(buff, temp, memb.tpe, dest, exp_t);
+            gen_cast(ctxt, buff, val, tpe, temp, memb.tpe);
+            gen_cast(ctxt, buff, temp, memb.tpe, dest, exp_t);
         } else {
-            gen_cast(buff, val, tpe, dest, exp_t);
+            gen_cast(ctxt, buff, val, tpe, dest, exp_t);
         };
     };
     if(memb.prop is propagation){
@@ -1080,12 +1188,68 @@ fn assign_memb(
     return "";
 };
 
+fn gen_prop(
+    ctxt: *context,
+    buff: *memio::stream,
+    prop: propagation,
+    exp_t: lichen_t,
+    tpe: lichen_t,
+    pos: size,
+    dest: str,
+    val: str,
+) void = {
+    fmt::fprintfln(buff, "\t%fail.code =l loadl {}", val)!;
+    fmt::fprintln(buff, "\t%assert.fail =l csltl %fail.code, 1")!;
+    // no assertion expression
+    if(prop.1 is void){
+        if(prop.0 == operator::BUBBLE){
+            fmt::fprintfln(buff, "\tjnz %assert.fail, @bubble.{0}, @ok.{0}",
+                pos)!;
+            fmt::fprintfln(buff, "@bubble.{0}\n\tret {1}\n@ok.{0}", pos, val)!;
+        } else {
+            fmt::fprintfln(buff, "\tjnz %assert.fail, @fail, @ok.{0}\n@ok.{0}",
+                pos)!;
+        };
+    } else {
+        if(prop.0 == operator::BUBBLE){
+            const exp = prop.1 as *expr_meta;
+            fmt::fprintfln(buff,
+                "\tjnz %assert.fail, @bubble.{0}, @ok.{0}\n@bubble.{0}", pos)!;
+            const wrap = fmt::asprint("%default.{}", pos)!;
+            defer free(wrap);
+            const val = gen_exp(ctxt, buff, wrap, tpe, exp);
+            const asg_val =
+                if(val != ""){
+                    yield val;
+                } else {
+                    yield wrap;
+                };
+            defer if(val != "") free(val);
+            fmt::fprintfln(buff,
+                "\t{1} ={2} copy {3}\n\tjmp @skip.{0}\n@ok.{0}",
+                pos, dest, qbe_t(ctxt, exp_t, mode::ASSIGN), asg_val)!;
+        } else {
+            const stt = prop.1 as path_meta;
+            fmt::fprintfln(buff,
+                "\tjnz %assert.fail, @fail.{0}, @ok.{0}\n@fail.{}", pos)!;
+            const zero = zeroed_value(ctxt, buff, exp_t);
+            defer free(zero);
+            fmt::fprintfln(buff, "\t{} ={} copy {}", dest,
+                qbe_t(ctxt, exp_t, mode::ASSIGN), zero)!;
+            gen_stt(ctxt, buff, stt);
+            fmt::fprintfln(buff, "\tjmp @skip.{0}\n@ok.{0}", pos)!;
+        };
+    };
+};
+
 fn gen_funcall(
     ctxt: *context,
     buff: *memio::stream,
     call: *funcall_meta,
     dest: str,
 ) str = {
+    const base_name = strings::replace(call.fun.fun.name, "'", ".q")!;
+    defer free(base_name);
     const name =
         if(call.fun.fun.ffi is str){
             yield fmt::asprintf("${}",
@@ -1094,9 +1258,9 @@ fn gen_funcall(
             const mod = strings::rcut(
                 strings::rcut(call.fun.origin, "/").1, ".").0;
             yield fmt::asprintf("${}.{}", mod,
-                call.fun.fun.name)!;
+                base_name)!;
         } else {
-            yield fmt::asprintf("${}", call.fun.fun.name)!;
+            yield fmt::asprintf("${}", base_name)!;
         };
     defer free(name);
     const defs: []*var_meta = [];
@@ -1125,24 +1289,25 @@ fn gen_funcall(
     };
     if(dest != "" && !comp_type(call.fun.fun.tpe, quick_t(primitive::UNIT))){
         fmt::fprintf(buff, "\t{} ={} call {}", dest,
-            qbe_t(call.fun.fun.tpe, mode::RETURN), name)!;
+            qbe_t(ctxt, call.fun.fun.tpe, mode::RETURN), name)!;
     } else {
         fmt::fprintf(buff, "\tcall {}", name)!;
     };
-    gen_list(buff, defs);
+    gen_list(ctxt, buff, defs);
     fmt::fprint(buff, "\n")!;
     return strings::dup(dest)!;
 };
 
 // generates all needed type casting for an assignment
 fn gen_cast(
+    ctxt: *context,
     buff: *memio::stream,
     src: str,
     src_t: lichen_t,
     dest: str,
     dest_t: lichen_t,
 ) void = {
-    const dest_qbe_t = qbe_t(dest_t, mode::ASSIGN);
+    const dest_qbe_t = qbe_t(ctxt, dest_t, mode::ASSIGN);
     if(untyped(src_t)){
         const d_tpe_p =
             if(!untyped(dest_t)){
@@ -1158,13 +1323,13 @@ fn gen_cast(
             };
         if(is_subtype(src_t, primitive::NUMBER) && is_ratio(dest_t)){
             fmt::fprintfln(buff, "\t{} ={} {} {}", dest,
-                qbe_t(dest_t, mode::ASSIGN),
+                qbe_t(ctxt, dest_t, mode::ASSIGN),
                 itof(quick_t(primitive::I64), d_tpe_p), src)!;
             return;
         } else if(is_ratio(src_t) &&
             is_subtype(dest_t, primitive::NUMBER)){
             fmt::fprintfln(buff, "\t{} ={} {} {}", dest,
-                qbe_t(dest_t, mode::ASSIGN),
+                qbe_t(ctxt, dest_t, mode::ASSIGN),
                 ftoi(quick_t(primitive::F64), d_tpe_p), src)!;
             return;
         } else {
@@ -1190,7 +1355,7 @@ fn gen_cast(
                 (is_subtype(dest_t, primitive::NUMBER) ||
                 is_subtype(dest_t, primitive::BOOL))){
                 fmt::fprintfln(buff, "\t{} ={} ext{} {}",
-                    dest, dest_qbe_t, qbe_t(src_t, mode::LOAD), src)!;
+                    dest, dest_qbe_t, qbe_t(ctxt, src_t, mode::LOAD), src)!;
             // cast of integer to float
             } else if((is_subtype(src_t, primitive::NUMBER) ||
                 is_subtype(src_t, primitive::BOOL)) && is_ratio(dest_t)){
@@ -1243,20 +1408,20 @@ fn gen_cast(
                 const temp = fmt::asprintf("{}.wrap", dest)!;
                 defer free(temp);
                 fmt::fprintfln(buff, "\t{} ={} load{} {}", temp,
-                    qbe_t(dest_t, mode::ASSIGN), qbe_t(dest_t, mode::LOAD), src)!;
+                    qbe_t(ctxt, dest_t, mode::ASSIGN), qbe_t(ctxt, dest_t, mode::LOAD), src)!;
                 // cast loaded value to desired type
-                gen_cast(buff, temp, quick_t(src_t.base as primitive), dest,
+                gen_cast(ctxt, buff, temp, quick_t(src_t.base as primitive), dest,
                     dest_t);
             } else {
                 fmt::fprintfln(buff, "\t{} ={} load{} {}", dest,
-                    qbe_t(dest_t, mode::ASSIGN), qbe_t(dest_t, mode::LOAD), src)!;
+                    qbe_t(ctxt, dest_t, mode::ASSIGN), qbe_t(ctxt, dest_t, mode::LOAD), src)!;
             };
             // undo offset
             fmt::fprintfln(buff, "\t{0} =l sub {0}, 8", src)!;
         // concrete to partial
         } else if(!src_t.fail && dest_t.fail){
             fmt::fprintfln(buff, "\t{0} =l add {0}, 8", src)!;
-            fmt::fprintfln(buff, "\tstore{} {}, {}", qbe_t(src_t),
+            fmt::fprintfln(buff, "\tstore{} {}, {}", qbe_t(ctxt, src_t),
                 dest, src)!;
             fmt::fprintfln(buff, "\t{0} =l sub {0}, 8", src)!;
         // both error types
@@ -1264,14 +1429,14 @@ fn gen_cast(
             fmt::fprintfln(buff, "\t{} =l copy {}", dest, src)!;
         };
     } else {
-        todo("composite types");
+        fmt::fprintfln(buff, "\t{} =l copy {}", dest, src)!;
     };
 };
 
 fn fix_nm(ctxt: *context, buff: *memio::stream, nm: namespace) str = {
     if(nm.ffi is str){
         fmt::fprintfln(buff, "\t%{0} ={1} load{2} ${0}", nm.ffi,
-            qbe_t(nm.tpe, mode::ASSIGN), qbe_t(nm.tpe, mode::LOAD))!;
+            qbe_t(ctxt, nm.tpe, mode::ASSIGN), qbe_t(ctxt, nm.tpe, mode::LOAD))!;
         return fmt::asprintf("%{}", nm.ffi as str)!;
     };
     const name = strings::replace(nm.name, "'", ".q")!;
@@ -1281,12 +1446,12 @@ fn fix_nm(ctxt: *context, buff: *memio::stream, nm: namespace) str = {
             strings::rcut(ctxt.file, "/").0, ".").0;
         const wrap = fmt::asprintf("%{}.{}", mod, name)!;
         fmt::fprintfln(buff, "\t{} ={} load{} ${}.{}", wrap,
-            qbe_t(nm.tpe, mode::ASSIGN), qbe_t(nm.tpe, mode::LOAD),
+            qbe_t(ctxt, nm.tpe, mode::ASSIGN), qbe_t(ctxt, nm.tpe, mode::LOAD),
             mod, name)!;
         return wrap;
     } else if(nm.glob){
         fmt::fprintfln(buff, "\t%{0} ={1} load{2} ${0}", name,
-            qbe_t(nm.tpe, mode::ASSIGN), qbe_t(nm.tpe, mode::LOAD))!;
+            qbe_t(ctxt, nm.tpe, mode::ASSIGN), qbe_t(ctxt, nm.tpe, mode::LOAD))!;
         return fmt::asprintf("%{}", name)!;
     } else {
         return fmt::asprintf("%{}", name)!;
@@ -1384,6 +1549,20 @@ fn zeroed_value(ctxt: *context, buff: *memio::stream, tpe: lichen_t) str = {
         const e = tpe.base as *enum_t;
         return fix_nm(ctxt, buff, e.variant[0]);
     } else {
-        todo("default values for records");
+        const rec = tpe.base as *record;
+        const name = fmt::asprintf("%{}.zero", rec.name.name)!;
+        fmt::fprintfln(buff, "\t{} =l alloc8 {}", name, type_size(tpe))!;
+        fmt::fprintfln(buff, "\t{0}.ptr =l copy {0}", name)!;
+        for(let field .. rec.fields){
+            const offst = field_offset(rec, field.1.var.nm.name);
+            if(offst > 0){
+                fmt::fprintfln(buff, "\t{0}.ptr =l add {0}.ptr, {1}", name,
+                    offst)!;
+            };
+            const zero = zeroed_value(ctxt, buff, field.1.var.nm.tpe);
+            fmt::fprintfln(buff, "\tstore{} {}, {}.ptr",
+                qbe_t(ctxt, field.1.var.nm.tpe), zero, name)!;
+        };
+        return name;
     };
 };

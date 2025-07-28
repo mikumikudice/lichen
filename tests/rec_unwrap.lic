@@ -1,0 +1,23 @@
+io mod = use "std/io.lim";
+
+type foo = record {
+    bar !u32;
+};
+
+fn bar'(x u32) !u32 = {
+    if x == 0 {
+        return fail;
+    } else {
+        return x;
+    };
+};
+
+pub fn main() void = io {
+    let foo' = foo { bar = bar'(69) };
+    let bar = foo'.bar!;
+    if bar == 69 {
+        io::println("test ok")!;
+    } else {
+        io::println("test fail")!;
+    };
+};

@@ -4,9 +4,9 @@ Program     ::= global_def+;
 // variable definition, function definition or a constant test followed by
 // a semicolon
 global_def  ::= (("pub"? type_def | const_def | fun_def) | const_test) eol;
-// a type definition is either an enumerator or record definition or a type
-// alias
-type_def    ::= "type" namespace "=" (enum_def | record_def | type);
+// a type definition is either an enumerator or record definition or an alias
+// for a non-primitive type
+type_def    ::= "type" namespace "=" (enum_def | record_def | array | tuple | function);
 // a namespace is any sequence of underlines and alphanumeric characters that
 // doesn't start with a number or a sequence of underlines and a number and
 // optionally ends in any number of quotes (prime notation)

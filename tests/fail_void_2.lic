@@ -1,0 +1,13 @@
+// parsing test to assert
+// disallowance of bubbling of partial
+// void type error state
+
+fn no_ret() !void = {};
+
+fn no_assert() !unit = {
+    no_ret()?;
+};
+
+fn main() void = {
+    let x = no_assert()!;
+};

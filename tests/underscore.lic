@@ -1,0 +1,9 @@
+// parsing test to assert for fixed bug
+// with namespaces being rejected when
+// starting with an underscore
+
+fn _main() unit = {};
+
+pub fn main() void = {
+    let x = _main();
+};

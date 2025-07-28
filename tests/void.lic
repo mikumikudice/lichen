@@ -1,0 +1,9 @@
+// parsing test to assert for fixed bug
+// with pure void functions being
+// disallowed
+
+fn _main() void = {};
+
+pub fn main() void = {
+    _main();
+};

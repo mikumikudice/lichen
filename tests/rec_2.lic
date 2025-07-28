@@ -1,0 +1,26 @@
+io mod = use "std/io.lim";
+
+type person = record {
+    name str;
+    age u8;
+};
+
+type car = record {
+    owner person;
+    model str;
+    brand str;
+};
+
+pub fn main() void = io {
+    let bob = person { name = "bob", age = 24 };
+    let beetle = car {
+        owner = bob,
+        model = "beetle",
+        brand = "volkswagen",
+    };
+    if beetle.owner.name == "bob" && beetle.model != beetle.brand {
+        io::println("test ok")!;
+    } else {
+        io::println("test fail")!;
+    };
+};

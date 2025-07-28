@@ -1,0 +1,9 @@
+// parsing test to assert
+// disallowance of assertion on partial
+// void types
+
+fn no_ret() !void = {};
+
+fn main() void = {
+    no_ret()!;
+};

@@ -30,6 +30,8 @@ local tests = {
     { src = "fail_array_3", code = 1, nocomp = true },
     { src = "fail_array_4", code = 1, nocomp = true },
     { src = "fail_array_5", code = 1, nocomp = true },
+    { src = "fail_void_1", code = 1, nocomp = true },
+    { src = "fail_void_2", code = 1, nocomp = true },
     -- fail assertion --
     { src = "fail_io_bad_handle", code = 1, nocomp = false },
     { src = "fail_io_from_result", code = 1, nocomp = false },
@@ -38,19 +40,26 @@ local tests = {
     -- parser --
     { src = "vars", code = 0 },
     { src = "funcs", code = 0 },
+    { src = "underscore", code = 0 },
     { src = "float", output = "test ok\n", code = 0 },
     { src = "mut", code = 0 },
     { src = "strings", output = "test ok\n", code = 0 },
     { src = "array", code = 0 },
+    { src = "rec_1", output = "test ok\n", code = 0 },
+    { src = "rec_2", output = "test ok\n", code = 0 },
+    { src = "rec_3", output = "test ok\n", code = 0 },
+    { src = "rec_4", output = "test 1 ok\ntest 2 ok\n", code = 0 },
     -- branching --
     { src = "if-else",
         output = "test 0 ok\ntest 1 ok\ntest 2 ok\ntest 3 ok\ntest 4 ok\ntest 5 ok\ntest 6 ok\n",
         code = 0 },
     -- type checking --
     { src = "unit", code = 0 },
+    { src = "void", code = 0 },
     { src = "types", code = 0 },
     { src = "exp", code = 0 },
     { src = "unwrap", code = 0 },
+    { src = "rec_unwrap", output = "test ok\n", code = 0 },
     -- io --
     { src = "hello", output = "mornin' sailor!\n", code = 0 },
     -- others --

@@ -14,7 +14,7 @@ type keyword = enum u8 {
     USE, MOD, PUB, MUT, LET, FN, TYPE,
     FOR, SWITCH, IF, ELSE,
     RETURN, UNREACHABLE, DO, TEST,
-    RECORD, ENUM, NEW,
+    RECORD, ENUM, NEW, OR,
     TRUE, FALSE, FAIL, NOMEM,
 };
 
@@ -22,7 +22,7 @@ const kwd_value = [
     "use", "mod", "pub", "mut", "let", "fn", "type",
     "for", "switch", "if", "else",
     "return", "unreachable", "do", "test",
-    "record", "enum", "new",
+    "record", "enum", "new", "or",
     "true", "false", "fail", "nomem",
 ];
 
@@ -56,8 +56,10 @@ type enum_t = struct {
 };
 
 type record = struct {
-    name: str,
-    field: []lichen_t,
+    name: namespace,
+    export_name: str,
+    fields: [](bool, *decl_meta),
+    defaults: []*const_meta,
 };
 
 type tuple = struct {
@@ -136,9 +138,14 @@ type scope = struct {
     upper: nullable *scope,
 };
 
-type path_meta = (*const_meta | *array_lit_meta | *decl_meta | *assign_meta |
-    *var_meta | *fun_meta | *funcall_meta | *scope_meta | *expr_meta |
-    *hand_meta | *member_meta | *branch_meta | *ternary_meta | *return_meta |
+type member_t = (*const_meta | *array_lit_meta | *record_lit_meta |
+    *field_meta | *var_meta | *funcall_meta);
+type hand_t = (*hand_meta | *member_meta | *ternary_meta | *expr_meta);
+
+type path_meta = (*hand_meta | *hand_meta | *member_meta | *ternary_meta |
+    *expr_meta | *const_meta | *array_lit_meta | *record_lit_meta |
+    *field_meta | *var_meta | *funcall_meta | *decl_meta | *assign_meta |
+    *fun_meta | *scope_meta | *expr_meta | *branch_meta | *return_meta |
     *type_meta | *module_meta);
 
 type const_meta = struct {
@@ -150,6 +157,21 @@ type array_lit_meta = struct {
     tpe: lichen_t,
     items: []*expr_meta,
     spreads_at: (void | size),
+};
+
+type record_lit_meta = struct {
+    tpe: lichen_t,
+    values: [](str, *expr_meta),
+};
+
+type field_meta = struct {
+    before: nullable *field_meta,
+    field: *decl_meta,
+    base: nullable *member_meta,
+    pos: size,
+    tpe: lichen_t,
+    prop: (void | propagation),
+    from_tpe: lichen_t,
 };
 
 type decl_meta = struct {
@@ -197,8 +219,6 @@ type scope_meta = struct {
     rets: bool,
 };
 
-type hand_t = (*hand_meta | *member_meta | *ternary_meta | *expr_meta);
-
 type propagation = (operator, (void | path_meta));
 
 type expr_meta = struct {
@@ -221,7 +241,7 @@ type member_meta = struct {
     pos: size,
     tpe: lichen_t,
     pre: (void | operator),
-    val: (*const_meta | *array_lit_meta | *var_meta | *funcall_meta | keyword),
+    val: (keyword | ...member_t),
     prop: (void | propagation),
 };
 
@@ -250,7 +270,7 @@ type return_meta = struct {
 type type_meta = struct {
     owner: *context,
     pos: size,
-    name: str,
+    name: namespace,
     self: lichen_t,
 };
 

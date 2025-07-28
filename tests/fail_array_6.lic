@@ -1,0 +1,7 @@
+// parsing test for array assignment
+// with length mismatch
+
+pub fn main() void = {
+    let arr = [8; 0...] u32;
+    let arr' [4]u32 = arr;
+};

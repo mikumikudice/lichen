@@ -132,8 +132,8 @@ pub fn fread_to(handle u32, mut buffer []u8) !unit = rt & write {
 //                     buff' = buff' ..? c @ buffer_mem;
 //                 };
 //             } else {
-//                 switch c {
-//                 | 'u', 'i', 'r', 'f' => {
+//                 switch c
+//                 | 'u', 'i', 'r', 'f' {
 //                     if escaped {
 //                         mem temp | #fmt << 8 {
 //                             // print unsigned int
@@ -158,7 +158,7 @@ pub fn fread_to(handle u32, mut buffer []u8) !unit = rt & write {
 //                         buff' = buff' ..? c @ buffer_mem;
 //                     };
 //                 };
-//                 | 'b' =>
+//                 | 'b' {
 //                     // print boolean
 //                     if escaped {
 //                         let val bool = args[counter]?;
@@ -172,7 +172,8 @@ pub fn fread_to(handle u32, mut buffer []u8) !unit = rt & write {
 //                     } else {
 //                         buff' = buff' ..? c @ buffer_mem;
 //                     };
-//                 | 's' =>
+//                 };
+//                 | 's' {
 //                     // print string
 //                     if escaped {
 //                         let val str = args[counter]?;
@@ -182,7 +183,8 @@ pub fn fread_to(handle u32, mut buffer []u8) !unit = rt & write {
 //                     } else {
 //                         buff' = buff' ..? c @ buffer_mem;
 //                     };
-//                 | 'a' =>
+//                 };
+//                 | 'a' {
 //                     // print c-string
 //                     if escaped {
 //                         let val str = args[counter]?;
@@ -194,7 +196,8 @@ pub fn fread_to(handle u32, mut buffer []u8) !unit = rt & write {
 //                     } else {
 //                         buff' = buff' ..? c @ buffer_mem;
 //                     };
-//                 | else =>
+//                 };
+//                 | else {
 //                     if escaped {
 //                         return fail;
 //                     };

@@ -1,0 +1,11 @@
+// parsing test for too many field
+// assignments on record literals
+
+type person = record {
+    name str;
+    age u8;
+};
+
+pub fn main() void = io {
+    let bob = person { name = "bob", age = 24, id = 4433 };
+};

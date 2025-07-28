@@ -1,0 +1,7 @@
+// parsing test for record field
+// duplication assertion
+
+type person = record {
+    name str;
+    name u8;
+};

@@ -1,0 +1,24 @@
+io mod = use "std/io.lim";
+
+type goblin = record {
+    level u32;
+    damage u32;
+    health i32;
+};
+
+fn spawn(level u32) goblin = {
+    return goblin {
+        level = level,
+        damage = level * 2,
+        health = level i32 * 3,
+    };
+};
+
+pub fn main() void = io {
+    let kikky = spawn(4);
+    if spawn(1).health == 3 {
+        io::println("test ok")!;
+    } else {
+        io::println("test fail")!;
+    };
+};

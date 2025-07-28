@@ -2,8 +2,8 @@ io mod = use "io.lim";
 
 pub fn main() void = io {
     mem arena | 128 {
-        let name = io::read(128, arena) !>
-            io::fatal("failed to read from user");
+        let name = io::read(128, arena)!
+            or io::fatal("failed to read from user");
 
         io::printfln("hello, %s!", name)!;
     };
