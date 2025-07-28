@@ -59,7 +59,7 @@ local tests = {
     { src = "types", code = 0 },
     { src = "exp", code = 0 },
     { src = "unwrap", code = 0 },
-    { src = "rec_unwrap", output = "test ok\n", code = 0 },
+    { src = "rec_unwrap", output = "test 1 ok\ntest 2 ok\n", code = 0 },
     -- io --
     { src = "hello", output = "mornin' sailor!\n", code = 0 },
     -- others --

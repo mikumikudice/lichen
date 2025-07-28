@@ -13,11 +13,20 @@ fn bar'(x u32) !u32 = {
 };
 
 pub fn main() void = io {
-    let foo' = foo { bar = bar'(69) };
-    let bar = foo'.bar!;
-    if bar == 69 {
-        io::println("test ok")!;
+    let r = foo { bar = bar'(1) };
+    let u = r.bar!;
+    if u == 1 {
+        io::println("test 1 ok")!;
     } else {
-        io::println("test fail")!;
+        io::println("test 1 fail")!;
+    };
+
+    let r' = foo { bar = bar'(0) };
+    let u' = r'.bar? or 0;
+
+    if u' == 0 {
+        io::println("test 2 ok")!;
+    } else {
+        io::println("test 2 fail")!;
     };
 };
