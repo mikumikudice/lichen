@@ -1,0 +1,12 @@
+io mod = use "std/io.lim";
+
+pub fn main() void = io {
+    let x !u32 = fail;
+    let y = x? or 0;
+
+    if y == 0 {
+        io::println("test ok")!;
+    } else {
+        io::println("test fail")!;
+    };
+};

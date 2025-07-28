@@ -1,8 +1,3 @@
-- implemented records
-- fixed functions with prime notation in name emitting
-- assertion instead of propagation on potential compiler error when parsing error piping
-- other minor bugs
-- updated piping operator to keyword `or` to avoid confusion with the operator `>`
-- fixed invalid parsing of namespaces starting with underscore
-- fixed error propagation semantics on `!void` functions
-- fixed allowance for `void` calls on pure functions
+- disallow propagation from or on void functions
+- enforce no assertion on void functions
+- allow pure void functions to not be assigned

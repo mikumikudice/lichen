@@ -1484,7 +1484,8 @@ fn eval_scope(
             rets = true;
         };
         // address for ignored errors
-        if(last_tpe.fail && !(stt is *decl_meta) && !rets){
+        if(last_tpe.fail && !(stt is *decl_meta) && !rets &&
+            !comp_type(last_tpe, quick_t(primitive::VOID, true))){
             move_ptr(ctxt, tk);
             return error_hint(ctxt,
                 "\n%gtry bubbling the error with %d?%g or asserting it with %d!",
@@ -1740,8 +1741,8 @@ fn eval_var_def(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
     if(untyped(name.tpe)){
         move_ptr(ctxt, ctxt.tokens[eq]);
         return error(ctxt, "cannot deduce %yexpression type");
-    } else if(is_subtype(name.tpe, quick_t(primitive::VOID, true)) &&
-        !is_subtype(name.tpe, quick_t(primitive::UNIT, true))){
+    } else if(comp_type(name.tpe, quick_t(primitive::VOID, true)) ||
+        comp_type(name.tpe, quick_t(primitive::VOID, true))){
         move_ptr(ctxt, ctxt.tokens[eq]);
         const arg = strtype(name.tpe);
         defer free(arg);

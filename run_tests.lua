@@ -54,10 +54,12 @@ local tests = {
         output = "test 0 ok\ntest 1 ok\ntest 2 ok\ntest 3 ok\ntest 4 ok\ntest 5 ok\ntest 6 ok\n",
         code = 0 },
     -- type checking --
-    { src = "unit", code = 0 },
-    { src = "void", code = 0 },
     { src = "types", code = 0 },
     { src = "exp", code = 0 },
+    { src = "unit", code = 0 },
+    { src = "void_1", code = 0 },
+    { src = "void_2", code = 0 },
+    { src = "error", output = "test ok\n", code = 0 },
     { src = "unwrap", code = 0 },
     { src = "rec_unwrap", output = "test 1 ok\ntest 2 ok\n", code = 0 },
     -- io --

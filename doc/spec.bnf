@@ -128,7 +128,7 @@ object      ::= namespace | fun_call;
 fun_call    ::= (namespace | mod_field) "(" (expression ("," expression)*)* ")";
 // a propagation expression is either a bang or an interrogation optionally
 // followed by zero or more optionally error-singleton-specified handling cases
-propagation ::= ("?" (">" expression?)*) | ("!" (">" (error_state "|")? statement)*);
+propagation ::= ("?" ("or" expression?)*) | ("!" (">" (error_state "|")? statement)*);
 // a ternary expression is a true-case expression followed by the keyword `if`, a
 // checking expression, the `else` keyword and a final false-case expression
 ternary     ::= expression "if" expression "else" expression;
