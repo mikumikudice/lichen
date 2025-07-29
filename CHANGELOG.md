@@ -1,9 +1,3 @@
-- implemented array indexing
-- added module types
-- added unordered field assignment on record literals
-- fixed false positive mutability error for immutability dropping
-- unhardcoded wrapper `%opt` to avoid collisions with user variables
-- changed partial records' memory layout to avoid false positives with propagation
-- disallowed propagation on error singletons
-- lots of bugfixes
-- removed AI-generated stress code (only human code from now on)
+- implemented single-level record field assignment
+- unhardcoded `%dup` on value stack duplication
+- fixed invalid allowance of field assignment with type mismatch

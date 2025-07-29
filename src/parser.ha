@@ -2001,16 +2001,23 @@ fn eval_expression(
         return eval_ternary(ctxt, _end, end,
             left as (*member_meta | *expr_meta));
     };
+    let first_t = hint;
     match(left){
-    case let exp: *expr_meta => append(members, exp)!;
-    case let memb: *member_meta => append(members, memb)!;
+    case let exp: *expr_meta =>
+        first_t = exp.tpe;
+        append(members, exp)!;
+    case let memb: *member_meta =>
+        first_t = memb.tpe;
+        append(members, memb)!;
     case void => assert(false, "unreachable");
     };
     end = _end;
     tk = next_tk(ctxt, end,
         "expected %bexpression member%r, but got %y{}")?;
+    let single = true;
     // keep iterating while there's an operator at the right of the member
     for(tk.val is operator){
+        single = false;
         const oper = tk.val as operator;
         if(!is_binary_op(oper)){
             // halt on invalid state
@@ -2051,9 +2058,15 @@ fn eval_expression(
         tk = next_tk(ctxt, end,
             "expected %bexpression member%r, but got %y{}")?;
     };
-    let (val, tpe) = reduce_members(ctxt, at, members)?;
+    let (val, tpe): (hand_t, lichen_t) =
+        if(!single){
+            yield reduce_members(ctxt, at, members)?;
+        } else {
+            yield (left as (*member_meta | *expr_meta), first_t);
+        };
     // assign a possible less-untyped type
-    if(untyped(tpe) && !comp_type(hint, primitive::ANY)) tpe = hint;
+    if(untyped(tpe) && !comp_type(hint, primitive::ANY) &&
+        is_subtype(tpe, hint)) tpe = hint;
     // assert for expected expression type
     assert_hint(ctxt, ctxt.tokens[at], tpe, hint)?;
     assert(!comp_type(tpe, primitive::ANY));

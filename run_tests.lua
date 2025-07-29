@@ -30,6 +30,12 @@ local tests = {
     { src = "fail_array_3", code = 1, nocomp = true },
     { src = "fail_array_4", code = 1, nocomp = true },
     { src = "fail_array_5", code = 1, nocomp = true },
+    { src = "fail_rec_1", code = 1, nocomp = true },
+    { src = "fail_rec_2", code = 1, nocomp = true },
+    { src = "fail_rec_3", code = 1, nocomp = true },
+    { src = "fail_rec_4", code = 1, nocomp = true },
+    { src = "fail_rec_5", code = 1, nocomp = true },
+    { src = "fail_rec_6", code = 1, nocomp = true },
     { src = "fail_void_1", code = 1, nocomp = true },
     { src = "fail_void_2", code = 1, nocomp = true },
     { src = "fail_pub", code = 1, nocomp = true },
@@ -53,6 +59,7 @@ local tests = {
     { src = "rec_3", output = "test ok\n", code = 0 },
     { src = "rec_4", output = "test 1 ok\ntest 2 ok\n", code = 0 },
     { src = "rec_5", output = "test ok\n", code = 0 },
+    { src = "rec_6", output = "test ok\n", code = 0 },
     { src = "arr_rec", output = "test ok\n", code = 0 },
     -- branching --
     { src = "if-else",
@@ -81,14 +88,7 @@ local function run(cmd)
     if not exec(cmd, true) then os.exit(1) end
 end
 
--- setup --
-run("./install.sh")
-run("mkdir -p " .. tmp)
-
-local failed = {}
-
--- run each test --
-for _, t in ipairs(tests) do
+local function run_test(t, failed)
     local bin = tmp .. t.src
     local ok  = exec("lcc " .. flags .. " tests/" .. t.src .. ".lic " .. bin)
 
@@ -119,7 +119,38 @@ for _, t in ipairs(tests) do
                 t.src, expected, #expected, result, #result ))
         end
     end
+end
 
+function filter(t, pre)
+    local new = {}
+    for i in ipairs(t) do
+        if pre(t[i]) then
+            table.insert(new, t[i])
+        end
+    end
+    return new
+end
+
+
+-- setup --
+run("./install.sh")
+run("mkdir -p " .. tmp)
+
+local failed = {}
+
+-- run an specific set of tests
+if arg[1] ~= nil then
+    tests = filter(tests, function(t)
+        for i = 1, #arg do
+            if arg[i] == t.src then return true end
+        end
+        return false
+    end)
+end
+
+-- run each test --
+for _, t in ipairs(tests) do
+    run_test(t, failed)
     io.write("\n")
 end
 
