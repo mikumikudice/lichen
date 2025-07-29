@@ -182,6 +182,18 @@ let deduced = known + 1; // 1 decays to u32
 ```
 see more about type and type casting in [this section](#type-system).
 
+you cannot assign a void type to a variable, even if it's partial:
+```rust
+fn fn_void() void = {};
+fn fn_err_void() !void = {};
+
+pub fn main() void = {
+    let foo = fn_void(); // not valid
+    let bar = fn_err_void()!; // also not valid
+};
+```
+see more of this in [this section](#types).
+
 # types
 lichen has a somewhat small set of primitives and derivative types. these are:
 ## numeric
@@ -310,6 +322,7 @@ pub fn main() void = {
 
 fn exit_on_error() !void = {};
 ```
+as you may also notice, no bubbling or assertion is needed or allowed on a void type, once it _never_ returns any value, even if the value is an error state. similarly, you cannot bubble from within an void function.
 
 ## arrays
 arrays are a contiguous list of same-type data on memory that may be indexed. the indexing may be unsafe once we not always know if the array is big enough to accommodate given index, so lichen solves this my making all array indexing that is not constant (i.e. its index and length are known at compile-time) a partial type expression, as follows:
@@ -848,6 +861,7 @@ pub fn main() void = {
     };
 };
 ```
+this does not apply to void functions, once they never return i.e. no value exists to be used.
 
 # modules
 modules are a simple and practical way to both encapsulate reusable code and effects behind a single tag. for instance, any module that implements an impure function (i.e. one that produce effects) requires that the caller function only declare the module binding as an effect tag:

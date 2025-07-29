@@ -8,7 +8,6 @@
 - assert for division by zero
 - assert for mutual-recursive import
 - implement enumerators
-- implement arrays
 - implement logic operator chain
 - implement record arithmetic
 - implement sub-typing for records

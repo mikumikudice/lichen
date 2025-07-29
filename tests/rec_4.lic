@@ -19,8 +19,9 @@ fn spawn(level u32) !goblin = {
 };
 
 pub fn main() void = io {
-    let kikky = spawn(0)!
+    let foo = spawn(0)!
         or io::println("test 1 ok");
+
     if spawn(1)!.health == 3 {
         io::println("test 2 ok")!;
     } else {

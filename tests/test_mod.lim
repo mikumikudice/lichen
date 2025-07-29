@@ -1,0 +1,6 @@
+pub type rec = record {
+    foo u32;
+    bar u32;
+};
+
+private_field u32 = 4;

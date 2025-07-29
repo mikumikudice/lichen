@@ -1,0 +1,13 @@
+io mod = use "std/io.lim";
+local mod = use "test_mod.lim";
+
+pub fn main() void = io {
+    let egg local::rec = local::rec { bar = 0, foo = 4 };
+    let bar = egg.bar;
+
+    if bar == 0 {
+        io::println("test ok")!;
+    } else {
+        io::println("test fail")!;
+    };
+};

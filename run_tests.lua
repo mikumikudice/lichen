@@ -32,6 +32,7 @@ local tests = {
     { src = "fail_array_5", code = 1, nocomp = true },
     { src = "fail_void_1", code = 1, nocomp = true },
     { src = "fail_void_2", code = 1, nocomp = true },
+    { src = "fail_pub", code = 1, nocomp = true },
     -- fail assertion --
     { src = "fail_io_bad_handle", code = 1, nocomp = false },
     { src = "fail_io_from_result", code = 1, nocomp = false },
@@ -44,11 +45,15 @@ local tests = {
     { src = "float", output = "test ok\n", code = 0 },
     { src = "mut", code = 0 },
     { src = "strings", output = "test ok\n", code = 0 },
-    { src = "array", code = 0 },
+    { src = "array_1", code = 0 },
+    { src = "array_2", output = "test ok\n", code = 0 },
+    { src = "array_3", output = "test 1 ok\ntest 2 ok\n", code = 0 },
     { src = "rec_1", output = "test ok\n", code = 0 },
     { src = "rec_2", output = "test ok\n", code = 0 },
     { src = "rec_3", output = "test ok\n", code = 0 },
     { src = "rec_4", output = "test 1 ok\ntest 2 ok\n", code = 0 },
+    { src = "rec_5", output = "test ok\n", code = 0 },
+    { src = "arr_rec", output = "test ok\n", code = 0 },
     -- branching --
     { src = "if-else",
         output = "test 0 ok\ntest 1 ok\ntest 2 ok\ntest 3 ok\ntest 4 ok\ntest 5 ok\ntest 6 ok\n",
@@ -64,10 +69,6 @@ local tests = {
     { src = "rec_unwrap", output = "test 1 ok\ntest 2 ok\n", code = 0 },
     -- io --
     { src = "hello", output = "mornin' sailor!\n", code = 0 },
-    -- others --
-    { src = "stress",
-        output = "branch 1 ok\ny is even\ncomputing factorial...\nfactorial(5) ok\nresult is:\nz computed ok\n", 
-        code = 0 },
 }
 
 -- helpers --

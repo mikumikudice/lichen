@@ -129,6 +129,7 @@ type context = struct {
     tokens: []token,
     literals: *[]str,
     host_fun: nullable *fun_meta,
+    re_emit: bool,
     global: *scope,
     scp: *scope,
 };
@@ -139,14 +140,14 @@ type scope = struct {
 };
 
 type member_t = (*const_meta | *array_lit_meta | *record_lit_meta |
-    *field_meta | *var_meta | *funcall_meta);
+    *indexing_meta | *field_meta | *var_meta | *funcall_meta);
 type hand_t = (*hand_meta | *member_meta | *ternary_meta | *expr_meta);
 
 type path_meta = (*hand_meta | *hand_meta | *member_meta | *ternary_meta |
     *expr_meta | *const_meta | *array_lit_meta | *record_lit_meta |
-    *field_meta | *var_meta | *funcall_meta | *decl_meta | *assign_meta |
-    *fun_meta | *scope_meta | *expr_meta | *branch_meta | *return_meta |
-    *type_meta | *module_meta);
+    *indexing_meta | *field_meta | *var_meta | *funcall_meta | *decl_meta |
+    *assign_meta | *fun_meta | *scope_meta | *expr_meta | *branch_meta |
+    *return_meta | *type_meta | *module_meta);
 
 type const_meta = struct {
     pre: (void | operator),
@@ -159,13 +160,23 @@ type array_lit_meta = struct {
     spreads_at: (void | size),
 };
 
+type indexing_meta = struct {
+    before: (void | *field_meta | *indexing_meta),
+    index: (*const_meta | *expr_meta),
+    base: nullable *member_meta,
+    pos: size,
+    tpe: lichen_t,
+    prop: (void | propagation),
+    from_tpe: lichen_t,
+};
+
 type record_lit_meta = struct {
     tpe: lichen_t,
     values: [](str, *expr_meta),
 };
 
 type field_meta = struct {
-    before: nullable *field_meta,
+    before: (void | *field_meta | *indexing_meta),
     field: *decl_meta,
     base: nullable *member_meta,
     pos: size,
@@ -241,7 +252,7 @@ type member_meta = struct {
     pos: size,
     tpe: lichen_t,
     pre: (void | operator),
-    val: (keyword | ...member_t),
+    val: (void | keyword | ...member_t),
     prop: (void | propagation),
 };
 
@@ -270,6 +281,7 @@ type return_meta = struct {
 type type_meta = struct {
     owner: *context,
     pos: size,
+    pub: bool,
     name: namespace,
     self: lichen_t,
 };

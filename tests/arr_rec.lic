@@ -1,0 +1,15 @@
+io mod = use "std/io.lim";
+
+type fields = record {
+    foo [4]u32;
+    bar [4]u32;
+};
+
+pub fn main() void = io {
+    let foo = fields { foo = [1...], bar = [1, 2, 3, 4] };
+    if foo.bar[0] == foo.foo[3] {
+        io::println("test ok")!;
+    } else {
+        io::println("test fail")!;
+    };
+};

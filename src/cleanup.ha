@@ -20,8 +20,8 @@ fn free_context(ctxt: *context, main: bool = false) void = {
     free(ctxt.global);
     if(main){
         free(ctxt.literals);
+        free_names();
     };
-    free_arrays();
     free(ctxt);
 };
 
@@ -39,6 +39,15 @@ fn free_nodes(this: path_meta) void = {
             free_nodes(meta.items[i]);
         };
         free(meta.items);
+        free(meta);
+    case let meta: *indexing_meta =>
+        if(meta.before is *field_meta)
+            free_nodes(meta.before as *field_meta);
+
+        if(meta.base is *member_meta)
+            free_nodes(meta.base as *member_meta);
+
+        free_nodes(meta.index);
         free(meta);
     case let meta: *record_lit_meta =>
         for(let val .. meta.values){

@@ -1,3 +1,9 @@
-- disallow propagation from or on void functions
-- enforce no assertion on void functions
-- allow pure void functions to not be assigned
+- implemented array indexing
+- added module types
+- added unordered field assignment on record literals
+- fixed false positive mutability error for immutability dropping
+- unhardcoded wrapper `%opt` to avoid collisions with user variables
+- changed partial records' memory layout to avoid false positives with propagation
+- disallowed propagation on error singletons
+- lots of bugfixes
+- removed AI-generated stress code (only human code from now on)

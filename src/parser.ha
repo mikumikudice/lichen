@@ -341,6 +341,7 @@ fn compile(filename: str,
                 yield alloc([]: []str)!;
             },
         host_fun = null,
+        re_emit = false,
         global = glob,
         scp = glob,
     };
@@ -860,25 +861,29 @@ fn compile(filename: str,
     // parse only needed functions
 
     // from main file
-    for(let meta .. ctxt.global.defs){
-        match(meta){
-        case let fun_def: *fun_meta =>
-            if(fun_def.fun.ffi is void &&
-                (fun_def.used || mod_emit) &&
-                fun_def.fun.name != "main"){
-                // assign current scope host
-                ctxt.host_fun = fun_def;
-                // evaluate function scope
-                let (body, end) = eval_scope(&ctxt, fun_def.begins,
-                    fun_def.params)?;
-                ctxt.host_fun = null;
-                // pop end of line
-                end = pop_assert(&ctxt, end, symbol::EOL,
-                    "expected %bend of line%r, but got %y{}")?;
-                // assign parsed function body
-                fun_def.body = body;
+    ctxt.re_emit = true;
+    for(ctxt.re_emit){
+        ctxt.re_emit = false;
+        for(let meta .. ctxt.global.defs){
+            match(meta){
+            case let fun_def: *fun_meta =>
+                if(fun_def.fun.ffi is void &&
+                    (fun_def.used || mod_emit) &&
+                    fun_def.fun.name != "main"){
+                    // assign current scope host
+                    ctxt.host_fun = fun_def;
+                    // evaluate function scope
+                    let (body, end) = eval_scope(&ctxt, fun_def.begins,
+                        fun_def.params)?;
+                    ctxt.host_fun = null;
+                    // pop end of line
+                    end = pop_assert(&ctxt, end, symbol::EOL,
+                        "expected %bend of line%r, but got %y{}")?;
+                    // assign parsed function body
+                    fun_def.body = body;
+                };
+            case => void;
             };
-        case => void;
         };
     };
     // from modules
@@ -936,6 +941,7 @@ fn eval_program(ctxt: *context) (void | ERROR) = {
                     case keyword::TYPE =>
                         const (tpe_def, end) = eval_type_def(ctxt, n)?;
                         tpe_def.name.pub = pub;
+                        tpe_def.pub = pub;
                         t = end;
                     case keyword::FN =>
                         const (fun_def, end) = eval_fun_def(ctxt, n)?;
@@ -1181,6 +1187,7 @@ fn eval_type_def(ctxt: *context, at: size) ((*type_meta, size) | ERROR) = {
     const out = alloc(type_meta {
         owner = ctxt,
         pos = at,
+        pub = false,
         name = name,
         self = tpe,
     })!;
@@ -1588,6 +1595,7 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
                 tpe = host.fun.tpe,
                 pos = at,
             })!;
+            if(!(val.tpe.base is primitive)) out.val.tpe = out.tpe;
             end = pop_assert(ctxt, _end, symbol::EOL,
                 "expected %bend of line%r, but got %y{}")?;
             return (out, end);
@@ -1631,9 +1639,10 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
                 // assert for immutability dropping
                 if(root is *var_meta){
                     const pass = root as *var_meta;
+                    fmt::println(var_def.var.nm.mut, !pass.nm.mut)!;
                     if(is_aggregated(var_def.var.nm.tpe) &&
                         !size_known(var_def.var.nm.tpe) &&
-                        !pass.nm.mut){
+                        var_def.var.nm.mut && !pass.nm.mut){
                         move_ptr(ctxt, tk);
                         const hint = fmt::asprintf(
                             "\n%baggregated types such as strings and arrays cannot be copied to the stack.\n"
@@ -1722,7 +1731,8 @@ fn eval_var_def(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
     // assert for immutability dropping
     if(root is *var_meta){
         const pass = root as *var_meta;
-        if(is_aggregated(val.tpe) && !size_known(val.tpe) && !pass.nm.mut){
+        if(is_aggregated(val.tpe) && !size_known(val.tpe) &&
+            mut && !pass.nm.mut){
             move_ptr(ctxt, ctxt.tokens[end]);
             const hint = fmt::asprintf(
                 "\n%baggregated types such as strings and arrays cannot be copied to the stack."
@@ -2046,15 +2056,14 @@ fn eval_member(
     const tk = next_tk(ctxt, at,
         "expected %bexpression member%r, but got %y{}")?;
     let end = at;
-    let as_err = hint;
-    as_err.fail = true;
     const memb = member_meta {
         pos = at,
-        tpe = as_err,
+        tpe = quick_t(primitive::ANY),
         pre = void,
-        val = keyword::FAIL,
+        val = void,
         prop = void,
     };
+    let singleton = false;
     match(tk.val){
     case let sym: symbol =>
         switch(sym){
@@ -2126,6 +2135,7 @@ fn eval_member(
         memb.tpe = quick_t(primitive::STR);
         memb.val = val;
     case let kwd: keyword =>
+        singleton = true;
         switch(kwd){
         case keyword::TRUE =>
             memb.tpe = quick_t(primitive::BOOL);
@@ -2181,14 +2191,14 @@ fn eval_member(
                 const (lit, _end) = eval_record_lit(ctxt, end, tpe.self)?;
                 end = _end;
                 memb.val = lit;
-            case let uni: *enum_t =>
+            case let enu: *enum_t =>
                 todo("enum field access");
             case =>
                 move_ptr(ctxt, tk);
                 const arg = strtype(tpe.self);
                 defer free(arg);
                 return error(ctxt,
-                    "type %b{}%r cannot be used as a %yliteral nor has any variants", arg);
+                    "type %b{}%r cannot be used as a %yliteral", arg);
             };
         case let module: *module_meta =>
             end += 1;
@@ -2240,7 +2250,7 @@ fn eval_member(
                         };
                         if(!decl.var.nm.pub){
                             return error(ctxt,
-                                "the function %b{}::{}%r exists, but it's %ynot public",
+                                "the variable %b{}::{}%r exists, but it's %ynot public",
                                 module.name, decl.var.nm.name);
                         };
                         memb.tpe = decl.var.nm.tpe;
@@ -2253,7 +2263,35 @@ fn eval_member(
                             return error(ctxt, "attempt to call on non-function namespace %b{}",
                                 decl.var.nm.name);
                         };
-                    case let module: *module_meta =>
+                    case let tpe: *type_meta =>
+                        if(tpe.name.name != field.name){
+                            continue;
+                        };
+                        if(!tpe.pub){
+                            return error(ctxt,
+                                "the type %b{}::{}%r exists, but it's %ynot public",
+                                module.name, tpe.name.name);
+                        };
+                        found = true;
+                        memb.tpe = tpe.self;
+                        match(tpe.self.base){
+                        case let rec: *record =>
+                            const (lit, _end) = eval_record_lit(ctxt, end - 1, tpe.self)?;
+                            end = _end;
+                            memb.val = lit;
+                        case let enu: *enum_t =>
+                            todo("enum field access");
+                        case =>
+                            move_ptr(ctxt, tk);
+                            const arg = strtype(tpe.self);
+                            defer free(arg);
+                            return error(ctxt,
+                                "type %b{}::{}%r cannot be used as a %yliteral", module.name, arg);
+                        };
+                    case let submodule: *module_meta =>
+                        if(submodule.name != field.name){
+                            continue;
+                        };
                         todo("recursive modules");
                     };
                 };
@@ -2295,86 +2333,55 @@ fn eval_member(
     case =>
         return (void, at, true);
     };
-
     // assert for a potential casting
     const (tpe, prop, _end) = eval_cast(ctxt, memb.tpe, end)?;
+    if(singleton && prop is propagation){
+        move_ptr(ctxt, ctxt.tokens[end]);
+        return error(ctxt, "cannot assert on literals");
+    };
     memb.tpe = tpe;
     memb.prop = prop;
     end = _end;
     assert(!comp_type(memb.tpe, primitive::ANY));
+    assert_hint(ctxt, tk, memb.tpe, hint)?;
 
     tk = next_tk(ctxt, end,
         "expected %bexpression continuation%r or %bend of line%r, but got %y{}")?;
 
-    // assert for record field acces
-    if(comp_tk(tk.val, symbol::DOT)){
+    // assert for record field access and array indexing
+    if(comp_tk(tk.val, symbol::DOT) || comp_tk(tk.val, symbol::LFT_SQUARE)){
         tk = next_tk(ctxt, end,
             "expected %bfield access%r or %bexpression continuation%r, but got %y{}")!;
-        if(!memb.tpe.fail && memb.tpe.base is *record){
-            let before: nullable *field_meta = null;
-            let access: nullable *field_meta = null;
+        if(!memb.tpe.fail && (memb.tpe.base is *record || memb.tpe.base is *array)){
+            let before: (void | *field_meta | *indexing_meta) = void;
+            let access: (void | *field_meta | *indexing_meta) = void;
             let last_tpe = memb.tpe;
             let last_prop = memb.prop;
-            for(comp_tk(tk.val, symbol::DOT)){
-                end += 1;
+            for(comp_tk(tk.val, symbol::DOT) || comp_tk(tk.val, symbol::LFT_SQUARE)){
+                if(comp_tk(tk.val, symbol::DOT)){
+                    const (meta, _end) = eval_record_field(ctxt, end, last_tpe, before)?;
+                    end = _end;
+                    memb.pos = end;
+                    last_tpe = meta.tpe;
+                    last_prop = meta.prop;
+                    // assign base of chain
+                    if(before is void) meta.base = alloc(memb)!;
+                    access = meta;
+                } else {
+                    const (meta, _end) = eval_indexing(ctxt, end, last_tpe, before)?;
+                    end = _end;
+                    memb.pos = end;
+                    last_tpe = meta.tpe;
+                    last_prop = meta.prop;
+                    // assign base of chain
+                    if(before is void) meta.base = alloc(memb)!;
+                    access = meta;
+                };
+                before = access;
                 tk = next_tk(ctxt, end,
-                    "expected valid %bfield name%r, but got %y{}")?;
-                if(!(tk.val is namespace)){
-                    move_ptr(ctxt, tk);
-                    const arg = strtoken(tk.val);
-                    defer free(arg);
-                    return error(ctxt,
-                        "expected valid %bfield name%r, but got %y{}", arg);
-                };
-                end += 1;
-                memb.pos = end;
-                const field_name = tk.val as namespace;
-                let found = false;
-                if(last_tpe.base is *record){
-                    const rec = last_tpe.base as *record;
-                    for(let field .. rec.fields){
-                        if(field.1.var.nm.name == field_name.name){
-                            const (tpe, prop, _end) = eval_cast(ctxt,
-                                field.1.var.nm.tpe, end)?;
-                            end = _end;
-                            const meta = field_meta {
-                                before = before,
-                                field = field.1,
-                                base = null,
-                                pos = end,
-                                tpe = field.1.var.nm.tpe,
-                                prop = prop,
-                                from_tpe = last_tpe,
-                            };
-                            last_tpe = meta.tpe;
-                            last_prop = meta.prop;
-                            // assign base of chain
-                            if(before == null) meta.base = alloc(memb)!;
-                            access = alloc(meta)!;
-                            before = access;
-                            found = true;
-                        };
-                    };
-                };
-                if(!found){
-                    move_ptr(ctxt, tk);
-                    if(before == null){
-                        const name = strtype(memb.tpe);
-                        defer free(name);
-                        return error(ctxt, "object of %b{}%r has %yno field named \"{}\"",
-                            name, field_name.name);
-                    } else {
-                        const bf = before as *field_meta;
-                        const name = strtype(bf.tpe);
-                        defer free(name);
-                        return error(ctxt, "field %b{}%r of %b{}%r has %yno field named \"{}\"",
-                            bf.field.var.nm.name, name, field_name.name);
-                    };
-                };
-                tk = next_tk(ctxt, end,
-                    "expected valid %bfield access%r or %bexpression continuation%r, but got %y{}")?;
+                    "expected valid %bfield access%r, valid %barray indexing%r or %bexpression continuation%r, but got %y{}")?;
             };
-            const final = access as *field_meta;
+            const final = access as (*field_meta | *indexing_meta);
             memb.tpe = last_tpe;
             memb.val = final;
             memb.prop = void;
@@ -2385,6 +2392,13 @@ fn eval_member(
             return error_hint(ctxt,
                 "\n%gtry bubbling the error with %d?%g or asserting it with %d!",
                 "cannot access field of %b{}%r", name);
+         } else if(memb.tpe.fail && memb.tpe.base is *array){
+            move_ptr(ctxt, tk);
+            const name = strtype(memb.tpe);
+            defer free(name);
+            return error_hint(ctxt,
+                "\n%gtry bubbling the error with %d?%g or asserting it with %d!",
+                "cannot index an array of %b{}%r", name);
         } else {
             move_ptr(ctxt, tk);
             const name = strtype(memb.tpe);
@@ -2409,7 +2423,7 @@ fn eval_array_lit(
 
     // assure expression type is an array and extract
     // array item type for further parsing
-    let (tpe, itm_tpe) = wrap_array(hint);
+    let (tpe, itm_tpe) = wrap_array(ctxt, hint);
     let spreads_at: (void | size) = void;
 
     const items: []*expr_meta = [];
@@ -2504,6 +2518,11 @@ fn eval_array_lit(
     end = pop_assert(ctxt, end, symbol::RGT_SQUARE,
         "expected %bend of array%r, but got %y{}")?;
 
+    // deduce length
+    if(as_arr.length is void){
+        as_arr.length = len(items);
+    };
+
     const (cast, prop, _end) = eval_cast(ctxt, itm_tpe, end)?;
     as_arr.base = cast;
     if(untyped(as_arr.base)){
@@ -2521,6 +2540,73 @@ fn eval_array_lit(
         spreads_at = spreads_at,
     };
     return (alloc(out)!, end);
+};
+
+fn eval_indexing(
+    ctxt: *context,
+    at: size,
+    base_tpe: lichen_t,
+    base: (void | *field_meta | *indexing_meta),
+) ((*indexing_meta, size) | ERROR) = {
+    assert(comp_tk(ctxt.tokens[at].val, symbol::LFT_SQUARE));
+    if(base_tpe.base is *array){
+        const arr = base_tpe.base as *array;
+        let end = at + 1;
+        let tk = next_tk(ctxt, end,
+            "expected valid %bindex%r, but got %y{}")?;
+        const (index, _end): ((*const_meta | *expr_meta), size) =
+            if(tk.val is size){
+                const (c, e) = eval_constant(ctxt, end,
+                    quick_t(primitive::U64))?;
+                yield (c, e);
+            } else {
+                const (exp, e) = eval_expression(ctxt, end,
+                    quick_t(primitive::U64))?;
+                yield (exp, e);
+            };
+        end = pop_assert(ctxt, _end, symbol::RGT_SQUARE,
+            "expected %bend of indexing%r, but got %y{}")?;
+        // assert if indexing is safe or partial
+        const known = index is *const_meta && arr.length is size;
+        // assert for indexing out of bounds
+        if(known){
+            const idx = tk.val as size;
+            if(idx >= arr.length as size){
+                move_ptr(ctxt, tk);
+                const hint = fmt::asprintf(
+                    "\n%gthe index is {}, but the array length is {}",
+                    idx, arr.length as size)!;
+                defer free(hint);
+                return error_hint(ctxt, hint, "indexing out of bounds");
+            };
+        };
+        // failure assertion and casting
+        const (tpe, prop, _end) = eval_cast(ctxt,
+            unwrap_array(base_tpe, !known), end)?;
+        end = _end;
+        const meta = indexing_meta {
+            before = base,
+            index = index,
+            base = null,
+            pos = at,
+            tpe = tpe,
+            prop = prop,
+            from_tpe = base_tpe,
+        };
+        return (alloc(meta)!, end);
+    };
+    move_ptr(ctxt, ctxt.tokens[at]);
+    if(base is void){
+        const name = strtype(base_tpe);
+        defer free(name);
+        return error(ctxt, "object of %b{}%r is not indexable", name);
+    } else {
+        const bf = base as *field_meta;
+        const name = strtype(bf.tpe);
+        defer free(name);
+        return error(ctxt, "field %b{}%r of %b{}%r is not indexable",
+            bf.field.var.nm.name, name);
+    };
 };
 
 fn eval_record_lit(
@@ -2569,10 +2655,20 @@ fn eval_record_lit(
             };
         };
         const field_name = tk.val as namespace;
+        const field: (void | *decl_meta) = void;
+        for(let f .. rec.fields){
+            if(f.1.var.nm.name == field_name.name){
+                field = f.1;
+            };
+        };
+        if(field is void){
+            move_ptr(ctxt, tk);
+            return error(ctxt, "no field named %y{}", field_name.name);
+        };
         end = pop_assert(ctxt, end, operator::ASG,
             "expected %bfield assignment%r, but got %y{}")?;
 
-        const (val, _end) = eval_expression(ctxt, end, rec.fields[len(values)].1.var.nm.tpe)?;
+        const (val, _end) = eval_expression(ctxt, end, (field as *decl_meta).var.nm.tpe)?;
         append(values, (field_name.name, val))!;
         field_count += 1;
         end = _end;
@@ -2604,6 +2700,60 @@ fn eval_record_lit(
         values = values,
     };
     return (alloc(lit)!, end);
+};
+
+fn eval_record_field(
+    ctxt: *context,
+    at: size,
+    base_tpe: lichen_t,
+    base: (void | *field_meta | *indexing_meta),
+) ((*field_meta, size) | ERROR) = {
+    assert(comp_tk(ctxt.tokens[at].val, symbol::DOT));
+    let end = at + 1;
+    let tk = next_tk(ctxt, end,
+        "expected valid %bfield name%r, but got %y{}")?;
+    if(!(tk.val is namespace)){
+        move_ptr(ctxt, tk);
+        const arg = strtoken(tk.val);
+        defer free(arg);
+        return error(ctxt,
+            "expected valid %bfield name%r, but got %y{}", arg);
+    };
+    end += 1;
+    const field_name = tk.val as namespace;
+    if(base_tpe.base is *record){
+        const rec = base_tpe.base as *record;
+        for(let field .. rec.fields){
+            if(field.1.var.nm.name == field_name.name){
+                const (tpe, prop, _end) = eval_cast(ctxt,
+                    field.1.var.nm.tpe, end)?;
+                end = _end;
+                const meta = field_meta {
+                    before = base,
+                    field = field.1,
+                    base = null,
+                    pos = at,
+                    tpe = tpe,
+                    prop = prop,
+                    from_tpe = base_tpe,
+                };
+                return (alloc(meta)!, end);
+            };
+        };
+    };
+    move_ptr(ctxt, tk);
+    if(base is void){
+        const name = strtype(base_tpe);
+        defer free(name);
+        return error(ctxt, "object of %b{}%r has %yno field named \"{}\"",
+            name, field_name.name);
+    } else {
+        const bf = base as *field_meta;
+        const name = strtype(bf.tpe);
+        defer free(name);
+        return error(ctxt, "field %b{}%r of %b{}%r has %yno field named \"{}\"",
+            bf.field.var.nm.name, name, field_name.name);
+    };
 };
 
 fn eval_ternary(
@@ -2645,6 +2795,8 @@ fn eval_funcall(
     assert(comp_tk(ctxt.tokens[at].val, symbol::LFT_PAR));
     // validade function effect tags
     validate_efx(ctxt, fun, at)?;
+    // mark context for a re_emitting round
+    if(!fun.used) ctxt.re_emit = true;
     fun.used = true;
 
     let tk = next_tk(ctxt, at + 1,
@@ -2810,52 +2962,93 @@ fn wrap_primitive(tpe: (primitive | lichen_t)) lichen_t =
     case let tp: lichen_t => return tp;
     };
 
-let allocs: []*array = [];
+let tpe_names: []str = [];
 
-// helper function for anonymous array types
-fn alloc_array(arr: array) *array = {
-    for(let a ..& allocs){
-        if(((a.length is void && arr.length is void) ||
-            (a.length is void && arr.length is size) ||
-            (a.length is size && arr.length is size &&
-            a.length as size == arr.length as size)) &&
-            comp_type(a.base, arr.base)){
-            return a;
+const any_arr = array {
+    length = void,
+    base = lichen_t {
+        fail = false,
+        base = primitive::ANY,
+    },
+};
+fn new_array_t(ctxt: *context, arr: array, fail: bool = false) lichen_t = {
+    if(comp_type(arr.base, primitive::ANY)){
+        any_arr.length = arr.length;
+        return lichen_t {
+            fail = fail,
+            base = &any_arr,
         };
     };
-    const res = alloc(arr)!;
-    append(allocs, res)!;
-    return res;
+    const dummy = lichen_t {
+        fail = fail,
+        base = &arr,
+    };
+    for(let d ..& ctxt.global.defs){
+        if(d is *type_meta){
+            const tpe = d as *type_meta;
+            if(comp_type(dummy, tpe.self)) return tpe.self;
+        };
+    };
+    dummy.base = alloc(arr)!;
+    const length =
+        if(arr.length is void){
+            yield strings::dup("dynamic")!;
+        } else {
+            yield fmt::asprint(arr.length as size)!;
+        };
+    defer free(length);
+    const size_t = qbe_t(ctxt, arr.base);
+    const name =
+        if(!fail){
+            yield fmt::asprintf(":arr.{}.{}", size_t, length)!;
+        } else {
+            yield fmt::asprintf(":arr.{}.{}.opt", size_t, length)!;
+        };
+    append(tpe_names, name)!;
+    const tpe = alloc(type_meta {
+        owner = ctxt,
+        pos = 0,
+        pub = false,
+        name = dummy_nm(name),
+        self = dummy,
+    })!;
+    append(ctxt.global.defs, tpe)!;
+    return tpe.self;
 };
 
-fn free_arrays() void = {
-    for(let tpe .. allocs){
-        free(tpe);
+fn free_names() void = {
+    for(let name .. tpe_names){
+        free(name);  
     };
-    free(allocs);
+    free(tpe_names);
 };
 
 // guarantees a given type is always a  
-fn wrap_array(_tpe: (primitive | lichen_t)) (lichen_t, lichen_t) = {
+fn wrap_array(
+    ctxt: *context, 
+    _tpe: (primitive | lichen_t),
+) (lichen_t, lichen_t) = {
     const tpe = wrap_primitive(_tpe);
     match(tpe.base){
     case let arr: *array =>
         return (tpe, arr.base);
     case =>
-        const arr = lichen_t {
-            fail = false,
-            base = alloc_array(array {
-                length = void,
-                base = tpe,
-            }),
-        };
+        const arr = new_array_t(ctxt, array {
+            length = void,
+            base = tpe,
+        });
         return (arr, tpe);
     };
 };
 
+fn unwrap_array(tpe: lichen_t, fail: bool = false) lichen_t = {
+    const dup = (tpe.base as *array).base;
+    dup.fail = fail;
+    return dup;
+};
+
 // assert for any type casting and if it's a valid cast
 // returns `current` if no cast was found
-let logging = false;
 fn eval_cast(
     ctxt: *context,
     current: lichen_t,
@@ -2895,6 +3088,7 @@ fn eval_cast(
                     "cannot bubble or assert a void type's fail state");
             };
             const caller = ctxt.host_fun as *fun_meta;
+            // host function's type is not partial
             if(!caller.fun.tpe.fail &&
                 comp_tk(tk.val, operator::BUBBLE) &&
                 !comp_tk(after.val, keyword::OR)){
@@ -2905,6 +3099,7 @@ fn eval_cast(
                 return error(ctxt,
                     "caller function of type %b{}%r cannot bubble up fail state from %b{}",
                     arg1, arg2);
+            // host function's type is void
             } else if(comp_type(caller.fun.tpe, quick_t(primitive::VOID, true))){
                 return error_hint(ctxt,
                     "\n%gno value can be returned from a (partial) primitive void type",
@@ -2912,7 +3107,7 @@ fn eval_cast(
             };
             const op = tk.val as operator;
             tpe.fail = false;
-
+            // parse piping
             const exp: (void | path_meta) =
                 if(comp_tk(after.val, keyword::OR)){
                     end += 1;
@@ -2921,7 +3116,6 @@ fn eval_cast(
                         end = _end;
                         yield exp;
                     } else {
-                        logging = true;
                         const (stt, _end) = eval_statement(ctxt, end)?;
                         end = _end - 1;
                         yield stt;
@@ -2967,10 +3161,35 @@ fn eval_type(
             return error(ctxt,
                 "the namespace %b{}%r is currently defined as a %bvariable%r, not a %ytype",
                 name.name);
-        case *module_meta =>
+        case let module: *module_meta =>
+            end = pop_assert(ctxt, end, symbol::FIELD,
+                "expected %bmodule field access%r, but got %y{}")?;
+            tk = next_tk(ctxt, end,
+                "expected %bvalid field name%r, but gor %y{}")?;
+            if(!(tk.val is namespace)){
+                move_ptr(ctxt, tk);
+                const arg = strtoken(tk.val);
+                defer free(arg);
+                return error(ctxt,
+                    "expected %bvalid field name%r, but gor %y{}", arg);
+            };
+            end += 1;
+            const name = tk.val as namespace;
+            for(let defs .. module.ctxt.global.defs){
+                if(defs is *type_meta){
+                    const tpe = defs as *type_meta;
+                    if(tpe.name.name != name.name) continue;
+                    if(!tpe.pub){
+                        return error(ctxt,
+                            "the type %b{}::{}%r exists, but it's %ynot public",
+                            module.name, tpe.name.name);
+                    };
+                    return (tpe.self, end);
+                };
+            };
             return error(ctxt,
-                "the namespace %b{}%r is currently defined as a %bmodule binding%r, not a %ytype",
-                name.name);
+                "no field named %b{}%r is defined on %b{}",
+                name.name, module.name);
         case void =>
             return error(ctxt,
                 "no type by the name %b{}%r is currently defined", name.name);
@@ -2998,7 +3217,13 @@ fn eval_type(
                         yield false;
                     };
                 const (field, _end) = eval_declaration(ctxt, end)?;
-
+                // assert for memory length
+                if(field.var.nm.tpe.base is *array &&
+                    (field.var.nm.tpe.base as *array).length is void){
+                    move_ptr(ctxt, ctxt.tokens[field.var.pos]);
+                    return error(ctxt,
+                        "records require %bdefined length%r for %yfields of array type");
+                };
                 for(let f .. fields){
                     if(f.1.var.nm.name == field.var.nm.name){
                         move_ptr(ctxt, ctxt.tokens[f.1.var.pos]);
@@ -3066,13 +3291,10 @@ fn eval_type(
                     arg);
             };
             const (sub, _end) = eval_type(ctxt, end)?;
-            const tpe = lichen_t {
-                fail = fail,
-                base = alloc(array {
-                    length = length,
-                    base = sub,
-                })!,
-            };
+            const tpe = new_array_t(ctxt, array {
+                length = length,
+                base = sub,
+            }, fail);
             return (tpe, _end);
         case symbol::LFT_PAR =>
             tk = next_tk(ctxt, end,

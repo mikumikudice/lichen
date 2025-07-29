@@ -1,0 +1,17 @@
+// parsing test for array indexing
+// on constant and dynamic indexes
+
+io mod = use "std/io.lim";
+
+pub fn main() void = io {
+    let arr = [1, 2, 3, 4, 5] u32;
+    let itm_1 = arr[0];
+    let itm_2 = arr[itm_1]!;
+    let itm_n = arr[arr[4]]? or 0;
+
+    if itm_1 == arr[0] && itm_2 == 2 && itm_n == 0 {
+        io::println("test ok")!;
+    } else {
+        io::println("test fail")!;
+    };
+};

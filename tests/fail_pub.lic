@@ -1,0 +1,8 @@
+// parsing test for asserting the usage
+// of private module fields
+
+local mod = use "test_mod.lim";
+
+pub fn main() void = {
+    let x = local::private_field;
+};

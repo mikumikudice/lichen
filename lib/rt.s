@@ -36,6 +36,16 @@ rt.args:
     .quad 0
     .quad 0
 
+// only receives arguments and returns nothing
+.section ".text.rt.debug", "ax"
+.balign 16
+.globl rt.debug
+rt.debug:
+    ret
+
+.type rt.debug, @function
+.size rt.debug, .-rt.debug
+
 // reads a string from an given file descriptor
 // returns an errno in case of error as a negative value
 // prototype: fn(handle u32, buff mut str) i32

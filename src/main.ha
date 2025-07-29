@@ -5,8 +5,8 @@ use memio;
 use os;
 use strings;
 
-const temp = ".lcc_temp/";
-const version = "0.17.1";
+const temp_folder = ".lcc_temp/";
+const version = "0.18.0";
 const help =
     "\n%gflags usage:%d\n"
     "\n %g-h\t\t"
@@ -185,6 +185,6 @@ export fn main() void = {
 
     // delete all temp files if not set otherwise
     if(!keep_temps){
-        run_cmd(!prompt_log, "rm", "-r", temp);
+        run_cmd(!prompt_log, "rm", "-r", temp_folder);
     };
 };
