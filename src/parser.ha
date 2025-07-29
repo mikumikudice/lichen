@@ -1639,7 +1639,6 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
                 // assert for immutability dropping
                 if(root is *var_meta){
                     const pass = root as *var_meta;
-                    fmt::println(var_def.var.nm.mut, !pass.nm.mut)!;
                     if(is_aggregated(var_def.var.nm.tpe) &&
                         !size_known(var_def.var.nm.tpe) &&
                         var_def.var.nm.mut && !pass.nm.mut){
@@ -1660,6 +1659,103 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
                     pos = begin,
                     var = var_def.var,
                     val = val,
+                    host = void,
+                };
+                return (alloc(asg)!, end);
+            case let fun_def: *fun_meta =>
+                move_ptr(ctxt, ctxt.tokens[begin]);
+                return error(ctxt,
+                    "cannot reassign to function %b{}%r", fun_def.fun.name);
+            case let module: *module_meta =>
+                move_ptr(ctxt, ctxt.tokens[begin]);
+                return error(ctxt,
+                    "cannot reassign to module binding %b{}%r", module.name);
+            case void =>
+                move_ptr(ctxt, ctxt.tokens[begin]);
+                return error(ctxt,
+                    "namespace %b{}%r undefined at this point", var.name);
+            };
+        } else if(comp_tk(tk.val, symbol::DOT)){
+            const begin = end;
+            end += 2;
+            tk = next_tk(ctxt, end,
+                "expected %bfield name%r or %bexpression continuation%r, but got %y{}")?;
+            if(!(tk.val is namespace)){
+                move_ptr(ctxt, tk);
+                const arg = strtoken(tk.val);
+                defer free(arg);
+                return error(ctxt,
+                    "expected %bfield name%r or %bexpression continuation%r, but got %y{}", arg);
+            };
+            const pos = tk;
+            const field_name = tk.val as namespace;
+            end += 1;
+            tk = next_tk(ctxt, end,
+                "expected %bassignment%r or %bexpression continuation%r, but got %y{}")?;
+
+            // not an assignment
+            if(!comp_tk(tk.val, operator::ASG)){
+                const (exp, _end) = eval_expression(ctxt, begin, quick_t(primitive::ANY))?;
+                end = pop_assert(ctxt, _end, symbol::EOL,
+                    "expected %bend of line%r, but got %y{}")?;
+                return (exp: path_meta, end);
+            };
+            end += 1;
+            match(get_def(ctxt, var, ctxt.scp)){
+            case let var_def: *decl_meta =>
+                // assert for mutability
+                if(!var_def.var.nm.mut){
+                    move_ptr(ctxt, tk);
+                    return error(ctxt,
+                        "cannot %breassign to immutable%r variable %y{}",
+                        var.name);
+                };
+                const tpe = var_def.var.nm.tpe;
+                // assert for type
+                if(!(tpe.base is *record)){
+                    move_ptr(ctxt, pos);
+                    const name = strtype(tpe);
+                    defer free(name);
+                    return error(ctxt, "object of %b{}%r has %yno fields", name);
+                };
+                const rec = tpe.base as *record;
+                let field: (void | *decl_meta) = void;
+                for(let f .. rec.fields){
+                    if(f.1.var.nm.name == field_name.name){
+                        field = f.1;
+                    };
+                };
+                if(field is void){
+                    move_ptr(ctxt, pos);
+                    return error(ctxt, "no field named %y{}", field_name.name);
+                };
+                const (val, _end) = eval_expression(ctxt, end,
+                    (field as *decl_meta).var.nm.tpe)?;
+
+                const root = extract_root(val);
+                // assert for immutability dropping
+                if(root is *var_meta){
+                    const pass = root as *var_meta;
+                    if(is_aggregated(tpe) && !size_known(tpe) &&
+                        var_def.var.nm.mut && !pass.nm.mut){
+                        move_ptr(ctxt, tk);
+                        const hint = fmt::asprintf(
+                            "\n%baggregated types such as strings and arrays cannot be copied to the stack\n"
+                            "try using:\n\n\t%d{} = new ! {} @ arena",
+                            var_def.var.nm.name, pass.nm.name)!;
+                        defer free(hint);
+                        return error_hint(ctxt,
+                        hint,
+                        "cannot copy this %bimmutable aggregated value%r to %ymutable field");
+                    };
+                };
+                end = pop_assert(ctxt, _end, symbol::EOL,
+                    "expected %bend of line%r, but got %y{}")?;
+                const asg = assign_meta {
+                    pos = begin,
+                    var = (field as *decl_meta).var,
+                    val = val,
+                    host = var_def,
                 };
                 return (alloc(asg)!, end);
             case let fun_def: *fun_meta =>
@@ -2655,7 +2751,7 @@ fn eval_record_lit(
             };
         };
         const field_name = tk.val as namespace;
-        const field: (void | *decl_meta) = void;
+        let field: (void | *decl_meta) = void;
         for(let f .. rec.fields){
             if(f.1.var.nm.name == field_name.name){
                 field = f.1;

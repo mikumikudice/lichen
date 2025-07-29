@@ -1,3 +1,6 @@
+// compiler test for partial record
+// types and its assertion
+
 io mod = use "std/io.lim";
 
 type goblin = record {

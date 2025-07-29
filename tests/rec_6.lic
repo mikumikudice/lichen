@@ -1,0 +1,24 @@
+// parser test for record field's
+// reassignment semantics
+
+io mod = use "std/io.lim";
+
+type person = record {
+    name str;
+    age u8;
+};
+
+fn age(mut p person, time u8) unit = aging {
+    p.age = p.age + time;
+};
+
+pub fn main() void = io & aging {
+    let mut helena = person { name = "helena", age = 4 };
+    age(helena, 4);
+
+    if helena.age == 8 {
+        io::println("test ok")!;
+    } else {
+        io::println("test failed")!;
+    };
+};

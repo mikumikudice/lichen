@@ -194,6 +194,7 @@ type assign_meta = struct {
     pos: size,
     var: *var_meta,
     val: *expr_meta,
+    host: (void | *decl_meta | *field_meta),
 };
 
 type var_meta = struct {

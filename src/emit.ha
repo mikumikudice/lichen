@@ -545,18 +545,36 @@ fn gen_stt(ctxt: *context, buff: *memio::stream, stt: path_meta) void = {
             };
         defer if(val != "") free(val);
 
-        const name = fix_nm(ctxt, buff, asg.var.nm);
-        defer free(name);
-        if(asg.var.nm.mut &&
-            is_aggregated(asg.var.nm.tpe) &&
-            size_known(asg.var.nm.tpe)){
-            const mem_size = type_size(asg.var.nm.tpe);
-            fmt::fprintfln(buff, "\t%dup =l alloc8 {}", mem_size)!;
-            fmt::fprintfln(buff, "\tblit {}, %dup, {}", val, mem_size)!;
-            fmt::fprintfln(buff, "\t{} =l copy %dup", name)!;
+        if(asg.host is void){
+            const name = fix_nm(ctxt, buff, asg.var.nm);
+            defer free(name);
+            if(asg.var.nm.mut &&
+                is_aggregated(asg.var.nm.tpe) &&
+                size_known(asg.var.nm.tpe)){
+                const mem_size = type_size(asg.var.nm.tpe);
+                fmt::fprintfln(buff, "\t%dup.{} =l alloc8 {}", mem_size, asg.pos)!;
+                fmt::fprintfln(buff, "\tblit {}, %dup.{}, {}", asg_val, asg.pos, mem_size)!;
+                fmt::fprintfln(buff, "\t{} =l copy %dup.{}", name, asg.pos)!;
+            } else {
+                fmt::fprintfln(buff, "\t{} ={} copy {}", name,
+                    qbe_t(ctxt, asg.var.nm.tpe, mode::ASSIGN), asg_val)!;
+            };
         } else {
-            fmt::fprintfln(buff, "\t{} ={} copy {}", name,
-                qbe_t(ctxt, asg.var.nm.tpe, mode::ASSIGN), asg_val)!;
+            const host = asg.host as *decl_meta;
+            const host_name = fix_nm(ctxt, buff, host.var.nm);
+
+            const offst = field_offset(host.var.nm.tpe.base as *record,
+                asg.var.nm.name);
+            fmt::fprintfln(buff, "\t{0}.ptr =l add {0}, {1}", host_name, offst)!;
+            if(asg.var.nm.mut &&
+                is_aggregated(asg.var.nm.tpe) &&
+                size_known(asg.var.nm.tpe)){
+                const mem_size = type_size(asg.var.nm.tpe);
+                fmt::fprintfln(buff, "\tblit {}, {}.ptr, {}", asg_val, host_name, mem_size)!;
+            } else {
+                fmt::fprintfln(buff, "\tstore{} {}, {}.ptr", 
+                    qbe_t(ctxt, asg.var.nm.tpe, mode::ASSIGN), asg_val, host_name)!;
+            };
         };
     case let branch: *branch_meta =>
         move_ptr(ctxt, ctxt.tokens[branch.pos]);
