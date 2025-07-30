@@ -128,6 +128,10 @@ fn free_nodes(this: path_meta) void = {
     case let meta: *return_meta =>
         free_nodes(meta.val);
         free(meta);
+    case let meta: *test_meta =>
+        io::close(meta.buffer)!;
+        free(meta.buffer);
+        free(meta);
     case let meta: *type_meta =>
         if(meta.self.base is *record){
             const rec = meta.self.base as *record;

@@ -36,6 +36,7 @@ local tests = {
     { src = "fail_rec_4", code = 1, nocomp = true },
     { src = "fail_rec_5", code = 1, nocomp = true },
     { src = "fail_rec_6", code = 1, nocomp = true },
+    { src = "fail_rec_7", code = 1, nocomp = true },
     { src = "fail_void_1", code = 1, nocomp = true },
     { src = "fail_void_2", code = 1, nocomp = true },
     { src = "fail_pub", code = 1, nocomp = true },
@@ -44,6 +45,8 @@ local tests = {
     { src = "fail_io_from_result", code = 1, nocomp = false },
     { src = "no_prop", code = 0 },
     { src = "assert", output = "test 1 ok\ntest 2 ok\ntest 3 ok\n", code = 0 },
+    { src = "test", output = "test ok\n", code = 0 },
+    { src = "fail_test", code = 1 },
     -- parser --
     { src = "vars", code = 0 },
     { src = "funcs", code = 0 },

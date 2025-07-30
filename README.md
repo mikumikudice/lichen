@@ -107,11 +107,11 @@ roadmap:
             - [done] error assertion piping to statement
             - [done] error bubbling piping to default value fallback
             - [undone] error piping variation tagging
-        - [undone] array indexing partials
+        - [done] array indexing partials
         - [undone] default values
             - [undone] for functions
             - [undone] for record fields
-        - [undone] record field assignment exhaustiveness
+        - [done] record field assignment exhaustiveness
     - [partial] literals
         - [done] strings and runes
         - [done] integer numbers
@@ -123,8 +123,8 @@ roadmap:
         - [partial] decimal numbers
             - [done] decimal point
             - [undone] scientific notation
-        - [undone] array literals
-            - [undone] spreading
+        - [done] array literals
+            - [done] spreading
         - [undone] record literals
             - [undone] autofill
     - [partial] declarations
@@ -140,16 +140,16 @@ roadmap:
             - [done] reassignment
             - [done] mutable notation
             - [done] mutability assertion
-        - [undone] records
-            - [undone] declaration
-            - [undone] literal
+        - [partial] records
+            - [done] declaration
+            - [done] literal
             - [undone] change-copying
-            - [undone] duplication
-            - [undone] field assignment
+            - [done] duplication
+            - [partial] field assignment
         - [partial] arrays
             - [partial] declaration
-            - [undone] indexing
-                - [undone] partial result
+            - [done] indexing
+                - [done] partial result
         - [partial] tuples
             - [partial] declaration
             - [undone] creation
@@ -188,19 +188,19 @@ roadmap:
             - [undone] concatenation
             - [undone] nomem error
             - [undone] first class object
-        - [undone] test block
+        - [partial] test block
             - [undone] static/global
-            - [undone] dynamic/local
-    - [partial] partial types
-        - [partial] assertion
+            - [done] dynamic/local
+    - [done] partial types
+        - [done] assertion
             - [done] basing assert and bubble
-            - [undone] assertion with statement
-            - [undone] bubbling with default
+            - [done] assertion with statement
+            - [done] bubbling with default
         - [done] runtime halt
     - [partial] modules
         - [done] base functionality
         - [done] publicity assertion
-        - [undone] submodules
+        - [partial] submodules
 - [partial] standard library
     - [undone] buff
     - [partial] fs

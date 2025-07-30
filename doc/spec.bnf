@@ -152,7 +152,7 @@ assignment  ::= (namespace | rec_field) "=" expression | allocation | concat_exp
 // an arena declaration is the `mem` keyword, a namespace, the pipe operator,
 // either a number or an expression, an scope and finally an optional
 // propagation expression
-arena       ::= "mem" namespace "|" (number | expression) scope propagation?;
+arena       ::= "new" namespace "|" (number | expression) scope propagation?;
 // an arena allocation is the `new` keyword, optionally either a bubble-up or
 // assert operator, and then either an array literal, a record, a record edit
 // or a namespace, and finally the at operator and an arena namespace.

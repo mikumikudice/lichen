@@ -244,7 +244,6 @@ let bar = "hi";
 
 test foo == bar; // test succeeds
 ```
-strings are considered equivalent to an array of unsigned bytes (`[]u8`), so they can be casted to one another freely.
 
 ## boolean
 lichen implements booleans as purely a type enforcement, but all bool values can be casted to an integer value and vice-versa. the variants for the type are `true` and `false`, as expected.
@@ -348,6 +347,12 @@ mem arena | size_in_bytes {
     let size_in_items = 20 u64;
     let array_with_rule = new ! [size_in_items; 0...] @ arena; // sets all 20 items to zero
 }!; // assertion for nomem failure
+```
+unlike strings, static arrays are contiguous segments of data, where the first 8 bytes are it's length and all subcequent bytes the array data. dynamically allocated arrays, on the other hand, are fat pointers as well. you can cast a static array into a dynamic array through _slicing_, but not the other way around:
+```rust
+let static_arr [8]u32 = [0...];
+let dynamic_arr []u32 = static_arr[..];
+let slice = static_arr[0 .. 4];
 ```
 
 ## records

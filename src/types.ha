@@ -147,7 +147,7 @@ type path_meta = (*hand_meta | *hand_meta | *member_meta | *ternary_meta |
     *expr_meta | *const_meta | *array_lit_meta | *record_lit_meta |
     *indexing_meta | *field_meta | *var_meta | *funcall_meta | *decl_meta |
     *assign_meta | *fun_meta | *scope_meta | *expr_meta | *branch_meta |
-    *return_meta | *type_meta | *module_meta);
+    *return_meta | *test_meta | *for_meta | *type_meta | *module_meta);
 
 type const_meta = struct {
     pre: (void | operator),
@@ -277,6 +277,25 @@ type return_meta = struct {
     val: *expr_meta,
     tpe: lichen_t,
     pos: size,
+};
+
+type test_meta = struct {
+    pos: size,
+    cond: *expr_meta,
+    props: bool,
+    buffer: *memio::stream,
+    str_id: size,
+    host_tpe: (void | lichen_t),
+};
+
+type for_meta = struct {
+    pos: size,
+    mut: bool,
+    indx: nullable *decl_meta,
+    local: nullable *decl_meta,
+    iter: (*decl_meta | *array_lit_meta),
+    item: *decl_meta,
+    body: *scope_meta,
 };
 
 type type_meta = struct {

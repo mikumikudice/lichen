@@ -1,0 +1,11 @@
+// parsing test for asserting for field
+// assignment exhaustiveness
+
+type person = record {
+    name str;
+    age u8;
+};
+
+pub fn main() void = io {
+    let bob = person { name = "bob" };
+};

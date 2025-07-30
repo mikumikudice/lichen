@@ -1,0 +1,6 @@
+// parsing test for checking test block
+// assertion
+
+pub fn main() void = {
+    test 5 == 4, "test ok";
+};

@@ -1,3 +1,5 @@
-- implemented single-level record field assignment
-- unhardcoded `%dup` on value stack duplication
-- fixed invalid allowance of field assignment with type mismatch
+- implemented for loops
+- implemented dynamic `test` statement
+- fixed issue with assertion being not valid on void functions
+- added exhaustive assertion on record fields assignment
+- fixed miss-emitting/type override of arrays

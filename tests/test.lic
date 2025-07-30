@@ -1,0 +1,27 @@
+// parser and compiler test for the
+// `test` statement
+
+io mod = use "std/io.lim";
+
+fn failue() !u32 = {
+    test ? 5 == 4;
+    return 5;
+};
+
+pub fn main() void = io {
+    test 4 == 4;
+
+    let x = 5 u32;
+    test x <= 5;
+
+    let y = "hi";
+    test y == "hi";
+
+    let z = failue()? or 0;
+
+    if z == 0 {
+        io::println("test ok")!;
+    } else {
+        io::println("test fail")!;
+    };
+};

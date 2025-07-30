@@ -1151,7 +1151,19 @@ fn eval_module(ctxt: *context, at: size) ((*module_meta, size) | ERROR) = {
         };
     };
     if(mod_ctxt == null){
-        mod_ctxt = compile(path, ctxt.path, false, false, ctxt.literals)?;
+        match(compile(path, ctxt.path, false, false, ctxt.literals)){
+        case let c: *context => mod_ctxt = c;
+        case let e: ERROR =>
+            const msg = memio::string(e)!;
+            if(strings::index(msg, "failed to load") is size){
+                io::close(e)!;
+                free(e);
+                move_ptr(ctxt, ctxt.tokens[at]);
+                return error(ctxt, "could not find module \"{}\"", path);
+            } else {
+                return e;
+            };
+        };
     };
     const module = alloc(module_meta {
         name = bind.name,
@@ -1470,6 +1482,10 @@ fn eval_scope(
             last_tpe = ret.val.tpe;
             tpe = ret.val.tpe;
             rets = true;
+        case *test_meta =>
+            last_tpe = quick_t(primitive::UNIT);
+        case *for_meta =>
+            last_tpe = quick_t(primitive::UNIT);
         case let decl: *decl_meta =>
             last_tpe = decl.var.nm.tpe;
         case let exp: *expr_meta =>
@@ -1554,7 +1570,12 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
     match(tk.val){
     case let kwd: keyword =>
         switch(kwd){
-        case keyword::TEST => todo("test block");
+        case keyword::TEST =>
+            const (test, _end) = eval_test(ctxt, end)?;
+            end = _end;
+            end = pop_assert(ctxt, _end, symbol::EOL,
+                "expected %bend of line%r, but got %y{}")?;
+            return (test, end);
         case keyword::LET =>
             end += 1;
             const (decl, _end) = eval_var_def(ctxt, end)?;
@@ -1567,6 +1588,12 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
             end = pop_assert(ctxt, _end, symbol::EOL,
                 "expected %bend of line%r, but got %y{}")?;
             return (branch, end);
+        case keyword::FOR =>
+            const (loop, _end) = eval_for_loop(ctxt, end)?;
+            end = _end;
+            end = pop_assert(ctxt, _end, symbol::EOL,
+                "expected %bend of line%r, but got %y{}")?;
+            return (loop, end);
         case keyword::SWITCH => todo("switch block");
         case keyword::RETURN =>
             end += 1;
@@ -1785,6 +1812,71 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
     };
 };
 
+fn eval_test(ctxt: *context, at: size) ((*test_meta, size) | ERROR) = {
+    assert(comp_tk(ctxt.tokens[at].val, keyword::TEST));
+    let end = at + 1;
+    let tk = next_tk(ctxt, end,
+        "expected %bbubble operator%r or %bcondition%r, but got %y{}")?;
+
+    const props = comp_tk(tk.val, operator::BUBBLE);
+    const host_fun = ctxt.host_fun as *fun_meta;
+    if(props){
+        if(!host_fun.fun.tpe.fail){
+            const arg = strtype(host_fun.fun.tpe);
+            defer free(arg);
+            return error(ctxt,
+                "cannot bubble or assert fail state from %b{}", arg);
+        };
+        end += 1;
+    };
+    const (exp, _end) = eval_expression(ctxt, end, quick_t(primitive::BOOL))?;
+    end = _end;
+
+    tk = next_tk(ctxt, end,
+        "expected %bcomma%r or %bend of line%r, but got %y{}")!;
+
+    let message = "";
+    if(comp_tk(tk.val, symbol::COMMA)){
+        if(props){
+            move_ptr(ctxt, tk);
+            return error(ctxt,
+                "cannot %blog failure message%r on %ypropagated test block");
+        };
+        end += 1;
+        tk = next_tk(ctxt, end,
+            "expected %bassertion message%r or %bend of line%r, but got %y{}")!;
+        if(tk.val is str){
+            message = tk.val as str;
+        } else {
+            move_ptr(ctxt, tk);
+            const arg = strtoken(tk.val);
+            defer free(arg);
+            return error(ctxt,
+                "expected %bassertion message%r or %bend of line%r, but got %y{}", arg);
+        };
+        end += 1;
+    };
+    const buffer = memio::dynamic();
+    move_ptr(ctxt, ctxt.tokens[at + 1]);
+    const pos = gen_pos(ctxt);
+    defer free(pos);
+
+    if(message != ""){
+        fmt::fprintf(&buffer, "{}: {}\\n", pos, message)!;
+    } else {
+        fmt::fprintf(&buffer, "{}: test failed\\n", pos)!;
+    };
+    const meta = test_meta {
+        pos = at,
+        cond = exp,
+        props = props,
+        host_tpe = host_fun.fun.tpe,
+        buffer = alloc(buffer)!,
+        str_id = push_lit(ctxt, memio::string(&buffer)!),
+    };
+    return (alloc(meta)!, end);
+};
+
 // evaluates a variable definition
 // assumes `at` points to the first variable namespace
 fn eval_var_def(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
@@ -1969,6 +2061,161 @@ fn eval_ifelse(ctxt: *context, at: size) ((*branch_meta, size) | ERROR) = {
         bodies = bodies,
     };
     return (alloc(branch)!, end);
+};
+
+fn eval_for_loop(ctxt: *context, at: size) ((*for_meta, size) | ERROR) = {
+    assert(comp_tk(ctxt.tokens[at].val, keyword::FOR));
+    let end = at + 1;
+    let tk = next_tk(ctxt, end,
+        "expected %biteration variable%r or %blocal declaration%r, but got %y{}")?;
+    let ref = tk;
+    const mut =
+        if(comp_tk(tk.val, keyword::MUT)){
+            end += 1;
+            tk = next_tk(ctxt, end,
+                "expected %biteration variable%r or %blocal declaration%r, but got %y{}")?;
+            yield true;
+        } else {
+            yield false;
+        };
+    const defs: []*decl_meta = [];
+    defer free(defs);
+    let local_def: nullable *decl_meta = null;
+    if(!(tk.val is namespace)){
+        move_ptr(ctxt, tk);
+        const arg = strtoken(tk.val);
+        defer free(arg);
+        return error(ctxt,
+            "expected %biteration variable%r or %blocal declaration%r, but got %y{}", arg);
+    };
+    const name = tk.val as namespace;
+    check_shadowing(ctxt, tk, name)?;
+
+    // namespace not defined suggests an assignment
+    tk = next_tk(ctxt, end + 1,
+        "expected %bassignment%r or %brange operator%r, but got %y{}")?;
+    // local variable
+    if(comp_tk(tk.val, operator::ASG)){
+        const (local, _end) = eval_var_def(ctxt, end)?;
+        local.var.nm.mut = mut;
+        mut = false;
+        end = _end;
+        end = pop_assert(ctxt, end, symbol::EOL,
+            "expected %bend of line%r, but got %y{}")?;
+        local_def = local;
+        append(defs, local)!;
+    };
+    tk = next_tk(ctxt, end,
+        "expected %iteration variable%r, but got %y{}")?;
+    if(comp_tk(tk.val, keyword::MUT)){
+        ref = tk;
+        end += 1;
+        tk = next_tk(ctxt, end,
+            "expected %biteration variable%r or %blocal declaration%r, but got %y{}")?;
+        mut = true;
+    };
+    if(!(tk.val is namespace)){
+        move_ptr(ctxt, tk);
+        const arg = strtoken(tk.val);
+        defer free(arg);
+        return error(ctxt,
+            "expected %iteration variable%r, but got %y{}", arg);
+    };
+    end += 1;
+    check_shadowing(ctxt, tk, tk.val as namespace)?;
+    const iteration = alloc(decl_meta {
+        var = alloc(var_meta {
+            nm = tk.val as namespace,
+            owner = ctxt,
+            pos = end,
+        })!,
+        val = void,
+    })!;
+    iteration.var.nm.mut = mut;
+    append(defs, iteration)!;
+
+    tk = next_tk(ctxt, end,
+        "expected %range operator%r or %bindex variable declaration%r, but got %y{}")?;
+    
+    let indx: nullable *decl_meta = null;
+    if(comp_tk(tk.val, symbol::COMMA)){
+        end += 1;
+        tk = next_tk(ctxt, end,
+            "expected %bindex variable declaration%r, but got %y{}")?;
+        if(!(tk.val is namespace)){
+            move_ptr(ctxt, tk);
+            const arg = strtoken(tk.val);
+            defer free(arg);
+            return error(ctxt,
+                "expected %bindex variable declaration%r, but got %y{}", arg);
+        };
+        end += 1;
+        indx = alloc(decl_meta {
+            var = alloc(var_meta {
+                nm = tk.val as namespace,
+                owner = ctxt,
+                pos = end,
+            })!,
+            val = void,
+        })!;
+        (indx as *decl_meta).var.nm.tpe = quick_t(primitive::U64);
+        append(defs, (indx as *decl_meta))!;
+    };
+    end = pop_assert(ctxt, end, operator::RANGE,
+        "expected %brange operator%r, but got %y{}")?;
+
+    tk = next_tk(ctxt, end, "expected %biterator value%r, but got %y{}")?;
+    const (iter, _end): ((*decl_meta | *array_lit_meta), size) =
+        if(comp_tk(tk.val, symbol::LFT_SQUARE)){
+            const (lit, end) = eval_array_lit(ctxt, end, quick_t(primitive::ANY))?;
+            iteration.var.nm.tpe = unwrap_array(lit.tpe);
+            yield (lit, end);
+        } else if(tk.val is namespace){
+            const nm = tk.val as namespace;
+            const i = get_def(ctxt, nm, ctxt.scp);
+            if(i is void){
+                move_ptr(ctxt, tk);
+                return error(ctxt,
+                    "namespace %b{}%r undefined at this point", nm.name);
+            };
+            iteration.var.nm.tpe = unwrap_array((i as *decl_meta).var.nm.tpe);
+            yield (i as *decl_meta, end + 1);
+        } else {
+            move_ptr(ctxt, tk);
+            const arg = strtoken(tk.val);
+            defer free(arg);
+            return error(ctxt,
+                "expected %biterator value%r, but got %y{}", arg);
+        };
+    if(mut){
+        if(iter is *array_lit_meta){
+            move_ptr(ctxt, ref);
+            return error_hint(ctxt,
+                "\n%gmarking an iteration variable as mutable "
+                "marks it to reassign to the iteration array",
+                "cannot %yreassign to array literal");
+        };
+        const var = iter as *decl_meta;
+        if(!var.var.nm.mut){
+            move_ptr(ctxt, tk);
+            return error_hint(ctxt,
+                "\n%gmarking an iteration variable as mutable "
+                "marks it to reassign to the iteration array",
+                "iterator variable is not mutable");
+        };
+    };
+    const (scope, _end) = eval_scope(ctxt, _end, defs)?;
+    end = _end;
+    const meta = for_meta {
+        pos = at,
+        mut = mut,
+        indx = indx,
+        local = local_def,
+        iter = iter,
+        item = iteration,
+        body = scope,
+    };
+    return (alloc(meta)!, end);
 };
 
 // evaluates an expression of members and operators
@@ -2634,6 +2881,7 @@ fn eval_array_lit(
 
     const (cast, prop, _end) = eval_cast(ctxt, itm_tpe, end)?;
     as_arr.base = cast;
+    tpe.base = as_arr;
     if(untyped(as_arr.base)){
         move_ptr(ctxt, ctxt.tokens[at]);
         return error(ctxt, "cannot deduce array type");
@@ -2800,6 +3048,10 @@ fn eval_record_lit(
     if(field_count > len(rec.fields)){
         move_ptr(ctxt, tk);
         return error(ctxt, "no fields are left to be assigned");
+    };
+    if(field_count < len(rec.fields)){
+        move_ptr(ctxt, tk);
+        return error(ctxt, "all fields must be assigned");
     };
     end = pop_assert(ctxt, end, symbol::RGT_CURLY,
         "expected %bend of field assignment list%r, but got %y{}")?;
@@ -3059,7 +3311,7 @@ fn eval_declaration(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
     };
     const meta = decl_meta {
         var = alloc(var)!,
-        val = void,  
+        val = void,
     };
     return (alloc(meta)!, end);
 };
@@ -3080,17 +3332,18 @@ const any_arr = array {
         base = primitive::ANY,
     },
 };
+
 fn new_array_t(ctxt: *context, arr: array, fail: bool = false) lichen_t = {
     if(comp_type(arr.base, primitive::ANY)){
         any_arr.length = arr.length;
         return lichen_t {
             fail = fail,
-            base = &any_arr,
+            base = alloc(any_arr)!,
         };
     };
     const dummy = lichen_t {
         fail = fail,
-        base = &arr,
+        base = alloc(arr)!,
     };
     for(let d ..& ctxt.global.defs){
         if(d is *type_meta){
@@ -3098,7 +3351,6 @@ fn new_array_t(ctxt: *context, arr: array, fail: bool = false) lichen_t = {
             if(comp_type(dummy, tpe.self)) return tpe.self;
         };
     };
-    dummy.base = alloc(arr)!;
     const length =
         if(arr.length is void){
             yield strings::dup("dynamic")!;
@@ -3209,7 +3461,8 @@ fn eval_cast(
                     "caller function of type %b{}%r cannot bubble up fail state from %b{}",
                     arg1, arg2);
             // host function's type is void
-            } else if(comp_type(caller.fun.tpe, quick_t(primitive::VOID, true))){
+            } else if(comp_tk(tk.val, operator::BUBBLE) &&
+                comp_type(caller.fun.tpe, quick_t(primitive::VOID, true))){
                 return error_hint(ctxt,
                     "\n%gno value can be returned from a (partial) primitive void type",
                     "cannot bubble up from void type");

@@ -1,0 +1,82 @@
+io mod = use "std/io.lim";
+
+type stats = record {
+    health i32;
+    mana u32;
+};
+
+type player = record {
+    use name str;
+    level u8;
+    data stats;
+};
+
+fn spawn(level u8, name str) !player = {
+    if level == 0 {
+        return fail;
+    } else {
+        return player {
+            name = name,
+            level = level,
+            data = stats { health = level i32 * 5 },
+        };
+    };
+};
+
+pub fn main() void = io {
+    // partial type: spawn may fail
+    let hero = spawn(4, "hera")!;
+    let villain = spawn(0, "aiax")! or io::println("spawn failed, fallback to npc")!;
+
+    // string literal and #length
+    if #hero.name == 4 {
+        io::println("name length ok")!;
+    };
+
+    // nested field access & cast
+    let lvl u32 = hero.level u32;
+
+    // array literal and partial indexing
+    let numbers = [10, 20, 30, 40] u32;
+    let n = numbers[2];
+
+    // test ternary expression and string equality
+    let desc = "boss" if hero.level > 10 else "minion";
+    if desc == "minion" {
+        io::println("ternary ok")!;
+    };
+
+    // for-loop with mutable iteration, left-shift the array
+    let mut nums = [1, 2, 3, 4, 5] u32;
+    for mut item, idx .. nums {
+        item = nums[idx + 1]? or 0;
+    };
+
+    // switch over hero level
+    switch hero.level
+    | 1 { io::println("level 1")!; };
+    | 2, 3 { io::println("level 2-3")!; };
+    | 4 .. 5 { io::println("level 4-5 ok")!; };
+    | else { io::println("unknown level")!; };
+
+    // test block: static
+    test n == 30, "array indexing failed";
+
+    // test block: dynamic
+    test hero.level > 0;
+
+    // nested record comparison
+    if hero.data.mana == 100 {
+        io::println("default field ok")!;
+    };
+
+    // decimal and scientific literals (used, but just assigned)
+    let pi = 3.1415 f64;
+    let big = 6.022e23 f64;
+
+    // final check: spawn again and propagate
+    let retry = spawn(2, "thanatos")?;
+    if retry.level == 2 {
+        io::println("final spawn ok")!;
+    };
+};
