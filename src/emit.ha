@@ -1329,17 +1329,13 @@ fn assign_memb(
             const (l, c) = get_pos(ctxt);
             fmt::fprintfln(buff, "\tdbgloc {}, {}", l, c)!;
             // emit source data
-            const temp = fmt::asprintf("%arena.src.{}", all.pos)!;
-                const val = assign_memb(ctxt, buff, temp, all.tpe, all.val);
-                const data =
-                    if(val != ""){
-                        free(temp);
-                        yield val;
-                    } else {
-                        yield temp;
-                    };
-                defer free(data);
-
+            const data = fmt::asprintf("%arena.src.{}", all.pos)!;
+            defer free(data);
+            const val = assign_memb(ctxt, buff, data, all.tpe, all.val);
+            if(val != ""){
+                defer free(val);
+                fmt::fprintfln(buff, "\t{} =l copy {}", data, val)!;
+            };
             const arena = fix_nm(ctxt, buff, all.arena.nm);
             // load arena size
             fmt::fprintfln(buff, "\t{0}.length =l loadl {0}", arena)!;

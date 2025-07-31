@@ -1,0 +1,15 @@
+// parser test for borrowing semantics
+
+io mod = use "std/io.lim";
+
+fn borrow(obj str) str @ obj = {
+    return obj;
+};
+
+pub fn main() void = io {
+    new arena | 128 {
+        let obj = new ! "test ok" @ arena;
+        let bar = borrow(obj);
+        io::println(bar)!;
+    }!;
+};

@@ -45,6 +45,7 @@ local tests = {
     { src = "fail_arena_3", code = 1, nocomp = true },
     { src = "fail_outlive_1", code = 1, nocomp = true },
     { src = "fail_outlive_2", code = 1, nocomp = true },
+    { src = "fail_borrow", code = 1, nocomp = true },
     -- fail assertion --
     { src = "fail_io_bad_handle", code = 1, nocomp = false },
     { src = "fail_io_from_result", code = 1, nocomp = false },
@@ -89,6 +90,7 @@ local tests = {
     { src = "arena", code = 0 },
     { src = "arena_error_1", code = 1 },
     { src = "arena_error_2", output = "test ok\n", code = 0 },
+    { src = "borrow", output = "test ok\n", code = 0 },
 }
 
 -- helpers --

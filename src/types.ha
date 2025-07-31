@@ -235,6 +235,7 @@ type fun_meta = struct {
     effect: []str,
     used: bool,
     variadic: bool,
+    borrows: (void | size),
 };
 
 type funcall_meta = struct {
@@ -242,6 +243,7 @@ type funcall_meta = struct {
     tpe: lichen_t,
     pos: size,
     args: []*expr_meta,
+    lifetime: (void | size),
 };
 
 type scope_meta = struct {

@@ -1318,6 +1318,47 @@ fn eval_fun_def(ctxt: *context, at: size) ((*fun_meta, size) | ERROR) = {
     name.glob = true;
     name.tpe = tpe;
 
+    tk = next_tk(ctxt, end,
+        "expected %bfunction assignment%r or %bborrowing declaration%r, but got %y{}")?;
+    
+    const borrow =
+        if(comp_tk(tk.val, symbol::AT)){
+            end += 1;
+            tk = next_tk(ctxt, end,
+                "expected %bborrowing parameter name%r, but got %y{}")?;
+            if(!(tk.val is namespace)){
+                move_ptr(ctxt, tk);
+                const arg = strtoken(tk.val);
+                defer free(arg);
+                return error(ctxt,
+                    "expected %bborrowing parameter name%r, but got %y{}", arg);
+            };
+            end += 1;
+            const b = tk.val as namespace;
+            let found = true;
+            let p = 0z;
+            // search for said parameter
+            for(p < len(params); p += 1){
+                const param = params[p];
+                if(param.var.nm.name == b.name){
+                    if(!is_aggregated(param.var.nm.tpe)){
+                        move_ptr(ctxt, tk);
+                        const arg = strtype(param.var.nm.tpe);
+                        return error_hint(ctxt,
+                            "\t%bnon-aggregated type values cannot go invalid",
+                            "borrowed parameter of %b{}%r has %yno lifetime", arg);
+                    };
+                    found = true;
+                    break;
+                };
+            };
+            if(!found){
+                move_ptr(ctxt, tk);
+                return error(ctxt,
+                    "cannot borrow from %yunknown parameter {}", b.name);
+            };
+            yield p;
+        };
     end = pop_assert(ctxt, end, operator::ASG,
         "expected %bfunction assignment%r, but got %y{}")?;
 
@@ -1377,6 +1418,7 @@ fn eval_fun_def(ctxt: *context, at: size) ((*fun_meta, size) | ERROR) = {
         effect = efx,
         used = false,
         variadic = variadic,
+        borrows = borrow,
     })!;
     // reserve namespace
     push_def(ctxt, ctxt.tokens[pos], name, out)?;
@@ -1713,32 +1755,39 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
                 const (val, _end) = eval_expression(ctxt, end, var_def.var.nm.tpe)?;
                 const root = extract_root(val);
                 // assert for immutability dropping
-                if(root is *var_meta){
-                    const pass = root as *var_meta;
-                    if(pass.lifetime is size && var_def.var.lifetime is void){
+                if(root is *var_meta || root is *funcall_meta){
+                    const pass_lifetime =
+                        match(root){
+                        case let var: *var_meta => yield var.lifetime;
+                        case let call: *funcall_meta => yield call.lifetime;
+                        };
+                    if(pass_lifetime is size && var_def.var.lifetime is void){
                         move_ptr(ctxt, ctxt.tokens[end]);
                         return error(ctxt,
                             "value has a defined lifetime, but variable doesn't");
-                    } else if(pass.lifetime is size &&
+                    } else if(pass_lifetime is size &&
                         var_def.var.lifetime is size){
-                        if(pass.lifetime as size >
+                        if(pass_lifetime as size >
                             var_def.var.lifetime as size){
                             move_ptr(ctxt, ctxt.tokens[end]);
                             return error(ctxt, "variable outlives value lifetime");
                         };
                     };
-                    if(is_aggregated(var_def.var.nm.tpe) &&
-                        !size_known(var_def.var.nm.tpe) &&
-                        var_def.var.nm.mut && !pass.nm.mut){
-                        move_ptr(ctxt, tk);
-                        const hint = fmt::asprintf(
-                            "\n%baggregated types such as strings and arrays cannot be copied to the stack.\n"
-                            "try using:\n\n\t%d{} = new ! {} @ arena",
-                            var_def.var.nm.name, pass.nm.name)!;
-                        defer free(hint);
-                        return error_hint(ctxt,
-                        hint,
-                        "cannot copy this %bimmutable aggregated value%r to %ymutable variable");
+                    if(root is *var_meta){
+                        const pass = root as *var_meta;
+                        if(is_aggregated(var_def.var.nm.tpe) &&
+                            !size_known(var_def.var.nm.tpe) &&
+                            var_def.var.nm.mut && !pass.nm.mut){
+                            move_ptr(ctxt, tk);
+                            const hint = fmt::asprintf(
+                                "\n%baggregated types such as strings and arrays cannot be copied to the stack.\n"
+                                "try using:\n\n\t%d{} = new ! {} @ arena",
+                                var_def.var.nm.name, pass.nm.name)!;
+                            defer free(hint);
+                            return error_hint(ctxt,
+                            hint,
+                            "cannot copy this %bimmutable aggregated value%r to %ymutable variable");
+                        };
                     };
                 };
                 end = pop_assert(ctxt, _end, symbol::EOL,
@@ -3410,6 +3459,14 @@ fn eval_funcall(
     let end = at + 1;
     let arg_count = 0z;
     let arg_list: []*expr_meta = [];
+    let lifetime: (void | size) = void;
+
+    const (borrows, index) =
+        if(fun.borrows is size){
+            yield (true, fun.borrows as size);
+        } else {
+            yield (false, 0z);
+        };
     const max = len(fun.params);
     for(!comp_tk(tk.val, symbol::RGT_PAR)){
         if(arg_count >= max || max == 0){
@@ -3421,6 +3478,15 @@ fn eval_funcall(
         };
         const (arg, _end) = eval_expression(ctxt, end,
             fun.params[arg_count].var.nm.tpe)?;
+        // borrow argument lifetime
+        if(borrows && arg_count == index){
+            const obj = extract_root(arg);
+            if(obj is *var_meta){
+                lifetime = (obj as *var_meta).lifetime;
+            } else if(obj is *funcall_meta){
+                lifetime = (obj as *funcall_meta).lifetime;
+            };
+        };
         // assert for mutability matching
         if(arg.val is hand_t && extract_root(arg) is *var_meta){
             const var = extract_root(arg) as *var_meta;
@@ -3465,6 +3531,7 @@ fn eval_funcall(
         tpe = fun.fun.tpe,
         pos = at,
         args = arg_list,
+        lifetime = lifetime,
     };
     return (alloc(call)!, end);
 };

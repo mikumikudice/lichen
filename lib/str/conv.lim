@@ -2,7 +2,7 @@
 // ascii encoded string
 // resulting object shares the memory
 // with source data
-pub fn from_bytes(mut src []u8) str = rt use "rt.btoa";
+pub fn from_bytes(mut src []u8) str @ src = rt use "rt.btoa";
 
 // pub fn to_u64(src u64, buff mem) !str = {
 //     unreachable;
