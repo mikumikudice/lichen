@@ -86,6 +86,8 @@ fn strtoken(tok: tk_val) str = {
         switch(prim){
         case primitive::NUMBER, primitive::RATIO, primitive::ANY =>
             return strings::dup(prim_value[prim])!;
+        case primitive::MEM =>
+            return strings::dup("memory arena")!;
         case =>
             return fmt::asprintf("primitive type {}", prim_value[prim])!;
         };
@@ -230,11 +232,7 @@ fn push_def(
 ) (void | ERROR) = {
     // assert for dups
     check_shadowing(ctxt, pos, name)?;
-    if(meta is *decl_meta){
-        append(ctxt.scp.defs, meta)!;
-    } else {
-        append(ctxt.global.defs, meta)!;
-    };
+    append(ctxt.scp.defs, meta)!;
 };
 
 // fetches the corresponding function definition of `name` from the
@@ -341,6 +339,7 @@ fn compile(filename: str,
                 yield alloc([]: []str)!;
             },
         host_fun = null,
+        lifetime = void,
         re_emit = false,
         global = glob,
         scp = glob,
@@ -646,7 +645,7 @@ fn compile(filename: str,
                 start += 1;
                 inc_ptr(&ctxt);
             case '@' =>
-                append(ctxt.tokens, new_tk(ctxt, operator::AT))!;
+                append(ctxt.tokens, new_tk(ctxt, symbol::AT))!;
                 start += 1;
                 inc_ptr(&ctxt);
             case '.' =>
@@ -849,7 +848,7 @@ fn compile(filename: str,
             ctxt.host_fun = fun_def;
             // evaluate function scope
             let (body, end) = eval_scope(&ctxt, fun_def.begins,
-                fun_def.params)?;
+                fun_def.params, true)?;
             ctxt.host_fun = null;
             // pop end of line
             end = pop_assert(&ctxt, end, symbol::EOL,
@@ -874,7 +873,7 @@ fn compile(filename: str,
                     ctxt.host_fun = fun_def;
                     // evaluate function scope
                     let (body, end) = eval_scope(&ctxt, fun_def.begins,
-                        fun_def.params)?;
+                        fun_def.params, true)?;
                     ctxt.host_fun = null;
                     // pop end of line
                     end = pop_assert(&ctxt, end, symbol::EOL,
@@ -886,29 +885,34 @@ fn compile(filename: str,
             };
         };
     };
+
     // from modules
-    for(let m .. ctxt.global.defs){
-        if(m is *module_meta){
-            const module = m as *module_meta;
-            if(module.parsed) continue;
-            module.parsed = true;
-            for(let meta .. module.ctxt.global.defs){
-                match(meta){
-                case let fun_def: *fun_meta =>
-                    if(fun_def.fun.ffi is void && fun_def.used){
-                        // assign current scope host
-                        module.ctxt.host_fun = fun_def;
-                        // evaluate function scope
-                        let (body, end) = eval_scope(module.ctxt, fun_def.begins,
-                            fun_def.params)?;
-                        module.ctxt.host_fun = null;
-                        // pop end of line
-                        end = pop_assert(module.ctxt, end, symbol::EOL,
-                            "expected %bend of line%r, but got %y{}")?;
-                        // assign parsed function body
-                        fun_def.body = body;
+    ctxt.re_emit = true;
+    for(ctxt.re_emit){
+        ctxt.re_emit = false;
+        for(let m .. ctxt.global.defs){
+            if(m is *module_meta){
+                const module = m as *module_meta;
+                if(module.parsed) continue;
+                module.parsed = true;
+                for(let meta .. module.ctxt.global.defs){
+                    match(meta){
+                    case let fun_def: *fun_meta =>
+                        if(fun_def.fun.ffi is void && fun_def.used){
+                            // assign current scope host
+                            module.ctxt.host_fun = fun_def;
+                            // evaluate function scope
+                            let (body, end) = eval_scope(module.ctxt, fun_def.begins,
+                                fun_def.params, true)?;
+                            module.ctxt.host_fun = null;
+                            // pop end of line
+                            end = pop_assert(module.ctxt, end, symbol::EOL,
+                                "expected %bend of line%r, but got %y{}")?;
+                            // assign parsed function body
+                            fun_def.body = body;
+                        };
+                    case => void;
                     };
-                case => void;
                 };
             };
         };
@@ -1038,6 +1042,7 @@ fn eval_const_def(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
             nm = name,
             owner = ctxt,
             pos = at,
+            lifetime = void,
         })!,
         val = out_val,
     })!;
@@ -1062,7 +1067,7 @@ fn eval_constant(
     };
     // unary operator
     if(val.val is operator){
-        assert_unary(ctxt, end, val.val as operator, hint)?;
+        assert_unary(ctxt, at, val.val as operator, hint)?;
         meta.pre = val.val as operator;
         val = next_tk(ctxt, end,
             "expected %bconstant value%r, but got %y{}")?;
@@ -1448,17 +1453,21 @@ fn eval_scope(
     ctxt: *context,
     at: size,
     params: []*decl_meta = [],
+    func_body: bool = false,
 ) ((*scope_meta, size) | ERROR) = {
     const upper = ctxt.scp;
     // instantiate scope definitions
-    ctxt.scp = alloc(scope {
+    const new = alloc(scope {
         defs = [], upper = upper,
     })!;
     for(let param .. params){
         const dup = alloc(*param)!;
         dup.var = alloc(*param.var)!;
-        append(ctxt.scp.defs, dup)!;
+        append(new.defs, dup)!;
     };
+    // assign inner scope to context
+    ctxt.scp = new;
+    // scope parameters
     let end = at + 1;
     let rets = false;
     let tpe = quick_t(primitive::ANY);
@@ -1470,7 +1479,8 @@ fn eval_scope(
         "expected %bstatement%r, but got %y{}")?;
     // iterate until end of scope
     for(!comp_tk(tk.val, symbol::RGT_CURLY)){
-        if(rets){
+        if(is_subtype(last_tpe, quick_t(primitive::VOID, true)) &&
+            !is_subtype(last_tpe, quick_t(primitive::UNIT, true))){
             move_ptr(ctxt, tk);
             return error(ctxt,
                 "no additional code shall fallow %yvoid expressions%r or %yreturn statements");
@@ -1479,13 +1489,19 @@ fn eval_scope(
         append(stt_list, stt)!;
         match(stt){
         case let ret: *return_meta =>
-            last_tpe = ret.val.tpe;
+            last_tpe = quick_t(primitive::VOID);
             tpe = ret.val.tpe;
             rets = true;
         case *test_meta =>
             last_tpe = quick_t(primitive::UNIT);
         case *for_meta =>
             last_tpe = quick_t(primitive::UNIT);
+        case let arena: *arena_meta =>
+            if(arena.self.var.nm.tpe.fail){
+                last_tpe = quick_t(primitive::UNIT, true);
+            } else {
+                last_tpe = quick_t(primitive::UNIT);
+            };
         case let decl: *decl_meta =>
             last_tpe = decl.var.nm.tpe;
         case let exp: *expr_meta =>
@@ -1494,12 +1510,15 @@ fn eval_scope(
             last_tpe = quick_t(primitive::UNIT);
         case let branch: *branch_meta =>
             if(branch.rets){
-                last_tpe = host.fun.tpe;
+                last_tpe = quick_t(primitive::VOID);
                 tpe = host.fun.tpe;
                 rets = true;
             } else {
                 last_tpe = quick_t(primitive::UNIT);
             };
+        case unreachable =>
+            last_tpe = quick_t(primitive::VOID);
+            tpe = last_tpe;
         };
         // assign terminant expressions
         if(comp_type(last_tpe, quick_t(primitive::VOID)) ||
@@ -1543,13 +1562,16 @@ fn eval_scope(
         tk = next_tk(ctxt, end,
             "expected %bstatement%r, but got %y{}")?;
     };
+    // assign default value to scope
     if(untyped(tpe)) tpe = quick_t(primitive::UNIT);
-    if(rets){
+    // assert for return type mismatch
+    if(!func_body && !is_subtype(tpe, primitive::VOID)){
+        assert_hint(ctxt, ctxt.tokens[at], tpe, host.fun.tpe)?;
         tpe = host.fun.tpe;
-    } else if(comp_type(host.fun.tpe, primitive::VOID)){
+    } else if(func_body){
+        assert_hint(ctxt, ctxt.tokens[at], tpe, host.fun.tpe)?;
         tpe = host.fun.tpe;
-    };
-    assert_hint(ctxt, ctxt.tokens[at], tpe, host.fun.tpe)?;
+    };    
     const meta = alloc(scope_meta {
         pos = at,
         stt = stt_list,
@@ -1583,6 +1605,12 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
             end = pop_assert(ctxt, _end, symbol::EOL,
                 "expected %bend of line%r, but got %y{}")?;
             return (decl, end);
+        case keyword::NEW =>
+            const (arena, _end) = eval_arena(ctxt, end)?;
+            push_def(ctxt, ctxt.tokens[end], arena.self.var.nm, arena.self)?;
+            end = pop_assert(ctxt, _end, symbol::EOL,
+                "expected %bend of line%r, but got %y{}")?;
+            return (arena, end);
         case keyword::IF =>
             const (branch, _end) = eval_ifelse(ctxt, end)?;
             end = pop_assert(ctxt, _end, symbol::EOL,
@@ -1617,6 +1645,14 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
                 return (alloc(out)!, end);
             };
             const (val, _end) = eval_expression(ctxt, end, host.fun.tpe)?;
+            const root = extract_root(val);
+            if(root is *var_meta && is_aggregated(val.tpe)){
+                const assign = root as *var_meta;
+                if(assign.lifetime is size){
+                    move_ptr(ctxt, ctxt.tokens[end]);
+                    return error(ctxt, "upper scope outlives variable lifetime");
+                };
+            };
             const out = alloc(return_meta {
                 val = val,
                 tpe = host.fun.tpe,
@@ -1626,6 +1662,10 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
             end = pop_assert(ctxt, _end, symbol::EOL,
                 "expected %bend of line%r, but got %y{}")?;
             return (out, end);
+        case keyword::UNREACHABLE =>
+            end = pop_assert(ctxt, end + 1, symbol::EOL,
+                "expected %bend of line%r, but got %y{}")?;
+            return (unreachable, end);
         case =>
             move_ptr(ctxt, tk);
             const arg = strtoken(tk.val);
@@ -1666,6 +1706,18 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
                 // assert for immutability dropping
                 if(root is *var_meta){
                     const pass = root as *var_meta;
+                    if(pass.lifetime is size && var_def.var.lifetime is void){
+                        move_ptr(ctxt, ctxt.tokens[end]);
+                        return error(ctxt,
+                            "value has a defined lifetime, but variable doesn't");
+                    } else if(pass.lifetime is size &&
+                        var_def.var.lifetime is size){
+                        if(pass.lifetime as size >
+                            var_def.var.lifetime as size){
+                            move_ptr(ctxt, ctxt.tokens[end]);
+                            return error(ctxt, "variable outlives value lifetime");
+                        };
+                    };
                     if(is_aggregated(var_def.var.nm.tpe) &&
                         !size_known(var_def.var.nm.tpe) &&
                         var_def.var.nm.mut && !pass.nm.mut){
@@ -1822,6 +1874,7 @@ fn eval_test(ctxt: *context, at: size) ((*test_meta, size) | ERROR) = {
     const host_fun = ctxt.host_fun as *fun_meta;
     if(props){
         if(!host_fun.fun.tpe.fail){
+            move_ptr(ctxt, tk);
             const arg = strtype(host_fun.fun.tpe);
             defer free(arg);
             return error(ctxt,
@@ -1877,6 +1930,58 @@ fn eval_test(ctxt: *context, at: size) ((*test_meta, size) | ERROR) = {
     return (alloc(meta)!, end);
 };
 
+fn eval_arena(ctxt: *context, at: size) ((*arena_meta, size) | ERROR) = {
+    assert(comp_tk(ctxt.tokens[at].val, keyword::NEW));
+    let end = at + 1;
+    let tk = next_tk(ctxt, end, "expected %barena name%r, but got %y{}")?;
+    if(!(tk.val is namespace)){
+        move_ptr(ctxt, tk);
+        const arg = strtoken(tk.val);
+        return error(ctxt,
+            "expected %barena name%r, but got %y{}", arg);
+    };
+    const name = tk.val as namespace;
+    name.tpe = quick_t(primitive::MEM, true);
+    end = pop_assert(ctxt, end + 1,
+        operator::BOR, "expected %b\"%d|%b\"%r, but got %y{}")?;
+
+    const (chunk_size, _end) = eval_expression(ctxt,
+        end, quick_t(primitive::U64))?;
+    end = _end;
+    
+    const skip = skip_scope(ctxt, end)?;
+    const (tpe, prop, final) = eval_cast(ctxt, name.tpe, skip)?;
+    name.tpe = tpe;
+    const old_lifetime = ctxt.lifetime;
+    if(old_lifetime is size){
+        ctxt.lifetime = old_lifetime as size + 1;
+    } else {
+        ctxt.lifetime = 1;
+    };
+    const self = alloc(decl_meta {
+        var = alloc(var_meta {
+            nm = name,
+            owner = ctxt,
+            pos = at + 1,
+            lifetime = ctxt.lifetime,
+        })!,
+        val = void,
+    })!;
+    const (scope, _end) = eval_scope(ctxt, end, [self])?;
+    ctxt.lifetime = old_lifetime;
+    end = final;
+    const host = ctxt.host_fun as *fun_meta;
+    const meta = arena_meta {
+        pos = at,
+        self = self,
+        body = scope,
+        prop = prop,
+        host = host.fun.tpe,
+        length = chunk_size,
+    };
+    return (alloc(meta)!, end);
+};
+
 // evaluates a variable definition
 // assumes `at` points to the first variable namespace
 fn eval_var_def(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
@@ -1915,6 +2020,12 @@ fn eval_var_def(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
         "expected %bdeclaration value assignment%r, but got %y{}")?;
     // eval variable assignment expression value
     const (val, _end) = eval_expression(ctxt, end, name.tpe)?;
+    const var = alloc(var_meta {
+        nm = name,
+        owner = ctxt,
+        pos = pos,
+        lifetime = void,
+    })!;
     const root = extract_root(val);
     // assert for immutability dropping
     if(root is *var_meta){
@@ -1925,35 +2036,34 @@ fn eval_var_def(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
             const hint = fmt::asprintf(
                 "\n%baggregated types such as strings and arrays cannot be copied to the stack."
                 "\ntry using:\n\n\t%dlet mut {} = new ! {} @ arena",
-                name.name, pass.nm.name)!;
+                var.nm.name, pass.nm.name)!;
             defer free(hint);
             return error_hint(ctxt,
             hint,
             "cannot copy this %bimmutable aggregated value%r to %ymutable variable");
         };
+    } else if(root is *alloc_meta){
+        const all = root as *alloc_meta;
+        var.lifetime = all.arena.lifetime as size;
     };
     end = _end;
-    name.tpe = val.tpe;
-    name.mut = mut;
+    var.nm.tpe = val.tpe;
+    var.nm.mut = mut;
     // assert for typing
-    if(untyped(name.tpe)){
+    if(untyped(var.nm.tpe)){
         move_ptr(ctxt, ctxt.tokens[eq]);
         return error(ctxt, "cannot deduce %yexpression type");
-    } else if(comp_type(name.tpe, quick_t(primitive::VOID, true)) ||
-        comp_type(name.tpe, quick_t(primitive::VOID, true))){
+    } else if(comp_type(var.nm.tpe, quick_t(primitive::VOID, true)) ||
+        comp_type(var.nm.tpe, quick_t(primitive::VOID, true))){
         move_ptr(ctxt, ctxt.tokens[eq]);
-        const arg = strtype(name.tpe);
+        const arg = strtype(var.nm.tpe);
         defer free(arg);
         return error_hint(ctxt, 
             "\n%ga (partial) primitive void type never returns",
             "cannot assign %b{}%r to variables", arg);
     };
     const out = alloc(decl_meta {
-        var = alloc(var_meta {
-            nm = name,
-            owner = ctxt,
-            pos = pos,
-        })!,
+        var = var,
         val = val,
     })!;
     return (out, end);
@@ -2030,7 +2140,8 @@ fn eval_ifelse(ctxt: *context, at: size) ((*branch_meta, size) | ERROR) = {
                     const (local, _end) = eval_var_def(ctxt, end)?;
                     end = pop_assert(ctxt, _end, symbol::EOL,
                         "expected %bend of line%r, but got %y{}")?;
-                    local_set = true;push_def(ctxt, tk, local.var.nm, local)?;
+                    local_set = true;
+                    push_def(ctxt, tk, local.var.nm, local)?;
                     append(locals, local)!;
                 };
             };
@@ -2049,6 +2160,17 @@ fn eval_ifelse(ctxt: *context, at: size) ((*branch_meta, size) | ERROR) = {
             defer free(arg);
             return error(ctxt,
                 "expected %belse block%r or %bend of line%r, but got %y{}", arg);
+        };
+    };
+    // pop local declarations off
+    for(let local .. locals){
+        for(let d = 0z; d < len(ctxt.scp.defs); d += 1){
+            if(ctxt.scp.defs[d] is *decl_meta){
+                const decl = ctxt.scp.defs[d] as *decl_meta;
+                if(decl == local){
+                    delete(ctxt.scp.defs[d]);
+                };
+            };
         };
     };
     move_ptr(ctxt, ctxt.tokens[at]);
@@ -2089,7 +2211,6 @@ fn eval_for_loop(ctxt: *context, at: size) ((*for_meta, size) | ERROR) = {
             "expected %biteration variable%r or %blocal declaration%r, but got %y{}", arg);
     };
     const name = tk.val as namespace;
-    check_shadowing(ctxt, tk, name)?;
 
     // namespace not defined suggests an assignment
     tk = next_tk(ctxt, end + 1,
@@ -2103,6 +2224,7 @@ fn eval_for_loop(ctxt: *context, at: size) ((*for_meta, size) | ERROR) = {
         end = pop_assert(ctxt, end, symbol::EOL,
             "expected %bend of line%r, but got %y{}")?;
         local_def = local;
+        push_def(ctxt, tk, local.var.nm, local)?;
         append(defs, local)!;
     };
     tk = next_tk(ctxt, end,
@@ -2128,6 +2250,7 @@ fn eval_for_loop(ctxt: *context, at: size) ((*for_meta, size) | ERROR) = {
             nm = tk.val as namespace,
             owner = ctxt,
             pos = end,
+            lifetime = void,
         })!,
         val = void,
     })!;
@@ -2155,6 +2278,7 @@ fn eval_for_loop(ctxt: *context, at: size) ((*for_meta, size) | ERROR) = {
                 nm = tk.val as namespace,
                 owner = ctxt,
                 pos = end,
+                lifetime = void,
             })!,
             val = void,
         })!;
@@ -2205,6 +2329,18 @@ fn eval_for_loop(ctxt: *context, at: size) ((*for_meta, size) | ERROR) = {
         };
     };
     const (scope, _end) = eval_scope(ctxt, _end, defs)?;
+    // pop local variable off
+    if(local_def is *decl_meta){
+        for(let d = 0z; d < len(ctxt.scp.defs); d += 1){
+            if(ctxt.scp.defs[d] is *decl_meta){
+                const decl = ctxt.scp.defs[d] as *decl_meta;
+                if(decl == local_def as *decl_meta){
+                    delete(ctxt.scp.defs[d]);
+                    break;
+                };
+            };
+        };
+    };
     end = _end;
     const meta = for_meta {
         pos = at,
@@ -2383,7 +2519,6 @@ fn reduce_members(
     return (members[0] as hand_t, extract_hand_type(members[0] as hand_t));
 };
 
-
 fn get_op_precedence(oper: operator) size = switch(oper){
     case operator::SHL, operator::SHR, operator::BOR,
         operator::BAND, operator::MUL, operator::DIV,
@@ -2462,17 +2597,19 @@ fn eval_member(
         const (res, _end, inv) = eval_member(ctxt, at + 1, hint, hint, false)?;
         match(res){
         case let m: *member_meta =>
-            assert_unary(ctxt, _end, oper, m.tpe)?;
+            assert_unary(ctxt, at, oper, m.tpe)?;
             m.pre = oper;
             if(oper == operator::LENGTH){
                 m.tpe = quick_t(primitive::U64);
             };
         case let e: *expr_meta =>
-            assert_unary(ctxt, _end, oper, e.tpe)?;
+            assert_unary(ctxt, at, oper, e.tpe)?;
             e.pre = oper;
             if(oper == operator::LENGTH){
                 e.tpe = quick_t(primitive::U64);
             };
+        case void =>
+            return (res, end, inv);
         };
         return (res, _end, inv);
     case let num: size =>
@@ -2511,6 +2648,11 @@ fn eval_member(
             memb.tpe = possible;
             memb.tpe.fail = true;
             memb.val = kwd;
+        case keyword::NEW =>
+            const (all, _end) = eval_alloc(ctxt, at, hint)?;
+            end = _end;
+            memb.tpe = all.tpe;
+            memb.val = all;
         case =>
             return (void, at, true);
         };
@@ -2763,6 +2905,86 @@ fn eval_member(
         };
     };
     return (alloc(memb)!, end, false);
+};
+
+fn eval_alloc(
+    ctxt: *context,
+    at: size,
+    hint: lichen_t,
+) ((*alloc_meta, size) | ERROR) = {
+    assert(comp_tk(ctxt.tokens[at].val, keyword::NEW));
+    let end = at + 1;
+    let tk = next_tk(ctxt, end,
+        "expected %ballocation object%r or %bpropagation operator%r, but got %y{}")?;
+    const host_fun = ctxt.host_fun as *fun_meta;
+    const prop =
+        if(comp_tk(tk.val, operator::BANG) ||
+        comp_tk(tk.val, operator::BUBBLE)){
+            if(comp_tk(tk.val, operator::BUBBLE) && !host_fun.fun.tpe.fail){
+                move_ptr(ctxt, tk);
+                const arg = strtype(host_fun.fun.tpe);
+                defer free(arg);
+                return error(ctxt,
+                    "cannot bubble or assert fail state from %b{}", arg);
+            };
+            end += 1;
+            yield tk.val as operator;
+        };
+    const (_val, _end, invalid) = eval_member(ctxt, end, hint, hint)?;
+    if(invalid){
+        move_ptr(ctxt, ctxt.tokens[end]);
+        return error(ctxt,
+            "expected valid %ballocation source object%r, but got %y{}");
+    };
+    const val = _val as *member_meta;
+    if(untyped(val.tpe)){
+        move_ptr(ctxt, ctxt.tokens[end]);
+        return error(ctxt, "cannot allocate %yuntyped value");
+    } else if(!is_aggregated(val.tpe)){
+        move_ptr(ctxt, ctxt.tokens[end]);
+        return error(ctxt, "cannot allocate %ynon-aggregated types");
+    } else if(is_subtype(val.tpe, primitive::CSTR)){
+        move_ptr(ctxt, ctxt.tokens[end]);
+        return error_hint(ctxt,
+            "\n%gC strings do not carry its length alongside its data",
+            "cannot allocate %yvalue of unknown size");
+    };
+    val.tpe.fail = prop is void;
+    end = pop_assert(ctxt, _end, symbol::AT,
+        "expected %ballocation location assignment%r, but got %y{}")?;
+
+    tk = next_tk(ctxt, end, "expected %barena name%r, but got %{}")?;
+    if(!(tk.val is namespace)){
+        move_ptr(ctxt, tk);
+        const arg = strtoken(tk.val);
+        defer free(arg);
+        return error(ctxt, "expected %barena name%r, but got %{}", arg);
+    };
+    end += 1;
+    const name = tk.val as namespace;
+    const decl = get_def(ctxt, name, ctxt.scp);
+    move_ptr(ctxt, tk);
+    if(decl is void){
+        return error(ctxt,
+            "no memory arena named \"{}\" was declared up to this point",
+            name.name);
+    };
+    const arena = (decl as *decl_meta).var;
+    if(!comp_type(arena.nm.tpe, primitive::MEM)){
+        const arg = strtype(arena.nm.tpe);
+        defer free(arg);
+        return error(ctxt, "namespace %b{}%r is defined as %b{}%r, not as %y{}",
+            name.name, arg, prim_value[primitive::MEM]);
+    };
+    const meta = alloc_meta {
+        pos = at,
+        val = val,
+        tpe = val.tpe,
+        prop = prop,
+        arena = arena,
+        host = host_fun.fun.tpe,
+    };
+    return (alloc(meta)!, end);
 };
 
 fn eval_array_lit(
@@ -3308,6 +3530,7 @@ fn eval_declaration(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
         nm = name,
         owner = ctxt,
         pos = at,
+        lifetime = void,
     };
     const meta = decl_meta {
         var = alloc(var)!,
@@ -3345,12 +3568,7 @@ fn new_array_t(ctxt: *context, arr: array, fail: bool = false) lichen_t = {
         fail = fail,
         base = alloc(arr)!,
     };
-    for(let d ..& ctxt.global.defs){
-        if(d is *type_meta){
-            const tpe = d as *type_meta;
-            if(comp_type(dummy, tpe.self)) return tpe.self;
-        };
-    };
+    const size_t = qbe_t(ctxt, arr.base);
     const length =
         if(arr.length is void){
             yield strings::dup("dynamic")!;
@@ -3358,13 +3576,21 @@ fn new_array_t(ctxt: *context, arr: array, fail: bool = false) lichen_t = {
             yield fmt::asprint(arr.length as size)!;
         };
     defer free(length);
-    const size_t = qbe_t(ctxt, arr.base);
     const name =
         if(!fail){
             yield fmt::asprintf(":arr.{}.{}", size_t, length)!;
         } else {
             yield fmt::asprintf(":arr.{}.{}.opt", size_t, length)!;
         };
+    for(let d ..& ctxt.global.defs){
+        if(d is *type_meta){
+            const tpe = d as *type_meta;
+            if(tpe.name.name == name){
+                free(name);
+                return tpe.self;
+            };
+        };
+    };
     append(tpe_names, name)!;
     const tpe = alloc(type_meta {
         owner = ctxt,
@@ -3441,7 +3667,7 @@ fn eval_cast(
                 const arg = strtype(tpe);
                 defer free(arg);
                 return error(ctxt,
-                    "cannot bubble or assert fail state from %b{}",
+                    "cannot bubble or assert fail state of %b{}",
                     arg);
             } else if(comp_type(tpe, quick_t(primitive::VOID, true))){
                 return error_hint(ctxt,
@@ -3714,13 +3940,20 @@ fn eval_type(
 fn assert_unary(ctxt: *context, pos: size, oper: operator, tpe: lichen_t) (void | ERROR) = {
     move_ptr(ctxt, ctxt.tokens[pos]);
     if(!is_unary_op(oper)){
-        return error(ctxt, "invalid unary operator");
+        return error(ctxt, "invalid unary operator \"{}\"", oper_value[oper]);
     };
     if(comp_tk(oper, operator::PLS) || comp_tk(oper, operator::MIN) ||
         comp_tk(oper, operator::NOT) || comp_tk(oper, operator::BANG)){
         assert_hint(ctxt, ctxt.tokens[pos], tpe, primitive::NUMBER)?;
     } else if(comp_tk(oper, operator::LENGTH)){
-        assert_hint(ctxt, ctxt.tokens[pos], tpe, primitive::STR)?;
+        if(tpe.base is primitive){
+            assert_hint(ctxt, ctxt.tokens[pos], tpe, primitive::STR)?;
+        } else if(!(tpe.base is *array)){
+            const arg = strtype(tpe);
+            defer free(arg);
+            return error(ctxt,
+                "type mismatch between value type (%b{}%r) and expected type (%barray%r)", arg);
+        };
     } else {
         assert(false, "assert_unary: unreachable");
     };

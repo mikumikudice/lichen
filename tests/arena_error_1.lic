@@ -1,0 +1,7 @@
+io mod = use "std/io.lim";
+
+pub fn main() void = io {
+    new arena | 0 {
+        io::println("won't run")!;
+    }!;
+};

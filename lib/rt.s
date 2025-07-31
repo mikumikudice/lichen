@@ -5,6 +5,7 @@
 rt.zero:
 	.quad 0
     .quad 0
+    .quad 0
 
 .data
 .balign 16
@@ -48,7 +49,7 @@ rt.debug:
 
 // reads a string from an given file descriptor
 // returns an errno in case of error as a negative value
-// prototype: fn(handle u32, buff mut str) i32
+// prototype: fn(handle u32, mut buff []u8) i32
 .section ".text.rt.read", "ax"
 .balign 16
 .globl rt.read
@@ -56,7 +57,7 @@ rt.read:
     push   %rdx
     push   %rsi
     mov    (%rsi),%rdx
-    add    $0x10,%rsi
+    add    $0x8,%rsi
     mov    $0x0,%eax
     syscall
     pop    %rsi
@@ -116,7 +117,7 @@ rt.close:
 
 // allocates memory on the heap and returns a pointer to it as a positive value
 // returns an errno in case of error as a negative value
-// prototype: fn(size u64) i64
+// prototype: fn(size u64) uintptr
 .section ".text.rt.alloc", "ax"
 .balign 16
 .globl rt.alloc
@@ -128,64 +129,68 @@ rt.alloc:
     push   %r9
     push   %r8
     xor    %r9,%r9
-    xor    %r8,%r8
+    mov    $-1,%r8
     mov    %rdi,%rsi
-    add    $0x8,%rsi
     xor    %rdi,%rdi
-    mov    $0x7,%edx
-    mov    $0x22,%r10d
+    mov    $0x3,%edx
+    mov    $0x02,%r10d
+    or     $0x20,%r10d
     mov    $0x9,%eax
     syscall
-    cmp    $0x0,%rax
-    jl     rt.alloc.err
     pop    %r8
     pop    %r9
     pop    %r10
     pop    %rdx
     pop    %rsi
     pop    %rdi
-    mov    %rdi,(%rax)
+    cmp    $0x0,%rax
+    jl     rt.alloc.err
     ret
     rt.alloc.err:
-    mov    %rax,%rdi
-    sub    $0x7e,%rdi
-    callq  rt.exit
+    xor    %rax,%rax
+    ret
 
 .type rt.alloc, @function
 .size rt.alloc, .-rt.alloc
 
 // frees a given heap-allocated memory pointer
 // returns an errno in case of error as a negative value
-// prototype: fn(pointer u64) i32
+// prototype: fn(pointer u64, length u64) unit
 .section ".text.rt.free", "ax"
 .balign 16
 .globl rt.free
 rt.free:
-    push   %rsi
-    mov    (%rdi),%rsi
     mov    $0xb,%eax
     syscall
-    cmp    $0x0,%rax
-    jl     rt.free.err
-    pop    %rsi
     ret
-    rt.free.err:
-    mov    %rax,%rdi
-    sub    $0x7e,%rdi
-    callq  rt.exit
 
 .type rt.free, @function
 .size rt.free, .-rt.free
 
-.section ".text.rt.lea", "ax"
+.section ".text.rt.copy", "ax"
 .balign 16
-.globl rt.lea
-rt.lea:
-    mov    (%rdi),%rax
+.globl rt.copy
+rt.copy:
+    push   %rdi
+    push   %rsi
+    push   %rdx
+    rt.copy.rep:
+    cmp    $0,%rdx
+    je     rt.copy.done
+    mov    (%rsi),%al
+    mov    %al,(%rdi)
+    dec    %rdx
+    inc    %rdi
+    inc    %rsi
+    jmp    rt.copy.rep
+    rt.copy.done:
+    pop    %rdx
+    pop    %rsi
+    pop    %rdi
     ret
 
-.type rt.lea, @function
-.size rt.lea, .-rt.lea
+.type rt.copy, @function
+.size rt.copy, .-rt.copy
 
 // removes a given file by unlinking its filesytem node
 // returns an errno in case of error as a negative value
@@ -276,3 +281,37 @@ rt.strcmp:
 
 .type rt.strcmp, @function
 .size rt.strcmp, .-rt.strcmp
+
+// creates a string from a byte array
+// prototype: fn(mut bytes []u8) str
+.section ".text.rt.btoa", "ax"
+.balign 16
+.globl rt.btoa
+rt.btoa:
+    endbr64
+    subq   $16,%rsp
+    movq   (%rdi),%rdx
+    movq   %rdi,%rax
+    addq   $8,%rax
+    movq   %rax,8(%rsp)
+    movl   $0,%eax
+    movl   $0,%ecx
+.p2align 4
+rt.btoa.rep:
+    cmpq   %rdx, %rcx
+    jae    rt.btoa.end
+    movq   8(%rdi),%rsi
+    cmpl   $0,%esi
+    jz     rt.btoa.end
+    addq   $1,%rax
+    addq   $1,%rcx
+    jmp    rt.btoa.rep
+rt.btoa.end:
+    movq   %rax,0(%rsp)
+    movq   0(%rsp),%rax
+    movq   8(%rsp),%rdx
+    addq   $16,%rsp
+    ret
+
+.type rt.btoa, @function
+.size rt.btoa, .-rt.btoa

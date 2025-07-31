@@ -40,6 +40,11 @@ local tests = {
     { src = "fail_void_1", code = 1, nocomp = true },
     { src = "fail_void_2", code = 1, nocomp = true },
     { src = "fail_pub", code = 1, nocomp = true },
+    { src = "fail_arena_1", code = 1, nocomp = true },
+    { src = "fail_arena_2", code = 1, nocomp = true },
+    { src = "fail_arena_3", code = 1, nocomp = true },
+    { src = "fail_outlive_1", code = 1, nocomp = true },
+    { src = "fail_outlive_2", code = 1, nocomp = true },
     -- fail assertion --
     { src = "fail_io_bad_handle", code = 1, nocomp = false },
     { src = "fail_io_from_result", code = 1, nocomp = false },
@@ -64,6 +69,7 @@ local tests = {
     { src = "rec_5", output = "test ok\n", code = 0 },
     { src = "rec_6", output = "test ok\n", code = 0 },
     { src = "arr_rec", output = "test ok\n", code = 0 },
+    { src = "str_fun", output = "test 1 ok\ntest 2 ok\ntest 3 ok\n", code = 0 },
     -- branching --
     { src = "if-else",
         output = "test 0 ok\ntest 1 ok\ntest 2 ok\ntest 3 ok\ntest 4 ok\ntest 5 ok\ntest 6 ok\n",
@@ -73,12 +79,16 @@ local tests = {
     { src = "exp", code = 0 },
     { src = "unit", code = 0 },
     { src = "void_1", code = 0 },
-    { src = "void_2", code = 0 },
+    { src = "void_2", code = 1 },
     { src = "error", output = "test ok\n", code = 0 },
     { src = "unwrap", code = 0 },
     { src = "rec_unwrap", output = "test 1 ok\ntest 2 ok\n", code = 0 },
     -- io --
     { src = "hello", output = "mornin' sailor!\n", code = 0 },
+    -- mem --
+    { src = "arena", code = 0 },
+    { src = "arena_error_1", code = 1 },
+    { src = "arena_error_2", output = "test ok\n", code = 0 },
 }
 
 -- helpers --

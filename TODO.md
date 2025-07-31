@@ -1,8 +1,6 @@
-- implement for loop
+- make arenas be freed on bubble error
 - implement switch case
 - implement submodules
-- implement arenas
-- implement arena allocation
 - string concatenation
 - tuples
 - assert for division by zero

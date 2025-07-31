@@ -1,0 +1,13 @@
+// parser test for asserting against
+// invalid returns of outliving values
+
+fn alloc() str = {
+    new global | 128 {
+        let foo = new ! "aaa" @ global;
+        return foo;
+    }!;
+};
+
+pub fn main() void = {
+    let foo = alloc();
+};

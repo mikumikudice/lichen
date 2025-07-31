@@ -21,19 +21,19 @@ fn qbe_t(ctxt: *context, tpe: lichen_t, md: mode = mode::REAL) str = {
         };
         switch(tpe.base as primitive){
         case primitive::U8 =>
-            if(md == mode::ASSIGN) return "w";
+            if(md == mode::ASSIGN || md == mode::RETURN) return "w";
             if(md == mode::LOAD) return "ub";
             return "b";
         case primitive::I8 =>
-            if(md == mode::ASSIGN) return "w";
+            if(md == mode::ASSIGN || md == mode::RETURN) return "w";
             if(md == mode::LOAD) return "sb";
             return "b";
         case primitive::U16 =>
-            if(md == mode::ASSIGN) return "w";
+            if(md == mode::ASSIGN || md == mode::RETURN) return "w";
             if(md == mode::LOAD) return "uh";
             return "h";
         case primitive::I16 =>
-            if(md == mode::ASSIGN) return "w";
+            if(md == mode::ASSIGN || md == mode::RETURN) return "w";
             if(md == mode::LOAD) return "sh";
             return "h";
         case primitive::U32 =>
@@ -46,13 +46,18 @@ fn qbe_t(ctxt: *context, tpe: lichen_t, md: mode = mode::REAL) str = {
             return "s";
         case primitive::F64 =>
             return "d";
-        case primitive::U64, primitive::I64, primitive::STR,
-            primitive::CSTR, primitive::BOOL, primitive::NUMBER =>
+        case primitive::U64, primitive::I64, primitive::CSTR,
+            primitive::BOOL, primitive::VOID, primitive::UNIT,
+            primitive::NUMBER =>
+            return "l";
+        case primitive::STR =>
+            if(md == mode::RETURN) return ":str.t";
+            return "l";
+        case primitive::MEM =>
+            if(md == mode::RETURN) return ":mem.t";
             return "l";
         case primitive::RATIO =>
             return "d";
-        case primitive::UNIT, primitive::VOID =>
-            return "l";
         case =>
             color_error("%Runreachable:%r unknown type %y{}",
                 prim_value[tpe.base as primitive]);
@@ -88,7 +93,10 @@ fn type_size(tpe: lichen_t, ignore_fail: bool = false) size = {
     assert(!untyped(tpe), arg);
 
     if(tpe.base is primitive){
-        if(tpe.fail && !ignore_fail) return 16;
+        if(tpe.fail && !ignore_fail){
+            if((tpe.base as primitive) == primitive::MEM) return 32;
+            return 16;
+        };
         switch(tpe.base as primitive){
         case primitive::UNIT, primitive::VOID => return 8;
         case primitive::U8, primitive::I8 => return 1;
@@ -96,8 +104,10 @@ fn type_size(tpe: lichen_t, ignore_fail: bool = false) size = {
         case primitive::U32, primitive::I32,
             primitive::F32 => return 4;
         case primitive::U64, primitive::I64,
-            primitive::F64, primitive::STR,
-            primitive::CSTR, primitive::BOOL => return 8;
+            primitive::F64, primitive::CSTR, 
+            primitive::BOOL => return 8;
+        case primitive::STR => return 16;
+        case primitive::MEM => return 24;
         case =>
             assert(false, "unreachable");
             return 0;
@@ -119,13 +129,21 @@ fn type_size(tpe: lichen_t, ignore_fail: bool = false) size = {
         return length;
     } else if(tpe.base is *array){
         const arr = tpe.base as *array;
+        const base_size = type_size(arr.base);
+        const item_offset =
+            if(base_size % 4 > 0){
+                yield 4 - base_size % 4;
+            } else {
+                yield 0z;
+            };
+        const item_size = base_size + item_offset;
         if(arr.length is void){
             if(tpe.fail) return 24;
             return 16;
         } else if(tpe.fail){
-            return arr.length as size * type_size(arr.base) + 16;
+            return arr.length as size * item_size + 16;
         } else {
-            return arr.length as size * type_size(arr.base) + 8;
+            return arr.length as size * item_size + 8;
         };
     } else {
         assert(false, "unreachable");
@@ -325,6 +343,10 @@ fn gen_qbe_ir(ctxt: *context) memio::stream = {
     const ir = memio::dynamic();
     fmt::fprintfln(&ir, "# code emitted by lcc v{}", version)!;
     fmt::fprintln(&ir, "type :opt.t = { l, l }")!;
+    fmt::fprintln(&ir, "type :mem.t = { l, l, l }")!;
+    fmt::fprintln(&ir, "type :mem.t.opt = { l, l, l, l }")!;
+    fmt::fprintln(&ir, "type :str.t = { l, l }")!;
+    fmt::fprintln(&ir, "type :str.t.opt = { l, l, l }")!;
     gen_module(ctxt, &ir);
     for(let m .. ctxt.global.defs){
         if(m is *module_meta){
@@ -429,33 +451,33 @@ fn gen_module(ctxt: *context, buff: *memio::stream) void = {
                     "dbgfile \"{}\"\nsection \".text.{}\" \"ax\"",
                     ctxt.file, strings::sub(name, 1))!;
             };
-        // emit core declaration
-        fmt::fprintf(buff, "function ")!;
-        if(comp_type(meta.fun.tpe, primitive::VOID) ||
-            comp_type(meta.fun.tpe, primitive::UNIT)){
-            fmt::fprint(buff, name)!;
-        } else if(meta.fun.tpe.fail && meta.fun.tpe.base is *record){
-            fmt::fprintf(buff, "{}.opt {}",
-                qbe_t(ctxt, meta.fun.tpe, mode::RETURN), name)!;
-        } else {
-            fmt::fprintf(buff, "{} {}",
-                qbe_t(ctxt, meta.fun.tpe, mode::RETURN), name)!;
-        };
-        const params: []*var_meta = [];
-        defer free(params);
-        defer for(let p .. params){
-            free(p.nm.name);
-            free_nodes(p);
-        };
-        for(let p .. meta.params){
-            const dup = alloc(*p.var)!;
-            dup.nm.name = strings::concat("%", dup.nm.name)!;
-            append(params, dup)!;
-        };
-        // gen parameter list
-        gen_list(ctxt, buff, params);
-        // gen function body scope
-        gen_scope(ctxt, buff, meta.body as *scope_meta, "@start", true);
+            // emit core declaration
+            fmt::fprintf(buff, "function ")!;
+            if(comp_type(meta.fun.tpe, primitive::VOID) ||
+                comp_type(meta.fun.tpe, primitive::UNIT)){
+                fmt::fprint(buff, name)!;
+            } else if(meta.fun.tpe.fail && meta.fun.tpe.base is *record){
+                fmt::fprintf(buff, "{}.opt {}",
+                    qbe_t(ctxt, meta.fun.tpe, mode::RETURN), name)!;
+            } else {
+                fmt::fprintf(buff, "{} {}",
+                    qbe_t(ctxt, meta.fun.tpe, mode::RETURN), name)!;
+            };
+            const params: []*var_meta = [];
+            defer free(params);
+            defer for(let p .. params){
+                free(p.nm.name);
+                free_nodes(p);
+            };
+            for(let p .. meta.params){
+                const dup = alloc(*p.var)!;
+                dup.nm.name = strings::concat("%", dup.nm.name)!;
+                append(params, dup)!;
+            };
+            // gen parameter list
+            gen_list(ctxt, buff, params);
+            // gen function body scope
+            gen_scope(ctxt, buff, meta.body as *scope_meta, "@start", true);
         case let tpe: *type_meta =>
             match(tpe.self.base){
             case let rec: *record =>
@@ -516,6 +538,8 @@ fn gen_scope(
     };
     if(comp_type(scope.tpe, primitive::VOID) && has_fail){
         fmt::fprintfln(buff, "\tcall $rt.exit(w 0)\n\thlt")!;
+    } else if(comp_type(scope.tpe, quick_t(primitive::VOID, true)) && has_fail){
+        fmt::fprintfln(buff, "\tcall $rt.exit(w 1)\n\thlt")!;
     } else if(!scope.rets && has_fail){
         if(comp_type(scope.tpe, quick_t(primitive::UNIT))){
             fmt::fprintln(buff, "\tret")!;
@@ -668,6 +692,97 @@ fn gen_stt(ctxt: *context, buff: *memio::stream, stt: path_meta) void = {
                     qbe_t(ctxt, asg.var.nm.tpe, mode::ASSIGN), asg_val, host_name)!;
             };
         };
+    case let arena: *arena_meta =>
+        move_ptr(ctxt, ctxt.tokens[arena.pos]);
+        const (l, c) = get_pos(ctxt);
+        fmt::fprintfln(buff, "\tdbgloc {}, {}", l, c)!;
+        const temp = fmt::asprintf("%arena.length.{}", arena.pos)!;
+        const val = gen_exp(ctxt, buff, temp, arena.length.tpe, arena.length);
+        const length =
+            if(val != ""){
+                free(temp);
+                yield val;
+            } else {
+                yield temp;
+            };
+        defer free(length);
+        const dummy = fmt::asprintf("%tmp.arena.{}", arena.pos)!;
+        defer free(dummy);
+        fmt::fprintfln(buff, "\t{} =l alloc8 {}",
+            dummy, type_size(arena.self.var.nm.tpe))!;
+        // store length
+        fmt::fprintfln(buff, "\tstorel {}, {}", length, dummy)!;
+        fmt::fprintfln(buff, "\t{0}.ptr =l add {0}, 8", dummy)!;
+        // store arena pointer
+        fmt::fprintfln(buff, "\tstorel 0, {}.ptr", dummy)!;
+        fmt::fprintfln(buff, "\t{0}.ptr =l add {0}.ptr, 8", dummy)!;
+        // allocate arena memory
+        fmt::fprintfln(buff,
+            "\t{}.chunk =l call $rt.alloc(l {})", dummy, length)!;
+        const src = fmt::asprintf("{}.chunk", dummy)!;
+        defer free(src);
+        const dest = fmt::asprintf("{}.ptr", dummy)!;
+        defer free(dest);
+        // validate allocation if needed
+        if(arena.prop is propagation){
+            const prop = arena.prop as propagation;
+            if(prop.1 is void && prop.0 == operator::BANG){
+                fmt::fprintfln(buff,
+                    "\tjnz {0}.chunk, @arena.ok.{1}, @fail",
+                    dummy, arena.pos)!;
+            } else {
+                fmt::fprintfln(buff,
+                    "\tjnz {0}.chunk, @arena.ok.{1}, @fail.{1}",
+                    dummy, arena.pos)!;
+            };
+            if(prop.0 == operator::BUBBLE && prop.1 is *expr_meta){
+                const exp = prop.1 as *expr_meta;
+                const wrap = fmt::asprintf("%default.{}", arena.pos)!;
+                defer free(wrap);
+                const val = gen_exp(ctxt, buff, wrap,
+                    arena.self.var.nm.tpe, exp);
+                const asg_val =
+                    if(val != ""){
+                        yield val;
+                    } else {
+                        yield wrap;
+                    };
+                defer if(val != "") free(val);
+                fmt::fprintfln(buff,
+                    "@fail.{0}\n\t{1} ={2} copy {3}\n@arena.ok.{0}",
+                    arena.pos, dest,
+                    qbe_t(ctxt, arena.self.var.nm.tpe, mode::ASSIGN),
+                    asg_val)!;
+            } else {
+                fmt::fprintfln(buff, "@arena.ok.{}", arena.pos)!;
+            };
+        };
+        // assign arena with its memory pointer
+        const name = fix_nm(ctxt, buff, arena.self.var.nm);
+        fmt::fprintfln(buff, "\tstorel {0}.chunk, {0}.ptr", dummy)!;
+        fmt::fprintfln(buff, "\t{} =l copy {}", name, dummy)!;
+        // gen arena scope
+        const body = fmt::asprintf("@{}.body", name)!;
+        defer free(body);
+        gen_scope(ctxt, buff, arena.body, body);
+        // free arena memory
+        fmt::fprintfln(buff,
+            "\tcall $rt.free(l {}.chunk, l {})", dummy, length)!;
+        if(arena.prop is propagation){
+            const prop = arena.prop as propagation;
+            if(prop.0 == operator::BANG && prop.1 is path_meta){
+                fmt::fprintfln(buff, "\tjmp @skip.{0}\n@fail.{0}", arena.pos)!;
+                const stt = prop.1 as path_meta;
+                gen_stt(ctxt, buff, stt);
+                fmt::fprintfln(buff, "@skip.{0}", arena.pos)!;
+            } else if(prop.0 == operator::BUBBLE && prop.1 is void){
+                fmt::fprintfln(buff, "\tjmp @skip.{0}\n@fail.{0}", arena.pos)!;
+                fmt::fprintfln(buff, "\t%opt.{} =l alloc8 {}",
+                    arena.pos, type_size(arena.host))!;
+                fmt::fprintfln(buff, "\tstorel 0, %opt.{}", arena.pos)!;
+                fmt::fprintfln(buff, "\tret %opt.{0}\n@skip.{0}", arena.pos)!;
+            };
+        };
     case let branch: *branch_meta =>
         move_ptr(ctxt, ctxt.tokens[branch.pos]);
         const (l, c) = get_pos(ctxt);
@@ -769,6 +884,8 @@ fn gen_stt(ctxt: *context, buff: *memio::stream, stt: path_meta) void = {
         const temp = fmt::asprintf("%exp.{}", exp.pos)!;
         defer free(temp);
         const memb = gen_exp(ctxt, buff, temp, exp.tpe, exp);
+    case unreachable =>
+        fmt::fprintfln(buff, "\thlt")!;
     };
 };
 
@@ -1179,6 +1296,108 @@ fn assign_memb(
                 };
             yield(gen_funcall(ctxt, buff, call, nm),
                 call.fun.fun.tpe, nm == dest);
+        case let all: *alloc_meta =>
+            move_ptr(ctxt, ctxt.tokens[all.pos]);
+            const (l, c) = get_pos(ctxt);
+            fmt::fprintfln(buff, "\tdbgloc {}, {}", l, c)!;
+            // emit source data
+            const temp = fmt::asprintf("%arena.src.{}", all.pos)!;
+                const val = assign_memb(ctxt, buff, temp, all.tpe, all.val);
+                const data =
+                    if(val != ""){
+                        free(temp);
+                        yield val;
+                    } else {
+                        yield temp;
+                    };
+                defer free(data);
+
+            const arena = fix_nm(ctxt, buff, all.arena.nm);
+            // load arena size
+            fmt::fprintfln(buff, "\t{0}.length =l loadl {0}", arena)!;
+            // load arena pointer
+            fmt::fprintfln(buff, "\t{0}.ptr =l add {0}, 8", arena)!;
+            fmt::fprintfln(buff, "\t{0}.at =l loadl {0}.ptr", arena)!;
+            // load arena memory base pointer
+            fmt::fprintfln(buff, "\t{0}.ptr =l add {0}.ptr, 8", arena)!;
+            fmt::fprintfln(buff, "\t{0}.base =l loadl {0}.ptr", arena)!;
+            // load current memory position
+            fmt::fprintfln(buff, "\t{0}.pos =l add {0}.base, {0}.at", arena)!;
+            // reset to arena pointer
+            fmt::fprintfln(buff, "\t{0}.ptr =l sub {0}.ptr, 8", arena)!;
+
+            // size known at compile time
+            if(!is_subtype(all.tpe, quick_t(primitive::STR, true)) &&
+                !(all.tpe.base is *array)){
+                fmt::fprintfln(buff, "\t{0}.after =l add {0}.at, {1}",
+                    arena, type_size(all.tpe))!;
+            // dynamic size
+            } else {
+                fmt::fprintfln(buff, "\t%data.length.{} =l loadl {}",
+                    all.pos, data)!;
+                fmt::fprintfln(buff,
+                    "\t%data.length.{0} =l add %data.length.{0}, 16", all.pos)!;
+                fmt::fprintfln(buff,
+                    "\t{0}.after =l add {0}.at, %data.length.{1}",
+                    arena, all.pos)!;
+            };
+            fmt::fprintfln(buff,
+                "\t%arena.enough =l culel {0}.after, {0}.length", arena)!;
+            if(all.prop is void || (all.prop as operator) == operator::BUBBLE){
+                fmt::fprintfln(buff,
+                    "\tjnz %arena.enough, @arena.alloc.{0}, @arena.fail.{0}",
+                    all.pos)!;
+            } else {
+                fmt::fprintfln(buff,
+                    "\tjnz %arena.enough, @arena.alloc.{}, @fail", all.pos)!;
+            };
+            if(all.prop is void){
+                fmt::fprintfln(buff, "@arena.alloc.{}", all.pos)!;
+                fmt::fprintfln(buff, "\t{} =l alloc8 32", dest)!;
+                fmt::fprintfln(buff, "\tstorel 1, {}", dest)!;
+                fmt::fprintfln(buff, "\t{0}.ptr =l add {0}, 8", dest)!;
+                fmt::fprintfln(buff, "\tstorel {}.pos, {}.ptr", arena, dest)!;
+                fmt::fprintfln(buff, "\t{0}.ptr =l sub {0}.ptr, 8", arena)!;
+                fmt::fprintfln(buff, "\tstorel {0}.after, {0}.ptr", arena)!;
+            } else {
+                fmt::fprintfln(buff, "@arena.alloc.{}", all.pos)!;
+                fmt::fprintfln(buff, "\t{0}.ptr =l sub {0}.ptr, 8", arena)!;
+                fmt::fprintfln(buff, "\tstorel {0}.after, {0}.ptr", arena)!;
+            };    
+            // allocate data
+            if(!size_known(all.tpe)){
+                // fix length
+                fmt::fprintfln(buff,
+                    "\t%data.length.{0} =l sub %data.length.{0}, 16",
+                    all.pos)!;
+                // allocate stack handle
+                fmt::fprintfln(buff, "\t{} =l copy {}.pos", dest, arena)!;
+                fmt::fprintfln(buff,
+                    "\tstorel %data.length.{}, {}", all.pos, dest)!;
+                fmt::fprintfln(buff, "\t{0}.ptr =l add {0}, 8", dest)!;
+                fmt::fprintfln(buff, "\t{0}.data =l add {0}, 16", dest)!;
+                fmt::fprintfln(buff, "\t{0}.ptr =l add {0}, 8", data)!;
+                fmt::fprintfln(buff, "\t{0}.data =l loadl {0}.ptr", data)!;
+                fmt::fprintfln(buff,
+                    "\tcall $rt.copy(l {}.data, l {}.data, l %data.length.{})", 
+                    dest, data, all.pos)!;
+                fmt::fprintfln(buff, "\tstorel {0}.data, {0}.ptr", dest)!;
+            } else {
+                fmt::fprintfln(buff, "\t{} =l copy {}.pos", dest, arena)!;
+                fmt::fprintfln(buff, "\tblit {}, {}, {}",
+                    data, dest, type_size(all.tpe, true))!;
+            };
+            if(all.prop is operator &&
+                all.prop as operator == operator::BUBBLE){
+                fmt::fprintfln(buff, "\tjmp @arena.end.{}", all.pos)!;
+                fmt::fprintfln(buff, "@arena.fail.{}", all.pos)!;
+                fmt::fprintfln(buff, "\t{} =l alloc8 {}",
+                    dest, type_size(all.host))!;
+                fmt::fprintfln(buff, "\tstorel 0, {}", dest)!;
+                fmt::fprintfln(buff, "\tret {}", dest)!;
+                fmt::fprintf(buff, "@arena.end.{}", all.pos)!;
+            };
+            yield (dest, all.tpe, true);
         case let kwd: keyword =>
             yield switch(kwd){
             case keyword::TRUE =>
@@ -1552,7 +1771,7 @@ fn gen_prop(
         } else {
             const stt = prop.1 as path_meta;
             fmt::fprintfln(buff,
-                "\tjnz %assert.fail, @fail.{0}, @ok.{0}\n@fail.{}", pos)!;
+                "\tjnz %assert.fail, @fail.{0}, @ok.{0}\n@fail.{0}", pos)!;
             const zero = zeroed_value(ctxt, buff, exp_t);
             defer free(zero);
             fmt::fprintfln(buff, "\t{} ={} copy {}", dest,
@@ -1605,6 +1824,7 @@ fn gen_funcall(
             },
             owner = ctxt,
             pos = exp.pos,
+            lifetime = void,
         };
         append(defs, alloc(temp)!)!;
     };

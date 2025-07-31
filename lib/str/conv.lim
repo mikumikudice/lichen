@@ -1,0 +1,10 @@
+// converts an array of bytes to an
+// ascii encoded string resulting
+// object shares the memory with source
+// data `nomem` may be returned if
+// temporary buffer fails to be created
+pub fn from_bytes(mut src []u8) str = rt use "rt.btoa";
+
+// pub fn to_u64(src u64, buff mem) !str = {
+//     unreachable;
+// };

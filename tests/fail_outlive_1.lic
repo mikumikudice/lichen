@@ -1,0 +1,10 @@
+// parsing test to assert for fixed bug
+// where if-else local variables would
+// outlive their scope
+
+pub fn main() void = {
+    if x = 4 u32; x > 6 {
+        unreachable;
+    };
+    let y = x;
+};

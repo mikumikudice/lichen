@@ -1,0 +1,12 @@
+// parsing test for asserting against
+// assignment of outliving values
+
+pub fn main() void = {
+    new global | 128 {
+        let mut foo = new ! "aaa" @ global;
+        new local | 64 {
+            let mut bar = new ! "bbb" @ local;
+            foo = bar;
+        }!;
+    }!;
+};

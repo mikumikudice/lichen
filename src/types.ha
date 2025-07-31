@@ -79,7 +79,7 @@ const oper_value = [
     "bitwise shift left", "bitwise shift right",
     "bitwise not",
     "plus sign", "minus sign", "multiply", "division",
-    "modulo", "error propagation", "allocate at",
+    "modulo", "error propagation",
     "bang", "range", "spread", "length", "assignment",
 ];
 
@@ -87,12 +87,12 @@ type operator = enum u8 {
     LOR, LAND, EQL, NEQ, LEQ, GEQ,
     LST, GTT, BOR, BAND, SHL, SHR,
     NOT, PLS, MIN, MUL, DIV, MOD,
-    BUBBLE, AT, BANG, RANGE, SPREAD,
+    BUBBLE, BANG, RANGE, SPREAD,
     LENGTH, ASG,
 };
 
 const sym_value = [
-    "end of line",
+    "end of line", "allocate at",
     "comma", "record field access",
     "module field access",
     "open parenthesis", "close parenthesis",
@@ -101,7 +101,7 @@ const sym_value = [
 ];
 
 type symbol = enum u8 {
-    EOL, COMMA, DOT, FIELD,
+    EOL, AT, COMMA, DOT, FIELD,
     LFT_PAR, RGT_PAR,
     LFT_CURLY, RGT_CURLY,
     LFT_SQUARE, RGT_SQUARE,
@@ -129,6 +129,7 @@ type context = struct {
     tokens: []token,
     literals: *[]str,
     host_fun: nullable *fun_meta,
+    lifetime: (void | size),
     re_emit: bool,
     global: *scope,
     scp: *scope,
@@ -140,14 +141,15 @@ type scope = struct {
 };
 
 type member_t = (*const_meta | *array_lit_meta | *record_lit_meta |
-    *indexing_meta | *field_meta | *var_meta | *funcall_meta);
+    *indexing_meta | *field_meta | *var_meta | *funcall_meta | *alloc_meta);
 type hand_t = (*hand_meta | *member_meta | *ternary_meta | *expr_meta);
 
 type path_meta = (*hand_meta | *hand_meta | *member_meta | *ternary_meta |
     *expr_meta | *const_meta | *array_lit_meta | *record_lit_meta |
-    *indexing_meta | *field_meta | *var_meta | *funcall_meta | *decl_meta |
-    *assign_meta | *fun_meta | *scope_meta | *expr_meta | *branch_meta |
-    *return_meta | *test_meta | *for_meta | *type_meta | *module_meta);
+    *indexing_meta | *field_meta | *var_meta | *funcall_meta | *alloc_meta |
+    *decl_meta | *assign_meta | *arena_meta | *fun_meta | *scope_meta |
+    *expr_meta | *branch_meta | *return_meta | *test_meta | *for_meta |
+    *type_meta | *module_meta | unreachable);
 
 type const_meta = struct {
     pre: (void | operator),
@@ -197,9 +199,28 @@ type assign_meta = struct {
     host: (void | *decl_meta | *field_meta),
 };
 
+type arena_meta = struct {
+    pos: size,
+    self: *decl_meta,
+    body: *scope_meta,
+    prop: (void | propagation),
+    host: lichen_t,
+    length: *expr_meta,
+};
+
+type alloc_meta = struct {
+    pos: size,
+    val: *member_meta,
+    tpe: lichen_t,
+    prop: (void | operator),
+    host: lichen_t,
+    arena: *var_meta,
+};
+
 type var_meta = struct {
     nm: namespace,
     owner: *context,
+    lifetime: (void | size),
     pos: size,
 };
 
@@ -305,6 +326,8 @@ type type_meta = struct {
     name: namespace,
     self: lichen_t,
 };
+
+type unreachable = void;
 
 type module_meta = struct {
     name: str,

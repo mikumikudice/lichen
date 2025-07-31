@@ -178,16 +178,16 @@ roadmap:
             - [undone] constant range
             - [undone] else case
             - [undone] exhaustiveness
-        - [undone] for-loop
-            - [undone] base functionality
-            - [undone] local variables
-            - [undone] optional index
-        - [undone] memory arenas
-            - [undone] creation
-            - [undone] allocation
+        - [done] for-loop
+            - [done] base functionality
+            - [done] local variables
+            - [done] optional index
+        - [partial] memory arenas
+            - [done] creation
+            - [done] allocation
             - [undone] concatenation
-            - [undone] nomem error
-            - [undone] first class object
+            - [done] nomem error
+            - [done] first class object
         - [partial] test block
             - [undone] static/global
             - [done] dynamic/local
@@ -208,9 +208,9 @@ roadmap:
     - [partial] os
         - [undone] exec
     - [undone] vect
-    - [undone] str
+    - [partial] str
         - [undone] encode
-        - [undone] conv
+        - [partial] conv
 - [undone] os library
     - bios syscalls FFI
     - bsd

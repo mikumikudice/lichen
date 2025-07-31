@@ -1,5 +1,6 @@
-- implemented for loops
-- implemented dynamic `test` statement
-- fixed issue with assertion being not valid on void functions
-- added exhaustive assertion on record fields assignment
-- fixed miss-emitting/type override of arrays
+- implemented memory arenas and allocations
+- implemented `unreachable` statement
+- fixed wrong placing of invalid unary operator reporting
+- fixed issue where all scopes were enforced to return a matching type
+- fixed local declarations outliving its scopes
+- fixed byte arrays being missallocated

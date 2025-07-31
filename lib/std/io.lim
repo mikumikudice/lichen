@@ -12,55 +12,53 @@ fn rt_write(handle u32, mut data str) i32 = rt use "rt.write";
 
 // prints `data` to stdout
 // returns `fail` if any error occurs during printing
-pub fn print(mut data str) !unit = rt {
+pub fn print(data str) !unit = rt {
     fprint(stdout, data)?;
 };
 
 // prints `data` followed by a line feed to stdout
 // returns `fail` if any error occurs during printing
-pub fn println(mut data str) !unit = rt {
+pub fn println(data str) !unit = rt {
     fprintln(stdout, data)?;
 };
 
 // prints `data` followed by a line feed to stderr and halts the
 // program execution
-pub fn fatal(mut data str) !void = rt {
+pub fn fatal(data str) !void = rt {
     errorln(data)!;
 };
 
 // prints `data` to stderr
 // returns `fail` if any error occurs during printing
-pub fn error(mut data str) !unit = rt {
+pub fn error(data str) !unit = rt {
     fprint(stderr, data)?;
 };
 
 // prints `data` followed by a line feed to stderr
 // returns `fail` if any error occurs during printing
-pub fn errorln(mut data str) !unit = rt {
+pub fn errorln(data str) !unit = rt {
     fprintln(stderr, data)?;
 };
 
 // prints `data` followed by a line feed to the given file handle
 // returns `fail` if any error occurs during printing
-pub fn fprintln(handle u32, mut data str) !unit = rt {
+pub fn fprintln(handle u32, data str) !unit = rt {
     fprint(handle, data)?; fprint(handle, "\n")?;
 };
 
 // prints `data` to the given file handle
 // returns `fail` if any error occurs during printing
-pub fn fprint(handle u32, mut data str) !unit = rt {
+pub fn fprint(handle u32, data str) !unit = rt {
     if #data > 0 {
-        // mem dup | #data {
-        //     let mut dummy = new ? data @ dup;
-        //     if code = rt_write(handle, dummy); code < 0 {
-        //         return fail;
-        //     };
-        // };
-        if code = rt_write(handle, data); code < 0 {
-            return fail;
-        };
+        new dup | #data + 16 {
+            let mut dummy = new ? data @ dup;
+            if code = rt_write(handle, dummy); code < 0 {
+                return fail;
+            };
+        }?;
     };
 };
+
 
 // reads from stdin and places in the given buffer
 // returns `fail` oif any error occurs during memory reading

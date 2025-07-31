@@ -1,0 +1,23 @@
+// parsing test for returning string
+// literals
+io mod = use "std/io.lim";
+
+fn hi() str = {
+    return "test 1 ok";
+};
+
+fn hello(err bool) !str = {
+    if err {
+        return fail;
+    } else {
+        return "test 2 ok";
+    };
+};
+
+pub fn main() void = io {
+    io::println(hi())!;
+    let text = hello(false)!;
+    io::println(text)!;
+    let text' = hello(true)? or "test 3 ok";
+    io::println(text')!;
+};

@@ -1,10 +1,17 @@
-io mod = use "io.lim";
+conv mod = use "str/conv.lim";
+io   mod = use "std/io.lim";
 
-pub fn main() void = io {
-    mem arena | 128 {
-        let name = io::read(128, arena)!
+pub fn main() void = io & conv {
+    new arena | 128 + 16 {
+        io::print("type your name > ")!;
+
+        let mut buff = new ! [128; 0...] u8 @ arena;
+        io::read_to(buff)!
             or io::fatal("failed to read from user");
 
-        io::printfln("hello, %s!", name)!;
-    };
+        let name = conv::from_bytes(buff);
+
+        io::print("hello, ")!;
+        io::print(name)!;
+    }! or io::fatal("failed to create memory arena");
 };

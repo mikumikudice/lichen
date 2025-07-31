@@ -1,0 +1,10 @@
+fn alloc(data str, a mem) str = {
+    return new ! data @ a;
+};
+
+pub fn main() void = rt {
+    new arena | 256 {
+        let mut foo = alloc("foo\n", arena);
+        test foo == "foo\n";
+    }!;
+};
