@@ -1,7 +1,7 @@
 #!/usr/bin/env lua
 local tmp   = ".test/"
 local flags = "-std lib/ -verbose -t"
-local time  = os.clock()
+local time  = os.time()
 
 -- test list --
 local tests = {
@@ -50,8 +50,8 @@ local tests = {
     { src = "fail_borrow_2", code = 1, nocomp = true },
     { src = "fail_borrow_3", code = 1, nocomp = true },
     -- fail assertion --
-    { src = "fail_io_bad_handle", code = 1, nocomp = false },
-    { src = "fail_io_from_result", code = 1, nocomp = false },
+    { src = "fail_io_bad_handle", code = 1 },
+    { src = "fail_io_from_result", code = 1 },
     { src = "no_prop", code = 0 },
     { src = "assert", output = "test 1 ok\ntest 2 ok\ntest 3 ok\n", code = 0 },
     { src = "test", output = "test ok\n", code = 0 },
@@ -175,7 +175,7 @@ end
 -- summary --
 local passed = #tests - #failed
 local total  = #tests
-print(string.format("%d of %d tests succeeded in %.2f seconds", passed, total, os.clock() - time))
+print(string.format("%d of %d tests succeeded in %.2f seconds", passed, total, os.time() - time))
 
 if #failed > 0 then
     for i, e in ipairs(failed) do
