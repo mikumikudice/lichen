@@ -1607,7 +1607,6 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
             return (decl, end);
         case keyword::NEW =>
             const (arena, _end) = eval_arena(ctxt, end)?;
-            push_def(ctxt, ctxt.tokens[end], arena.self.var.nm, arena.self)?;
             end = pop_assert(ctxt, _end, symbol::EOL,
                 "expected %bend of line%r, but got %y{}")?;
             return (arena, end);
@@ -1941,6 +1940,9 @@ fn eval_arena(ctxt: *context, at: size) ((*arena_meta, size) | ERROR) = {
             "expected %barena name%r, but got %y{}", arg);
     };
     const name = tk.val as namespace;
+    // assert for namespace shadowing
+    check_shadowing(ctxt, tk, name)?;
+
     name.tpe = quick_t(primitive::MEM, true);
     end = pop_assert(ctxt, end + 1,
         operator::BOR, "expected %b\"%d|%b\"%r, but got %y{}")?;
