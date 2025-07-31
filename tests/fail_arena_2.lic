@@ -1,4 +1,4 @@
-// parsing test for asserting against
+// parser test for asserting against
 // assignment of outliving values
 
 pub fn main() void = {

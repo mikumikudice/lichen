@@ -1,3 +1,6 @@
+// dummy module for shared tests
+// regarding module semantics
+
 pub type rec = record {
     foo u32;
     bar u32;

@@ -330,7 +330,7 @@ let constant_array []u32 = [1, 2, 3, 4, 5, 6];
 let value u32 = constant_array[4]; // both array length and index are known at compile-time, resulting in a concrete type (u32)
 let partial !u32 = constant_array[value]; // “the indexing is now not known at compile-time, so the result is a partial type (!u32)
 
-mem buffer | 128 * 4 {
+new buffer | 128 * 4 {
     let dynamic_array = new ! [128; 0, 2, 3, 7, 0...] u32 @ buffer; // array of 128 items of 4 bytes each
     let value' u32 = dynamic_array[4]!; // now the array length is not known at compile-time, resulting in a partial type again
     let partial' != dynamic_array[value]; // result is !u32 because neither index nor length are compile-time known
@@ -340,7 +340,7 @@ asserting or bubbling an invalid indexing casts it down to the base type instead
 
 as shown in the previous example, arrays may be statically defined and allocated or dynamically allocated using [arenas](#memory-arenas):
 ```rust
-mem arena | size_in_bytes {
+new arena | size_in_bytes {
     let optional_array = new [1, 2, 3, 4] u32 @ arena; // results in ![]u32 because allocation may fail
     let concrete_array = new ! [2, 4, 6, 8] u32 @ arena; // allocation failure is asserted
 
@@ -593,7 +593,7 @@ let foo str = may_also_fail("hi")?
 ```
 these chains are not required to be exhaustive i.e. cover all errors. on this case, the resulting type is still partial.
 ```rust
-mem buffer | 128 << 8 {
+new buffer | 128 << 8 {
     let number !u64 = strconv::to_u64("128", buffer)!
         or nomem | io::fail("buffer not large enough");
 }!;
@@ -747,7 +747,7 @@ fn div(x u32, y u32) !u32 = {
 arenas are the only way to dynamically allocate memory in lichen. an arena is a "null garbage collector" or a "runtime stack", in the sense it allocates data contiguously on a pre-defined size chunk of memory and then deallocates everything at once at the end of its lifetime, unlike actual garbage collectors, arenas never individually free objects, but the entire chunk is freed at once at end of scope. and unlike actual stack frames, the arena can be arbitrarily large and allocate the actual memory reserved by the operating system on demand:
 ```rust
 // reserves 1 billion bytes (one GB)
-mem arena | 1_000_000_000 {
+new arena | 1_000_000_000 {
     // allocates a buffer of 128 bytes on the arena
     let mut buffer = new ! [128; 0...] u8 @ arena;
     // reads from stdin and places at this buffer
@@ -760,7 +760,7 @@ at the end of the scope, all allocations and the arena itself are guaranteed to 
 
 arenas may also be nested and passed to other functions for more specific allocation lifetimes:
 ```rust
-mem input | 512 {
+new input | 512 {
     let file_name = new ! [512; 0...] @ input;
     io::read_to(file_name)!;
     mem file_buffer | 128 << 16 {
@@ -778,11 +778,37 @@ as a sub-product of lifetimes, no value allocated within an arena can be assigne
 ```rust
 fn some_function() str = {
     let mut buffer = "";
-    mem arena | 512 {
+    new arena | 512 {
         let new buffer' = new ! [512; 0...] u8 @ arena;
         buffer = buffer' str; // invalid. `buffer` lives longer than the arena
         buffer' = new ! buffer @ arena; // valid. copying of data into the arena
         return buffer'; // invalid. upper stack-frame lives longer than the arena
+    }!;
+};
+```
+similarly, an outliving value from an outer memory arena also can't be assigned:
+```rust
+pub fn main() void = {
+    new global | 128 {
+        let foo = new ! "aaa" @ global;
+        new local | 64 {
+            let bar = new ! "bbb" @ local;
+            foo = bar; // invalid. `foo` outlives `bar`
+        }!;
+    }!;
+};
+```
+but vice-versa is allowed:
+```rust
+pub fn main() void = {
+    new global | 128 {
+        let foo = new ! "aaa" @ global;
+        new local | 64 {
+            let bar = new ! "bbb" @ global;
+            foo = bar; // ok. shared arena
+            let bar' = new ! "cc" @ local;
+            bar' = foo; // also ok. bar' underlives `foo`
+        }!;
     }!;
 };
 ```
@@ -808,7 +834,7 @@ fs mod = use "std/fs.lim";
 io mod = use "std/io.lim";
 
 pub fn main() void = fs & io {
-    mem arena | 256 << 16 {
+    new arena | 256 << 16 {
         let buffer = new ! [256; 0...] @ arena;
         io::read(buffer)!;
         let buffer' = buffer str;
@@ -953,7 +979,7 @@ memory arenas are an abstraction for dealing with dynamically memory with a well
 ```rust
 let arbitrary_runtime_size u64 = 100_000 * (64 << 8);
 
-mem dynamic_memory_chunk | arbitrary_runtime_size { // request to the OS to reserve this much memory 
+new dynamic_memory_chunk | arbitrary_runtime_size { // request to the OS to reserve this much memory 
 
     let some_array = new ! [256; 1, 2, 3, 4, 5, 0...] u32 @ dynamic_memory_chunk; // allocates `some_array` within the arena
     let x = some_array[4]!;
@@ -964,7 +990,7 @@ you can place data on these arenas using two main operations: allocation and con
 ```rust
 let arr = new [number_of_items; 0...] u32 @ arena;
 ```
-this results in an optional type because the arena may not be able to place this data at the available memory. in an allocation failure, the error state is `nomem`. that's why we assert if we want to halt execution on a failure or bubble up if the failure should be recoverable:
+this results in an optional type because the arena may not be able to place this data at the available memory.in an allocation failure, the error state is `nomem`. that's why we assert if we want to halt execution on a failure or bubble up if the failure should be recoverable:
 ```rust
 let required_for_further_execution = new ! [1, 2, 3, 4] u32 @ arena;
 let recoverable_from_failure = new ? [8; ""...] @ arena;
@@ -972,7 +998,7 @@ let recoverable_from_failure = new ? [8; ""...] @ arena;
 similarly, the arena itself may not be able to be allocated, and this is why in previous examples, the arena scope ends in an `!`, but as any other error, it could also be bubbled up:
 ```rust
 fn reduce_array(size u64) !u64 = {
-    mem arena | size {
+    new arena | size {
         let arr = new ? [1, 2, 3, 4] u32;
         let mut acc = 0 u64;
         for item .. arr {
@@ -987,6 +1013,7 @@ pub fn main() void = io {
     let total = reduce_array(1_000_000_000)? or 0; // on a failure, default `total` to zero
 };
 ```
+when so happens, the entire arena scope is not executed.
 see more about error assertion syntax in [this section](#error-assertion).
 
 the concatenation happens using the concatenation operator `..` (the same operator used as a range operator when using case intervals in [switch cases](#switch)), can be used to concatenate two different arrays or strings into a new, single data unit:
@@ -994,7 +1021,7 @@ the concatenation happens using the concatenation operator `..` (the same operat
 let one_to_five = [1, 2, 3, 4, 5] u32;
 let six_to_nine = [6, 7, 8, 9] u32;
 
-mem arena | (#one_to_five + #six_to_nine) * 4 {
+new arena | (#one_to_five + #six_to_nine) * 4 {
     let one_to_nine = one_to_five ..! six_to_nine @ arena;
 };
 ```
@@ -1020,6 +1047,15 @@ other_rec.field_1 = x; // can reassign to field
 other_rec = { rec | field_2 = 5 }; // can reassign to `other_rec`
 ```
 see more about this `{ rec | field_2 = 5 }` syntax in [this section](#records).
+
+passing a known size value, such as records, is by value, but unknown/dybnamic sized values such as strings and dynamic arrays are passed by value. for this, it's required mutability matches:
+```rust
+let x = "str";
+let mut y = x; // invalid. mutating `y` would also affect constant `x`
+
+let mut w = [4; 0...] u32;
+let z = w; // also invalid. mutating `w` would also affect constant `z`
+```
 
 passing a mutable variable to another function, in the other hand, is different and always passed by reference. that means that if a function updates a field of a record or writes to an array, the original variable also changes, once they carry the same value:
 ```rust

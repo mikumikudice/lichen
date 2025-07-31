@@ -1,4 +1,4 @@
-// parsing test for invalid cross
+// parser test for invalid cross
 // do-tagged calls
 
 pub fn main() void = do {

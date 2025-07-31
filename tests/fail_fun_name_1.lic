@@ -1,4 +1,4 @@
-// parsing test for conflict between
+// parser test for conflict between
 // function and variable names
 
 foo u32 = 4;

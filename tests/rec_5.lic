@@ -1,4 +1,4 @@
-// parsing test to check if external
+// parser test to check if external
 // types are parsed correctly
 
 io mod = use "std/io.lim";

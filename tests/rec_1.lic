@@ -1,3 +1,6 @@
+// parser and compiler test for basic
+// record semantics and implementation
+
 io mod = use "std/io.lim";
 
 type person = record {

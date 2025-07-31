@@ -23,6 +23,7 @@ fn is_whitespace(char: u8) bool = {
     return char == '\n' || char == '\t' || char == ' ';
 };
 
+// checks if given operator is a binary one
 fn is_binary_op(oper: operator) bool = {
     return oper == operator::EQL || oper == operator::NEQ ||
         oper == operator::LEQ || oper == operator::GEQ ||
@@ -35,6 +36,7 @@ fn is_binary_op(oper: operator) bool = {
         oper == operator::MOD;
 };
 
+// checks if given operator is an unary one
 fn is_unary_op(oper: operator) bool = {
     return oper == operator::PLS || oper == operator::MIN ||
         oper == operator::NOT || oper == operator::BANG ||
@@ -267,6 +269,8 @@ fn get_def(
     };
 };
 
+// pushes a string literal to the current context
+// returns an index for later IR emission
 fn push_lit(ctxt: *context, new: str) size = {
     const max = len(ctxt.literals);
     for(let lit = 0z; lit < max; lit += 1){
@@ -284,6 +288,7 @@ fn quick_t(tpe: primitive, fail: bool = false) lichen_t = {
     };
 };
 
+// returns a dummy namespace from a given string
 fn dummy_nm(val: str) namespace = namespace {
     name = val,
     ffi = void,
@@ -999,7 +1004,8 @@ fn eval_program(ctxt: *context) (void | ERROR) = {
     };
 };
 
-// evaluates a constant definition. assumes `at` is pointing to the expression's namespace
+// evaluates a constant definition
+// assumes `at` is pointing to the expression's namespace
 fn eval_const_def(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
     let end = at;
     const name = ctxt.tokens[at].val as namespace;
@@ -1116,6 +1122,8 @@ fn validate_const(
     };
 };
 
+// evaluates a module import expression
+// assumes `at` is pointing to `keyword::MOD`
 fn eval_module(ctxt: *context, at: size) ((*module_meta, size) | ERROR) = {
     const bind = ctxt.tokens[at].val as namespace;
     assert(comp_tk(ctxt.tokens[at + 1].val, keyword::MOD));
@@ -1184,6 +1192,8 @@ fn eval_module(ctxt: *context, at: size) ((*module_meta, size) | ERROR) = {
     return (module, end);
 };
 
+// evaluates a type definition
+// assumes `at` is pointing to `keyword::TYPE`
 fn eval_type_def(ctxt: *context, at: size) ((*type_meta, size) | ERROR) = {
     assert(comp_tk(ctxt.tokens[at].val, keyword::TYPE));
     let end = at + 1;
@@ -1863,6 +1873,7 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
     };
 };
 
+// evaluates a `test` statement
 fn eval_test(ctxt: *context, at: size) ((*test_meta, size) | ERROR) = {
     assert(comp_tk(ctxt.tokens[at].val, keyword::TEST));
     let end = at + 1;
@@ -1929,6 +1940,7 @@ fn eval_test(ctxt: *context, at: size) ((*test_meta, size) | ERROR) = {
     return (alloc(meta)!, end);
 };
 
+// evaluates a memory arena statement
 fn eval_arena(ctxt: *context, at: size) ((*arena_meta, size) | ERROR) = {
     assert(comp_tk(ctxt.tokens[at].val, keyword::NEW));
     let end = at + 1;
@@ -2466,8 +2478,8 @@ fn eval_expression(
     return (out, end);
 };
 
-// parses down a list of expression members to a
-// hand, a member or an expression abstraction
+// parses down a list of expression members to a hand, a member or an
+// expression abstraction
 fn reduce_members(
     ctxt: *context,
     pos: size,
@@ -2521,6 +2533,7 @@ fn reduce_members(
     return (members[0] as hand_t, extract_hand_type(members[0] as hand_t));
 };
 
+// fetches the a given operator's precedence
 fn get_op_precedence(oper: operator) size = switch(oper){
     case operator::SHL, operator::SHR, operator::BOR,
         operator::BAND, operator::MUL, operator::DIV,
@@ -2909,6 +2922,8 @@ fn eval_member(
     return (alloc(memb)!, end, false);
 };
 
+// evaluates an allocation expression
+// assumes `at` is pointing to `keyword::NEW`
 fn eval_alloc(
     ctxt: *context,
     at: size,
@@ -2989,6 +3004,7 @@ fn eval_alloc(
     return (alloc(meta)!, end);
 };
 
+// evaluates an array literal
 fn eval_array_lit(
     ctxt: *context,
     at: size,
@@ -3123,6 +3139,7 @@ fn eval_array_lit(
     return (alloc(out)!, end);
 };
 
+// evaluates an array indexing expression
 fn eval_indexing(
     ctxt: *context,
     at: size,
@@ -3190,6 +3207,7 @@ fn eval_indexing(
     };
 };
 
+// evaluates a record literal
 fn eval_record_lit(
     ctxt: *context,
     at: size,
@@ -3287,6 +3305,7 @@ fn eval_record_lit(
     return (alloc(lit)!, end);
 };
 
+// evaluates a record field access
 fn eval_record_field(
     ctxt: *context,
     at: size,
@@ -3341,6 +3360,7 @@ fn eval_record_field(
     };
 };
 
+// evaluates a ternary ecpression
 fn eval_ternary(
     ctxt: *context,
     at: size,
@@ -3372,6 +3392,7 @@ fn eval_ternary(
     return (alloc(exp)!, end);
 };
 
+// evaluates a function call site
 fn eval_funcall(
     ctxt: *context,
     fun: *fun_meta,
@@ -3558,6 +3579,8 @@ const any_arr = array {
     },
 };
 
+// creates a new anonymous array type
+// doesn't instantiate a new type if a similar one was already created
 fn new_array_t(ctxt: *context, arr: array, fail: bool = false) lichen_t = {
     if(comp_type(arr.base, primitive::ANY)){
         any_arr.length = arr.length;
@@ -3605,6 +3628,7 @@ fn new_array_t(ctxt: *context, arr: array, fail: bool = false) lichen_t = {
     return tpe.self;
 };
 
+// helper function to free anonymous array's exporting names
 fn free_names() void = {
     for(let name .. tpe_names){
         free(name);  
@@ -3630,6 +3654,7 @@ fn wrap_array(
     };
 };
 
+// unwraps array type into its base type
 fn unwrap_array(tpe: lichen_t, fail: bool = false) lichen_t = {
     const dup = (tpe.base as *array).base;
     dup.fail = fail;
@@ -3939,6 +3964,7 @@ fn eval_type(
     };
 };
 
+// asserts if a given operator is a valid unary operator for a given type
 fn assert_unary(ctxt: *context, pos: size, oper: operator, tpe: lichen_t) (void | ERROR) = {
     move_ptr(ctxt, ctxt.tokens[pos]);
     if(!is_unary_op(oper)){
@@ -3983,6 +4009,8 @@ fn comp_type(
 };
 
 // checks if a given type is a subset of another
+// this function wraps any given type (primitive literal or lichen_t) into
+// lichen_t and calls _is_subtype
 fn is_subtype(
     _this: (primitive | lichen_t),
     _that: (primitive | lichen_t),
@@ -3992,6 +4020,7 @@ fn is_subtype(
     return _is_subtype(this, that);
 };
 
+// actual implementation of is_subtype
 fn _is_subtype(_this: lichen_t, _that: lichen_t) bool = {
     // any is a subtype of anything
     if(comp_type(_this, primitive::ANY) ||
@@ -4061,6 +4090,9 @@ fn _is_subtype(_this: lichen_t, _that: lichen_t) bool = {
     };
 };
 
+// checks whenever a type is catable into another
+// this function wraps any given type (primitive literal or lichen_t) into
+// lichen_t and calls _castable
 fn castable(
     _this: (primitive | lichen_t),
     _that: (primitive | lichen_t),
@@ -4070,6 +4102,7 @@ fn castable(
     return _castable(this, that);
 };
 
+// actual implementation of castable
 fn _castable(_this: lichen_t, _that: lichen_t) bool = {
     // an optional type cannot be a subtype of a solid type
     if(_this.fail && !_that.fail) return false;
@@ -4104,6 +4137,7 @@ fn _castable(_this: lichen_t, _that: lichen_t) bool = {
     };
 };
 
+// extracts the type of any variation of hand_t
 fn extract_hand_type(hand: hand_t) lichen_t = {
     match(hand){
     case let meta: *hand_meta =>
@@ -4117,6 +4151,7 @@ fn extract_hand_type(hand: hand_t) lichen_t = {
     };
 };
 
+// extracts the final node of a given expression
 fn extract_root(exp: *expr_meta) (void | path_meta) = {
     match(exp.val){
     case let hand: *hand_meta => return hand;
@@ -4165,6 +4200,7 @@ fn valid_exp(oper: operator, lft_t: lichen_t, rgt_t: lichen_t) bool = {
     };
 };
 
+// recudes an expression of two given types and an operator into its final type
 fn reduce_exp_t(oper: operator, lft_t: lichen_t, rgt_t: lichen_t) lichen_t = {
     switch(oper){
     case operator::EQL, operator::NEQ, operator::LEQ, operator::GEQ,
@@ -4192,6 +4228,7 @@ fn reduce_exp_t(oper: operator, lft_t: lichen_t, rgt_t: lichen_t) lichen_t = {
     };
 };
 
+// checks is given type is a ratio type
 fn is_ratio(tpe: lichen_t) bool =
     is_subtype(tpe, primitive::RATIO) && !comp_type(tpe, primitive::NUMBER);
 
@@ -4202,12 +4239,14 @@ fn untyped(tpe: lichen_t) bool = {
         comp_type(tpe, primitive::RATIO);
 };
 
+// checks if given type is aggregated
 fn is_aggregated(tpe: lichen_t) bool = {
     return tpe.fail || is_subtype(tpe, primitive::STR) ||
         is_subtype(tpe, primitive::CSTR) || tpe.base is *record ||
         tpe.base is *array;
 };
 
+// checks if type memory size is known at compile time
 fn size_known(tpe: lichen_t) bool = {
     match(tpe.base){
     case let prim: primitive =>

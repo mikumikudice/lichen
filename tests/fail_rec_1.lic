@@ -1,4 +1,4 @@
-// parsing test for record field
+// parser test for record field
 // duplication assertion
 
 type person = record {

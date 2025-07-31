@@ -1,5 +1,6 @@
-// parsing test for effectless calls
-// and unit returns
+// parser test for effectless calls and
+// unit returns
+
 pub fn main() void = {
     let x = foo();
 };

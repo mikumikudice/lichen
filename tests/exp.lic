@@ -1,4 +1,4 @@
-// parsing test for function calls,
+// parser test for function calls,
 // expressions and return statements
 
 pub fn main() void = {

@@ -151,6 +151,7 @@ fn type_size(tpe: lichen_t, ignore_fail: bool = false) size = {
     };
 };
 
+// fetches the memory offset of a given record field for a given record type
 fn field_offset(rec: *record, field_name: str) size = {
     let acc = 0z;
     let found = false;
@@ -208,6 +209,15 @@ fn ftoi(float_t: lichen_t, int_t: lichen_t) str = {
     };
 };
 
+// emits a final object given:
+// - the IR
+// - its linking objects list
+// - the target file name
+// - the stdlib path
+// - if shared object was set
+// - if static archive was set
+// - if compiler should keep the temporary files
+// - if compilation should be silent
 fn emit_obj(
     ir: *memio::stream,
     also_link: []str,
@@ -339,6 +349,7 @@ fn emit_obj(
     };
 };
 
+// emits the IR of a given context
 fn gen_qbe_ir(ctxt: *context) memio::stream = {
     const ir = memio::dynamic();
     fmt::fprintfln(&ir, "# code emitted by lcc v{}", version)!;
@@ -370,6 +381,7 @@ fn gen_qbe_ir(ctxt: *context) memio::stream = {
     return ir;
 };
 
+// emits the IR for a given context into the given buffer
 fn gen_module(ctxt: *context, buff: *memio::stream) void = {
     for(let defn .. ctxt.global.defs){
         match(defn){
@@ -515,6 +527,8 @@ fn gen_module(ctxt: *context, buff: *memio::stream) void = {
     };
 };
 
+// emits a list of namespaces
+// used for function parameters and function call arguments
 fn gen_list(ctxt: *context, buff: *memio::stream, names: []*var_meta) void = {
     fmt::fprint(buff, "(")!;
     for(let n .. names){
@@ -524,6 +538,10 @@ fn gen_list(ctxt: *context, buff: *memio::stream, names: []*var_meta) void = {
     fmt::fprint(buff, ")")!;
 };
 
+// emits a scope and its statements
+// ini_tag is the label declared at the beginning of the scope
+// if has_fail is set, a @fail label is declared at the end of
+// the scope. use only for function scopes
 fn gen_scope(
     ctxt: *context,
     buff: *memio::stream,
@@ -555,6 +573,7 @@ fn gen_scope(
     };
 };
 
+// emits the IR for a given statement
 fn gen_stt(ctxt: *context, buff: *memio::stream, stt: path_meta) void = {
     match(stt){
     case let test: *test_meta =>
@@ -889,6 +908,7 @@ fn gen_stt(ctxt: *context, buff: *memio::stream, stt: path_meta) void = {
     };
 };
 
+// asserts a given hand_t is not a fail singleton literal
 fn assert_no_error_val(val: hand_t) bool = {
     if(val is *member_meta){
         const memb = val as *member_meta;
@@ -899,6 +919,7 @@ fn assert_no_error_val(val: hand_t) bool = {
     return true;
 };
 
+// emits a variable declaration
 fn gen_decl(ctxt: *context, buff: *memio::stream, decl: *decl_meta) void = {
     move_ptr(ctxt, ctxt.tokens[decl.var.pos]);
     const (l, c) = get_pos(ctxt);
@@ -943,6 +964,9 @@ fn gen_decl(ctxt: *context, buff: *memio::stream, decl: *decl_meta) void = {
     };
 };
 
+// emits a given expression
+// if a final result is generated, returns the value or temporary name, if not
+// returns an empty string
 fn gen_exp(
     ctxt: *context,
     buff: *memio::stream,
@@ -1032,6 +1056,7 @@ fn gen_exp(
     return "";
 };
 
+// emits an arithmetic expression given a hand meta
 fn gen_arithmetic(
     ctxt: *context,
     buff: *memio::stream,
@@ -1218,6 +1243,9 @@ fn gen_arithmetic(
     };
 };
 
+// assigns a given member to a `dest` temporary
+// if a final result is generated, returns the value or temporary name, if not
+// returns an empty string
 fn assign_memb(
     ctxt: *context,
     buff: *memio::stream,
@@ -1436,6 +1464,7 @@ fn assign_memb(
     return "";
 };
 
+// emits the IR for an array literal
 fn gen_arr_lit(
     ctxt: *context,
     buff: *memio::stream,
@@ -1529,6 +1558,7 @@ fn gen_arr_lit(
     };
 };
 
+// unwraps the IR for a chain of field accesses and array indexing
 fn unwrap_fields_and_indexes(
     ctxt: *context,
     buff: *memio::stream, 
@@ -1585,6 +1615,7 @@ fn unwrap_fields_and_indexes(
     return (last, last_t, false);
 };
 
+// emits the IR for a field access
 fn gen_field(
     ctxt: *context,
     buff: *memio::stream,
@@ -1646,6 +1677,7 @@ fn gen_field(
     return field;
 };
 
+// emits the IR for an array indexing
 fn gen_index(
     ctxt: *context,
     buff: *memio::stream,
@@ -1728,6 +1760,7 @@ fn gen_index(
     return item;
 };
 
+// emits the IR for a propagation expression
 fn gen_prop(
     ctxt: *context,
     buff: *memio::stream,
@@ -1782,6 +1815,7 @@ fn gen_prop(
     };
 };
 
+// emits a funcall
 fn gen_funcall(
     ctxt: *context,
     buff: *memio::stream,
@@ -1987,6 +2021,8 @@ fn gen_cast(
     };
 };
 
+// converts a given namespace to its correct temporary name
+// if given namespace if global, emits the IR for loading the data
 fn fix_nm(ctxt: *context, buff: *memio::stream, nm: namespace) str = {
     if(nm.ffi is str){
         fmt::fprintfln(buff, "\t%{0} ={1} load{2} ${0}", nm.ffi,
@@ -2012,6 +2048,7 @@ fn fix_nm(ctxt: *context, buff: *memio::stream, nm: namespace) str = {
     };
 };
 
+// returns the emitted code for a constant value
 fn emit_constant(
     ctxt: *context, 
     buff: *memio::stream, 
@@ -2090,6 +2127,8 @@ fn true_size(lit: str) size = {
     return len(fixed);
 };
 
+// returns the zeroed value equivalent to a given type
+// if needed, aditional IR is emitted to generate the zeroed value
 fn zeroed_value(ctxt: *context, buff: *memio::stream, tpe: lichen_t) str = {
     if(tpe.base is primitive){
         if(is_aggregated(tpe)){

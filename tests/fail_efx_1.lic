@@ -1,4 +1,4 @@
-// parsing test for missing effect tag
+// parser test for missing effect tag
 // on function call
 
 pub fn main() void = foo {

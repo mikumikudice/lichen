@@ -1,4 +1,4 @@
-// parsing test for asserting for field
+// parser test for asserting for field
 // assignment exhaustiveness
 
 type person = record {

@@ -1,4 +1,4 @@
-// parsing test for checking test block
+// parser test for checking test block
 // assertion
 
 pub fn main() void = {

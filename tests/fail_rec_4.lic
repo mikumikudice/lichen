@@ -1,4 +1,4 @@
-// parsing test for field access of
+// parser test for field access of
 // non-record types
 
 pub fn main() void = io {

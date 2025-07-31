@@ -1,4 +1,4 @@
-// parsing test for basic type checking
+// parser test for basic type checking
 // and (global) declaration parsing
 
 w u32 = +1;

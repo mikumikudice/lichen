@@ -1,4 +1,4 @@
-// parsing test for conflict between
+// parser test for conflict between
 // module binding and variable names
 
 io u32 = 4;

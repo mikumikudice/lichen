@@ -1,4 +1,4 @@
-// parsing test for unhandled but
+// parser test for unhandled but
 // assigned error types
 
 pub fn main() void = {

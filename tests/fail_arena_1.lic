@@ -1,3 +1,6 @@
+// parser test for asserting against
+// not-lifetimed variable assignment
+
 pub fn main() void = {
     new global | 128 {
         let mut foo = "aaa";

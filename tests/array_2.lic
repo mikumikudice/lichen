@@ -1,4 +1,4 @@
-// parsing test for array indexing
+// parser test for array indexing
 // on constant and dynamic indexes
 
 io mod = use "std/io.lim";

@@ -1,5 +1,5 @@
-// test for conflict between function
-// and module binding names
+// parser test for conflict between
+// function and module binding names
 
 io mod = use "std/io.lim";
 fn io() unit = {};

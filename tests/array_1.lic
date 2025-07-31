@@ -1,4 +1,4 @@
-// parsing test for array literals
+// parser test for array literals
 // type checking and emitting
 
 pub fn main() void = {

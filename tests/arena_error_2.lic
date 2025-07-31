@@ -1,3 +1,8 @@
+// compiler test for testing memory
+// arena creation failure and its
+// fail state fallback statement
+// execution
+
 io mod = use "std/io.lim";
 
 pub fn main() void = io {

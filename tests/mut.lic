@@ -1,4 +1,4 @@
-// parsing test for all mutable
+// parser test for all mutable
 // semantics and syntax
 
 fn take_ref(mut x str) unit = m { };

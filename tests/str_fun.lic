@@ -1,5 +1,6 @@
-// parsing test for returning string
+// parser test for returning string
 // literals
+
 io mod = use "std/io.lim";
 
 fn hi() str = {

@@ -1,3 +1,7 @@
+// parser and compiler test for the
+// `for loop` statement semantics and
+// implementation
+
 io mod = use "std/io.lim";
 
 pub fn main() void = io {

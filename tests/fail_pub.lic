@@ -1,4 +1,4 @@
-// parsing test for asserting the usage
+// parser test for asserting the usage
 // of private module fields
 
 local mod = use "test_mod.lim";

@@ -1,4 +1,4 @@
-// parsing test for typechecking of
+// parser test for typechecking of
 // invalid error bubbling
 
 pub fn main() void = {

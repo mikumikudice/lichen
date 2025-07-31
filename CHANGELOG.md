@@ -1,1 +1,0 @@
-- fixed issue where memory arena namespaces were outliving their scopes

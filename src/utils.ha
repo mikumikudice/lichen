@@ -227,6 +227,7 @@ fn run_cmd(noprint: bool, cmd: str, args: str...) void = {
     };
 };
 
+// returns a given number as a ordinal number string
 fn ordnum(n: u64) str = {
     switch(n){
     case 1 => return strings::dup("first")!;
@@ -236,6 +237,7 @@ fn ordnum(n: u64) str = {
     };
 };
 
+// returns the correct usage of a plural noun given the quantity of it
 fn fix_plural(obj: str, count: size) str = {
     if(count > 1) return obj;
     return strings::sub(obj, 0, len(obj) - 1);

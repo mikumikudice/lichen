@@ -1,4 +1,4 @@
-// parsing test for too many field
+// parser test for too many field
 // assignments on record literals
 
 type person = record {

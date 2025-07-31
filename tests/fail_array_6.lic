@@ -1,4 +1,4 @@
-// parsing test for array assignment
+// parser test for array assignment
 // with length mismatch
 
 pub fn main() void = {

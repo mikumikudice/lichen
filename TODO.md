@@ -1,4 +1,4 @@
-- make arenas be freed on bubble error
+- assert for functions returning borrowed data
 - implement switch case
 - implement submodules
 - string concatenation

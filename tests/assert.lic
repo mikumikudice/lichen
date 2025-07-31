@@ -1,4 +1,4 @@
-// parsing test for error assertion
+// parser test for error assertion
 // and error state piping syntax
 
 io mod = use "std/io.lim";

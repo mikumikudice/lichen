@@ -1,4 +1,4 @@
-// parsing test for asserting for
+// parser test for asserting for
 // pure functions being called without
 // its value being used
 

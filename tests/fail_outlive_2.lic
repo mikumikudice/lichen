@@ -1,4 +1,4 @@
-// parsing test to assert for fixed bug
+// parser test to assert for fixed bug
 // where for loops' local variable
 // would outlive its scope
 

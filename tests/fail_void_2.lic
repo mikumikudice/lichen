@@ -1,4 +1,4 @@
-// parsing test to assert
+// parser test to assert
 // disallowance of bubbling of partial
 // void type error state
 

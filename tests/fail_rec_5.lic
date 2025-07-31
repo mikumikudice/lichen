@@ -1,4 +1,4 @@
-// parsing test to assert for fixed bug
+// parser test to assert for fixed bug
 // with field/value type mismatch
 
 type person = record {

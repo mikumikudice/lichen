@@ -1,4 +1,4 @@
-// parsing test for asserting
+// parser test for asserting
 // for invalid field names
 
 type person = record {

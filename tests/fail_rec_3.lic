@@ -1,4 +1,4 @@
-// parsing test for invalid record
+// parser test for invalid record
 // field access
 
 type person = record {

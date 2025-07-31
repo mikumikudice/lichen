@@ -1,3 +1,6 @@
+// parser and compiler test for memory
+// arena semantics and implementation
+
 fn alloc(data str, a mem) str = {
     return new ! data @ a;
 };

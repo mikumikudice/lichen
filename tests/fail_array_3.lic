@@ -1,4 +1,4 @@
-// parsing test for invalid array
+// parser test for invalid array
 // length
 
 pub fn main() void = {

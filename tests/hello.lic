@@ -1,4 +1,4 @@
-// parsing test for global data parsing
+// parser test for global data parsing
 // and FFI linking
 
 stdout u32 = use "rt.stdout";
