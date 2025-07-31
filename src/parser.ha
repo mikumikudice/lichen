@@ -1697,9 +1697,15 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
             };
             const (val, _end) = eval_expression(ctxt, end, host.fun.tpe)?;
             const root = extract_root(val);
-            if(root is *var_meta && is_aggregated(val.tpe)){
-                const assign = root as *var_meta;
-                if(assign.lifetime is size){
+            if((root is *var_meta || root is *funcall_meta ||
+                root is *alloc_meta) && is_aggregated(val.tpe)){
+                const assign_lifetime =
+                    match(root){
+                    case let var: *var_meta => yield var.lifetime;
+                    case let call: *funcall_meta => yield call.lifetime;
+                    case let all: *alloc_meta => yield all.arena.lifetime;
+                    };
+                if(assign_lifetime is size){
                     move_ptr(ctxt, ctxt.tokens[end]);
                     return error(ctxt, "upper scope outlives variable lifetime");
                 };

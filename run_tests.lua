@@ -43,6 +43,7 @@ local tests = {
     { src = "fail_arena_1", code = 1, nocomp = true },
     { src = "fail_arena_2", code = 1, nocomp = true },
     { src = "fail_arena_3", code = 1, nocomp = true },
+    { src = "fail_arena_4", code = 1, nocomp = true },
     { src = "fail_outlive_1", code = 1, nocomp = true },
     { src = "fail_outlive_2", code = 1, nocomp = true },
     { src = "fail_borrow", code = 1, nocomp = true },

@@ -1,0 +1,12 @@
+// parser test for asserting return
+// value outliving its lifetime scope
+
+fn alloc(data str) str = {
+    new a | 256 {
+        return new ! data @ a;
+    }!;
+};
+
+pub fn main() void = rt {
+    let mut foo = alloc("foo\n");
+};

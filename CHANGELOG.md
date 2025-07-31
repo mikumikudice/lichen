@@ -1,1 +1,1 @@
-- implemented borrowing notation
+- extended lifetime outliving checking for return values
