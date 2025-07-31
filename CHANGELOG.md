@@ -1,1 +1,1 @@
-- extended lifetime outliving checking for return values
+- added safety check for functions return' value do not borrow lifetimes if the type is not aggregated

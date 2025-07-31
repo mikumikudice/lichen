@@ -1323,6 +1323,14 @@ fn eval_fun_def(ctxt: *context, at: size) ((*fun_meta, size) | ERROR) = {
     
     const borrow =
         if(comp_tk(tk.val, symbol::AT)){
+            if(!is_aggregated(name.tpe)){
+                move_ptr(ctxt, tk);
+                move_ptr(ctxt, tk);
+                const arg = strtype(name.tpe);
+                return error_hint(ctxt,
+                    "\t%bnon-aggregated type values cannot go invalid",
+                    "returned value of %b{}%r has %yno lifetime", arg);
+            };
             end += 1;
             tk = next_tk(ctxt, end,
                 "expected %bborrowing parameter name%r, but got %y{}")?;
