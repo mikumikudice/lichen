@@ -4,29 +4,29 @@
 io mod = use "std/io.lim";
 
 type foo = record {
-    bar !u32;
+    bar u32;
 };
 
-fn bar'(x u32) !u32 = {
+fn foo'(x u32) !foo = {
     if x == 0 {
-        return fail;
+        return error;
     } else {
-        return x;
+        return foo { bar = x };
     };
 };
 
 pub fn main() void = io {
-    let r = foo { bar = bar'(1) };
-    if r.bar! == 1 {
+    let r = foo'(1);
+    if r!.bar == 1 {
         io::println("test 1 ok")!;
     } else {
         io::println("test 1 fail")!;
     };
 
-    let r' = foo { bar = bar'(0) };
-    if (r'.bar? or 0) == 0 {
-        io::println("test 2 ok")!;
+    let r' = foo'(0)! or io::println("test 2 ok")!;
+    if r'.bar == 0 {
+        io::println("test 3 ok")!;
     } else {
-        io::println("test 2 fail")!;
+        io::println("test 3 fail")!;
     };
 };

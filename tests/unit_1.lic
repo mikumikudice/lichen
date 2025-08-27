@@ -5,6 +5,6 @@ pub fn main() void = {
     let x = foo();
 };
 
-fn foo() unit = {
+fn foo() !unit = {
     return;
 };

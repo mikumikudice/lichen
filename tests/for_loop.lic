@@ -17,9 +17,9 @@ pub fn main() void = io {
 
     let mut arr' = arr;
     for mut itm, idx .. arr' {
-        let last = arr'[idx - 1]? or 0;
-        let next = arr'[idx + 1]? or 0;
-        itm = (last + next);
+        let lst = arr'[idx - 1]? or 0;
+        let nxt = arr'[idx + 1]? or 0;
+        itm = (lst + nxt);
     };
 
     for itm, idx .. arr' {

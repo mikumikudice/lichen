@@ -133,7 +133,7 @@ fn report(err: ERROR) never = {
     color(memio::string(err)!);
     io::close(err)!;
     free(err);
-    os::exit(1);
+    os::exit(4);
 };
 
 // formats and returns a simple compilation fail
@@ -213,17 +213,17 @@ fn run_cmd(noprint: bool, cmd: str, args: str...) void = {
         case let e: exec::error =>
             if(e is exec::nocmd){
                 color_error("%Rmissing dependency:%b {}", cmd);
-                os::exit(1);
+                os::exit(4);
             } else {
                 color_error("%r{} failed", cmd);
-                os::exit(1);
+                os::exit(4);
             };
         };
     const proc = exec::start(&exe)!;
     const stat = exec::wait(&proc)!;
     if(stat.status != 0){
         color_error("%r{} failed", cmd);
-        os::exit(1);
+        os::exit(4);
     };
 };
 

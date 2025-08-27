@@ -1,40 +1,49 @@
-io = use "io.lim";
+// rule 110 in lichen
 
-pub fn main() void = io {
-    rule([ 0, 0, 0, 0, 0, 0, 0, 1 ], 0);
+io mod = use "std/io.lim";
+
+// helper function for easier initial
+// state
+fn rev(arr [16]u8) [16]u8 = {
+	let mut arr' = arr;
+	for mut itm, idx .. arr' {
+		itm = arr[#arr - idx - 1]!;
+	};
+	return arr';
 };
 
-fn rule(state []u8, gen u64) unit = io {
-    let state' =
-        for a, b, c .. state; [8]u8 {
-            let i u8 =
-                if (a << 2) | (b << 1) | c == 0b111 {
-                    => 0;
-                } else if (a << 2) | (b << 1) | c == 0b110 {
-                    => 1;
-                } else if (a << 2) | (b << 1) | c == 0b101 {
-                    => 1;
-                } else if (a << 2) | (b << 1) | c == 0b100 {
-                    => 0;
-                } else if (a << 2) | (b << 1) | c == 0b011 {
-                    => 1;
-                } else if (a << 2) | (b << 1) | c == 0b010 {
-                    => 1;
-                } else if (a << 2) | (b << 1) | c == 0b001 {
-                    => 1;
-                } else {
-                    => 0;
-                };
-            if i {
-                io::print("# ")!;
-            } else {
-                io::print(". ")!;
-            };
-            => i;
-        };
-        io::print("\n")!;
-    
-    if #state' - 1 > gen {
-        rule(state', gen + 1);
-    };
+pub fn main() void = io {
+	rule(rev([1, 0...]), 15);
+};
+
+// rule loop
+fn rule(state [16]u8, gen u32) unit = io {
+	let mut state' = [16; 0...] u8;
+	for mut itm, idx .. state' {
+		// fetch values before and after index
+		let b = state[idx - 1]? or 0;
+		let i = state[idx]!;
+		let a = state[idx + 1]? or 0;
+		// apply rule
+		switch (b << 2) | (i << 1) | a;
+		| 0b111 do itm = 0;
+		| 0b110 do itm = 1;
+		| 0b101 do itm = 1;
+		| 0b100 do itm = 0;
+		| 0b011 do itm = 1;
+		| 0b010 do itm = 1;
+		| 0b001 do itm = 1;
+		| else  do itm = 0;
+		// prompt result
+		if itm == 1 {
+			io::print("# ")!;
+		} else {
+			io::print(". ")!;
+		};
+	};
+	io::print("\n")!;
+	// next iteration
+	if gen > 0 {
+		rule(state', gen - 1);
+	};
 };

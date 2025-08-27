@@ -1,0 +1,9 @@
+type rec = record {
+    a u64;
+    b u64;
+    c u64;
+};
+
+a rec = rec { a = 1, b = 2, c = 4 };
+
+pub fn main() void = {};

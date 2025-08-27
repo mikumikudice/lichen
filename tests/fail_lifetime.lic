@@ -1,0 +1,12 @@
+// parser test for asserting for unset
+// allocation lifetime
+
+fn alloc(src str, mut a mem) str = alloc {
+    return new ! src @ a;
+};
+
+pub fn main() void = alloc {
+    new here | 20 {
+        let foo = alloc("foo", here);
+    }!;
+};

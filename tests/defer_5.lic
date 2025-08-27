@@ -1,0 +1,12 @@
+// parser and compiler test for the
+// `defer` statement semantics and
+// implementation
+
+io mod = use "std/io.lim";
+
+pub fn main() void = io {
+    defer for name .. ["mia", "leo", "lue"] {
+        io::println(name)!;
+    };
+    defer io::println("printing names at exit")!;
+};

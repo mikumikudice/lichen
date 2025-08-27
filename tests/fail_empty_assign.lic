@@ -1,0 +1,9 @@
+// parser test for checking if empty
+// assignments are not declared
+
+fn nothing() !unit = {};
+
+fn main() void = {
+    let _ = nothing();
+    let x = _;
+};

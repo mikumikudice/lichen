@@ -9,7 +9,7 @@ fn hi() str = {
 
 fn hello(err bool) !str = {
     if err {
-        return fail;
+        return error;
     } else {
         return "test 2 ok";
     };

@@ -1,0 +1,9 @@
+// compiler test for checking if issue
+// with for loops on slices was fixed
+
+pub fn main() void = {
+    let mut arr = [8; 0...] u8;
+    for mut itm .. arr[0..#arr]! {
+        itm = 0;
+    };
+};

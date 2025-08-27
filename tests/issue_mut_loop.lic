@@ -1,0 +1,20 @@
+// compiler test for issue with
+// undefined behavior with muttable
+// arrays
+
+io mod = use "std/io.lim";
+
+pub fn main() void = io {
+    let arr = "olleh";
+    let len = #arr;
+    new here | 512 {
+        // copy
+        let mut text = new ! arr []u8 @ here;
+        // reverse
+        let mut text' = new ! [#arr; 0...] u8 @ here;
+        for mut char, idx .. text' {
+            char = text[#arr - idx - 1]!;
+        };
+        test (text' str) == "hello";
+    }!;
+};

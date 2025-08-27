@@ -1,0 +1,10 @@
+// compiler test for checking if issue
+// with string array unsafe indexing
+// is fixed
+
+pub fn main() void = {
+    let arr = ["a", "b", "c"];
+    for itm, idx .. arr {
+        test itm == arr[idx]!;
+    };
+};

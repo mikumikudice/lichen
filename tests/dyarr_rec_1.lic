@@ -1,0 +1,16 @@
+type foo = record {
+    bar []u8;
+    egg u64;
+};
+
+pub fn main() void = {
+    new buff | 20 {
+        let mut f = foo {
+            bar = [],
+            egg = 4,
+        };
+        f.bar = new ! [f.egg; 1, 2, 3, 4, 0...] @ buff;
+        test #f.bar == f.egg;
+        test f.bar[0]! == 1 && f.bar[3]! == 4;
+    }!;
+};

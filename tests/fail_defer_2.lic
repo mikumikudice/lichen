@@ -1,0 +1,6 @@
+fn halt() void = {};
+
+pub fn main() void = io {
+    defer return;
+    let x = 4 u32;
+};

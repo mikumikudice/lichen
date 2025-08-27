@@ -1,17 +1,19 @@
-conv mod = use "str/conv.lim";
-io   mod = use "std/io.lim";
+// how to gather user input in lichen
+
+io mod = use "std/io.lim";
 
 pub fn main() void = io & conv {
-    new arena | 128 + 16 {
+    let length = 128 u64;
+    new arena | length + 16 {
+        // allocate input buffer
+        let mut name = new ! [length; 0...] u8 @ arena;
+        // gather input
         io::print("type your name > ")!;
-
-        let mut buff = new ! [128; 0...] u8 @ arena;
-        io::read_to(buff)!
-            or io::fatal("failed to read from user");
-
-        let name = conv::from_bytes(buff);
-
+        let len = io::read_to(name)!
+            or io::panic("failed to read from user");
+        // greetings
         io::print("hello, ")!;
-        io::print(name)!;
-    }! or io::fatal("failed to create memory arena");
+        io::print(name[0..len]! str)!;
+        io::println("!")!;
+    }!;
 };

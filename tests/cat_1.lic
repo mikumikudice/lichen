@@ -1,0 +1,12 @@
+// parser and compiler test for
+// concatenation machinery
+
+pub fn main() void = io {
+    new here | 512 {
+        let foo = new ! "mornin' " @ here;
+        let bar = new ! "sailor!"  @ here;
+        let egg = cat foo ..! bar  @ here;
+
+        test egg str == "mornin' sailor!";
+    }!;
+};

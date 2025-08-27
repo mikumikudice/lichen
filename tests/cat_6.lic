@@ -1,0 +1,22 @@
+// compiler test for checking if the
+// concatenation machinery works with
+// contiguous-allocated arrays
+
+io mod = use "std/io.lim";
+
+type a = record {
+    b str;
+    c u64;
+};
+
+pub fn main() void = io {
+    new here | 1028 {
+        let foo = [ a { b = "a", c = 0 }, a { b = "b", c = 1 } ];
+        let bar = a { b = "c", c = 2 };
+        let egg = cat foo ..! bar @ here;
+        for itm, idx .. egg {
+            test itm.c == idx;
+            io::println(itm.b)!;
+        };
+    }!;
+};

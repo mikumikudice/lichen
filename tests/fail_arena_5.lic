@@ -1,0 +1,12 @@
+// parser and compiler test for memory
+// arena semantics and implementation
+
+fn alloc(data str, a mem) str @ a = alloc {
+    return new ! data @ a;
+};
+
+pub fn main() void = alloc {
+    new arena | 256 {
+        let foo = alloc("foo\n", arena);
+    }!;
+};

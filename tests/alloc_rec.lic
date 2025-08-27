@@ -1,0 +1,12 @@
+type foo = record {
+    foo [4]u8;
+    bar u64;
+};
+
+pub fn main() void = {
+    new here | 512 {
+        let part = new foo { foo = [1, 2, 3, 4], bar = 1 } @ here;
+        let concrete = part!;
+        test concrete.bar == 1 && concrete.foo[3] == 4;
+    }!;
+};

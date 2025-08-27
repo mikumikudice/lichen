@@ -1,0 +1,10 @@
+// parser test for asserting against
+// recurvise void functions
+
+pub fn main() void = {
+    let x = loop();
+};
+
+fn loop() u32 = {
+    loop();
+};

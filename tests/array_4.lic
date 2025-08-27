@@ -1,0 +1,25 @@
+// parser and compiler test for
+// functions that return arrays
+
+io mod = use "std/io.lim";
+
+fn arr_index(x [3]u32) u32 = {
+    return x[0];
+};
+
+fn slice_index(x []u32) u32 = {
+    return x[0]!;
+};
+
+pub fn main() void = io {
+    let arr = [1, 3, 4] u32;
+    let x = arr_index(arr);
+    let y = slice_index(arr[0..1]);
+    let z = slice_index(arr);
+
+    if x == 1 && y == 1 && z == 1 {
+        io::println("test ok")!;
+    } else {
+        io::println("test fail")!;
+    };
+};

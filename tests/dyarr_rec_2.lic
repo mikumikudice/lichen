@@ -1,0 +1,19 @@
+type foo = record {
+    arr []u8;
+    len u64;
+};
+
+fn init(mut f foo, mut a mem) !unit = init {
+    f.arr = new ? [f.len; 4, 3, 2, 1, 0...] @ a;
+};
+
+pub fn main() void = init {
+    new buff | 20 {
+        let mut f = foo {
+            arr = [],
+            len = 4,
+        };
+        init(f, buff)!;
+        test f.arr[0]! == 4 && f.arr[4]! == 0;
+    }!;
+};

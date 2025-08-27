@@ -2,8 +2,8 @@
 // with namespaces being rejected when
 // starting with an underscore
 
-fn _main() unit = {};
+fn _foo() u32 = { return 4; };
 
 pub fn main() void = {
-    let x = _main();
+    let x = _foo();
 };

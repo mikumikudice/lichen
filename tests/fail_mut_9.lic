@@ -1,0 +1,13 @@
+// parser test for asserting
+// invalid mutable value passing of
+// record field indexing
+
+type foo = record {
+    bar []u8;
+    mut x u64;
+};
+
+pub fn main() void = m {
+    let f = foo { bar = [8; 0...], x = 0 };
+    let mut ref = f;
+};

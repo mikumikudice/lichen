@@ -1,0 +1,6 @@
+// parser test for asserting against
+// recurvise void functions
+
+pub fn main() void = {
+    main();
+};

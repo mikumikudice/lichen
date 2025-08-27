@@ -21,22 +21,8 @@
 - [effects](#effects)
 - [FFI declarations](#FFI-declarations)
 
-# cheatsheet
-## declarations
-- `[pub] fn <function_name>([ [mut] <parameter_name> <parameter_type> ]* [<optional_variadic> <variadic_type> ...] ) <return_type> = [optional_tag] <scope_or_FFI>`
-- `let [mut] <variable_name> [optional_type] = <expression>`
-
-## allocation
-- `mem <arena_name> | <size_of_arena> { ... } [optional_error_assertion]`
-- `= new [optional_assertion_operator] <value> @ <arena_name>`
-- `= <value> .. <optional assertion_operator] <value> @ <arena_name>`
-
-## modules
-- `<module_binding> mod = use <string_of_path_to_file>`
-- `<module_name>::<module_field>`
-
 # declarations
-lichen makes a distinction between global and local variables, mutable namespaces and values, constant (compile-time known) and dynamic (runtime known) values.
+lichen makes a distinction between global and local variables, constant (compile-time known) and dynamic (runtime known) values.
 
 global variables must have: a constant namespace (identifier), an explicit type, and a value known at compile-time:
 ```rust
@@ -44,7 +30,7 @@ foo = 4; // invalid
 pi f64 = 355 / 113; // invalid. the expression cannot be executed at compile-time
 stdout u32 = 1; // valid
 ```
-all global declarations, such as constant variables, functions and types may be marked as public in order to be accessed from other files:
+all global declarations, such as constant variables, functions and typedefs may be marked as public in order to be accessed from other files:
 ```rust
 pub foo u64 = 64;
 
@@ -65,7 +51,7 @@ z = z * 2;
 ```
 see more about mutability in [this section](#mutability).
 
-functions are a bit similar but not quite. as expected, all global declarations are immutable, and this includes functions. but they may mark an argument as mutable in order to change it during execution.
+functions are a bit similar but not quite. as expected, all global declarations are immutable, and this includes functions.
 ```rust
 fn foo() u32 = {
     return 4;
@@ -75,22 +61,17 @@ fn bar(x u32) u32 = {
     return x + y;
 };
 ```
-a function may perform observable effects: opening files, writing to terminal, or mutating taken arguments. all of this are considered effects, and any function that produces effects must be given a tag that indicates this effect:
+a function may perform observable effects: opening files, writing to terminal, or mutating taken arguments. all of this are considered effects, and any function that produces effects must be given a tag that indicates this effect. in this case, we marked arguments as mutable in order to change its _underlying data_ during execution.
 ```rust
 type foo = {
     bar u32;
 };
 
-// x is marked as mutable, then the
-// function is marked with a given tag
-// of `a` to indicate it may or may not
-// change x's value. the name is purely
-// for documenting purposes
-fn change(mut x foo, y u32) unit = a {
+fn change(mut x foo, y u32) unit = muts_foo {
     x.bar = y;
 };
 
-fn take_and_change(mut x foo, y u32) u32 = b {
+fn take_and_change(mut x foo, y u32) u32 = also_muts_foo {
     let old = foo.bar;
     foo.bar = y;
     return old;
@@ -99,7 +80,7 @@ fn take_and_change(mut x foo, y u32) u32 = b {
 // calling an impure function requires
 // the function that calls it to also
 // declare the same effect tags
-pub fn main() void = a & b {
+pub fn main() void = muts_foo & also_muts_foo {
     let mut z = foo { bar = 4 };
     change(z, 5);
     let old = take_and_change(z, 4);
@@ -123,7 +104,7 @@ functions may or may not take arguments, but always return something (except for
 ```rust
 fn foo(x u32, y u32) u32 = { return x + y; };
 
-fn bar(egg fn(u32, u32) u32, baz) u32 = {
+fn bar(egg fn(u32, u32) u32, baz) u32 = { // higher order functions and functions as values
     return egg(baz, baz * 2);
 };
 
@@ -132,7 +113,7 @@ fn empty() unit = {};
 // calling this halts the execution
 fn terminal() void = {};
 ```
-functions returning `unit` can be called and their result stored, but since unit has no value, that variable cannot be meaningfully used. a function that returns a `void` type actually halts the program, and therefore cannot be assigned to any value, once they do not return.
+functions returning `unit` or `void` can be called, but since unit has no value and void has no value at all, it cannot be meaningfully used, hence, cannot be assigned to variables. a function that returns a `void` type actually halts the program, and therefore cannot be used in any expression, once they do not return.
 
 see more about types in [this section](#types).
 
@@ -143,18 +124,18 @@ fn x'(a u32) u32 = x(a, 2);
 ```
 on these alias, only constant values are allowed to be used, just like global variables' values.
 
-functions may also give optional values for its parameters, that will be overwritten if a new value is provided:
+functions may also give optional values for its parameters, that can be overriden at call site with a new value:
 ```rust
 fn div(x u32, y u32 = 2) u32 = { return x * y; };
 
 pub fn main() void = {
-    let a = div(10, 5);
+    let a = div(10, y = 5);
     let b = div(4);
 };
 ```
 
 # variables
-local variables have a special behaviour, especially considering mutability. for instance, scope declarations, function parameters and statement declarations are considered local variables, which means they can be mutable and have considerably more complex expressions assigned to:
+local variables have a special behavior, especially considering mutability. for instance, scope declarations, function parameters and statement declarations are considered local variables, which means they can be mutable and have considerably more complex expressions assigned to:
 ```rust
 let constant = 4 u32;
 let mut nonconstant = constant + 4;
@@ -174,7 +155,7 @@ pub fn main() void = {
 ```
 see more about mutability in [this section](#mutability).
 
-variables may omit their type at declaration when the type of the assignment can be deduced. numeric literals have no intrinsic type, but can be casted freely to any numeric (and even boolean) types. they also decay to other numeric types when used on a typed expression i.e. they assume the type of the expression.
+variables may omit their type at declaration when the type of the assignment can be deduced. numeric literals have no intrinsic type, but can be casted freely to any numeric (and even boolean) types. they also assume to other numeric types when used on a typed expression i.e. they _decay_ to the type of the expression.
 ```rust
 let unknown = 4; // invalid
 let known = 5 u32;
@@ -192,7 +173,7 @@ pub fn main() void = {
     let bar = fn_err_void()!; // also not valid
 };
 ```
-see more of this in [this section](#types).
+this is because void types never return and actually halt the program. see more of this in [this section](#types).
 
 # types
 lichen has a somewhat small set of primitives and derivative types. these are:
@@ -222,7 +203,7 @@ let avogadro = 6.022e23;
 ```
 
 ## strings
-lichen supports total C ffi at primitive levels, which means we support strings with fat pointers (`str`) and null-terminated strings (`cstr`), nicknamed C-strings. you can freely cast a string to a C-string, but not the other way around. a string with a fat pointer is a pointer with a length and a pointer to the actual data, casting it to a C-string means assigning only the data. strings are also the only primitive value that doesn't require a explicit casting.
+lichen supports total C ffi at primitive levels, which means we support strings with fat pointers (`str`) and null-terminated strings (`cstr`), nicknamed C-strings. you can freely cast a string to a C-string, but not the other way around. a string with a fat pointer is a pointer with a length and a pointer to the actual data, casting it to a C-string means assigning only the data, but a C-string has no underlying length attached to the type. strings are also the only primitive value that doesn't require an explicit casting.
 ```rust
 let text = "something in here";
 let other = text cstr; // casting
@@ -259,22 +240,22 @@ test w; // also evaluates to true and succeeds
 ```
 
 ## partial types
-all types can be optionally marked as partial, stating that this value can either be the base type or an error state (`fail` or `nomem`), as such:
+all types can be optionally marked as partial, stating that this value can either be the base type or an error state (`error` or `nil`), as such:
 ```rust
 let x u32 = 4; // concrete type
 let y !u32 = 5; // partial type with valid data
-let z !u32 = fail; // partial type as error
+let z !u32 = error; // partial type as error
 
 let x' = y!; // assert it is a valid value
-let y' = z ? 0; // default to zero if z is an error
+let y' = z? or 0; // default to zero if z is an error
 ```
-`fail` and `nomem` are singletons, like `true` and `false`. they have a different semantical meaning, but internally are just numbers (-1 to indicate failure and 0 to indicate a null pointer/failed allocation).
+`error` and `nil` are singletons, like `true` and `false`. they have a different semantical meaning, but internally are just numbers (-1 to indicate failure and 0 to indicate a null pointer/failed allocation). usually, `error` stands for some form of logic failure, used, for example, when opening a file fails. on the other hand, `nil` represents that something related to memory failed, like an indexing, allocation or slicing.
 
 these types cannot be compared nor used on expressions, but can be asserted on their error state at any point.
 ```rust
 fn div(x u32, y u32) !u32 = {
     if y == 0 {
-        return fail;
+        return error;
     } else {
         return x / y;
     };
@@ -304,7 +285,7 @@ fn egg() unit = {
 
 fn fizz(x u32) !unit = {
     if x == 0 {
-        return fail; // error type singleton
+        return error; // error type singleton
     };
 };
 
@@ -313,7 +294,7 @@ fn buzz() !unit = {
 };
 ```
 
-the `void` type means "no return" in the sense a function marked as void cannot be assigned to a variable because it never returns i.e. its a terminal function, halting the code execution, as ‘never returns at all’ (like exit, panic, or fatal error). once nothing can return, marking the type as partial makes the program halt in an error exit code. the main function is marked as void once it's the entry point i.e. it never returns anything.
+the `void` type means "no return" in the sense a function marked as void cannot be assigned to a variable because it never returns i.e. its a terminal function, halting the code execution, as "never returns at all" (like exit, panic, or fatal error). the main function is marked as void once it's the entry point i.e. it never returns anything.
 ```rust
 pub fn main() void = {
     exit_on_error();
@@ -323,6 +304,15 @@ fn exit_on_error() !void = {};
 ```
 as you may also notice, no bubbling or assertion is needed or allowed on a void type, once it _never_ returns any value, even if the value is an error state. similarly, you cannot bubble from within an void function.
 
+once nothing can return, marking the type as partial makes the program halt in an error exit code, which means a function of type `!void` not only halts the program, but halts on a failure signaled state. for instance, the `panic` function, from the io module, is defined as:
+```rust
+// prints `data` followed by a line feed to stderr and
+// halts the program execution with exit code of 1
+pub fn panic(data str) !void = io_write {
+    ...
+};
+```
+
 ## arrays
 arrays are a contiguous list of same-type data on memory that may be indexed. the indexing may be unsafe once we not always know if the array is big enough to accommodate given index, so lichen solves this my making all array indexing that is not constant (i.e. its index and length are known at compile-time) a partial type expression, as follows:
 ```rust
@@ -331,7 +321,8 @@ let value u32 = constant_array[4]; // both array length and index are known at c
 let partial !u32 = constant_array[value]; // “the indexing is now not known at compile-time, so the result is a partial type (!u32)
 
 new buffer | 128 * 4 {
-    let dynamic_array = new ! [128; 0, 2, 3, 7, 0...] u32 @ buffer; // array of 128 items of 4 bytes each
+    let length = 120 + 8;
+    let dynamic_array = new ! [length; 0, 2, 3, 7, 0...] u32 @ buffer; // array of 128 items of 4 bytes each
     let value' u32 = dynamic_array[4]!; // now the array length is not known at compile-time, resulting in a partial type again
     let partial' != dynamic_array[value]; // result is !u32 because neither index nor length are compile-time known
 }!;
@@ -346,13 +337,21 @@ new arena | size_in_bytes {
 
     let size_in_items = 20 u64;
     let array_with_rule = new ! [size_in_items; 0...] @ arena; // sets all 20 items to zero
-}!; // assertion for nomem failure
+}!; // assertion for nil
 ```
 unlike strings, static arrays are contiguous segments of data, where the first 8 bytes are it's length and all subcequent bytes the array data. dynamically allocated arrays, on the other hand, are fat pointers as well. you can cast a static array into a dynamic array through _slicing_, but not the other way around:
 ```rust
 let static_arr [8]u32 = [0...];
 let dynamic_arr []u32 = static_arr[..];
 let slice = static_arr[0 .. 4];
+```
+slicing allows you to get a subset of the items, starting from any valid index to any other valid index greater or equal to the starting one. if the indexes are not known at compile time, the slicing results in a partial type:
+```rust
+let arr = [1, 2, 3, 4, 5, 6] u32;
+let safe = arr[3..5];
+let start = 1 u64;
+let end = 4 u64;
+let unsafe = arr[start..end]!;
 ```
 
 ## records
@@ -385,38 +384,6 @@ y foo = foo { bar = 4, egg = 3, ... }; // valid. baz defaults to 4
 z foo = foo { ... }; // also valid. baz is set to 4 and all other fields are set to zero
 ```
 
-records can also implement subtyping as a manner of implementing some generic behaviour, often found in types like tagged unions in hare or enums in rust. except it carries all its variants in memory at all time. when using `use` in record fields, these field names become variants - assignable by type:
-```rust
-type person = record {
-    use name str;
-    use age u8;
-};
-
-pub fn main() void = {
-    let mut bob person = "bob"; // implicitly assigns to `bob.name`
-    bob = 42; // implicitly assigns to `bob.age`
-
-    let name = bob.name;
-    let age u8 = bob; // can be assigned as implicitly `bob.age`, deuced by the type
-};
-```
-
-once assigning to and reading from requires the type matching, a record can't more than once a type as a variant, but it is safe to implement the same type as _not_ a variant. using the same example:
-```rust
-type person = record {
-    use name str;
-    use age u8;
-    id str;
-};
-
-pub fn main() void = {
-    let mut bob person = "bob"; // only name is a variant
-    bob = 42;
-    bob.id = "111.444.32";
-};
-```
-marking id with `use` as well would result a compilation error.
-
 records are passed by value by default, which means you are duplicating all data on assignment:
 ```rust
 let mut foo some_rec = { field_1 = 4, ... };
@@ -442,6 +409,41 @@ pub fn main() void = {
     let beetle = car { manufacturer = "volkswagen", door_cound = 2 };
 };
 ```
+records may also specify which fields should be mutable:
+```rust
+type person = record {
+    id str;
+    mut name str;
+    mut arg u8;
+    mut alive bool;
+};
+```
+these fields, once assigned, cannot be reassigned or used when a mutable reference is needed. see more about this on [this section](#mutability).
+
+## unions
+(tagged) unions work and are used very similarly to the ones found in C, for example, with the difference they are partials by default when accessing their variants. this is because a variant that does not match the current held value type, which is tracked by its internal tag, is read as `error`. let's see it in practice:
+```rust
+type int_or_str = union {
+    as_int u64;
+    as_str str;
+};
+
+pub fn main() void = {
+    let uni int_or_str = "foo";
+    let x = uni.as_int? or 0; // will default to zero, once uni currently holds a string
+    let y = uni.as_str? or ""; // will read the value "foo", once the variant as_str matches the current value type
+};
+```
+unions can have as many variants as you like, as long as no type is repeated.
+```rust
+type foo = union {
+    bar str;
+    egg str; // error. bar is already of type str
+    fizz u64;
+    buzz bool;
+};
+```
+remember! these are not records, they hold only one value at a type of one of the variant types.
 
 ## enumerators
 enumerators are a way of defining a finite set of values behind a single type. you can use any primitive type as a enum type, as follows:
@@ -517,19 +519,20 @@ lichen also has a builtin length operator that can be used on strings and arrays
 let text = "some text in here";
 let length = #text;
 ```
-a concatenation operator:
+type agnostic concatenation:
 ```rust
-let new_array = old_array_a ..! new_array_b @ arena; // concatenate and assert for `nomem`, resulting in a concrete type
-let new_array' = old_array_a ..? new_array_b @ arena; // concatenate and bubble `nomem` up on failure, also results in a concrete type
-let new_array'' = old_array_a .. new_array_b @ arena; // concatenate but do not assert for errors, resulting in a partial type
+let new_array = cat old_array_a ..! new_array_b @ arena; // concatenate and assert for `nil`, resulting in a concrete type
+let new_array' = cat old_array_a ..? new_array_b @ arena; // concatenate and bubble `nil` up on failure, also results in a concrete type
+let new_array'' = cat old_array_a .. new_array_b @ arena; // concatenate but do not assert for errors, resulting in a partial type
 ```
 all of these concatenations are dynamically allocated on a memory arena, you can see more about these in [this section](#memory-arenas-and-memory-allocation).
 
 the same symbol is used for the range operator:
 ```rust
-switch a
-| 1 .. 3 { io::println("inclusive range in both ends")!; };
-| 4 .. 9 { io::println("this includes all numbers from 4 to 9, including 4 and 9")!; };
+switch a;
+| 1..3 { io::println("inclusive range in both ends")!; };
+| 4..9 { io::println("this includes all numbers from 4 to 9, including 4 and 9")!; };
+| else { io::println("default case")!; };
 ```
 see more about switch cases in [this section](#switch).
 
@@ -588,14 +591,14 @@ executes the subsequent code on a fail, assigning the zeroed value to the variab
 you may also chain handlers depending on the error variant:
 ```rust
 let foo str = may_also_fail("hi")?
-    or nomem | "allocation failed";
-    or fail | "something went wrong";
+    or nil | "allocation failed";
+    or err | "something went wrong";
 ```
 these chains are not required to be exhaustive i.e. cover all errors. on this case, the resulting type is still partial.
 ```rust
 new buffer | 128 << 8 {
     let number !u64 = strconv::to_u64("128", buffer)!
-        or nomem | io::fail("buffer not large enough");
+        or nil | io::panic("buffer not large enough");
 }!;
 ```
 this `buffer` is a memory arena. see more about it in [this section](#memory-arenas).
@@ -663,32 +666,38 @@ type weekday = enum str {
 
 pub fn main() void = io {
     let today = weekday.tuesday;
-    switch today
-    | monday, tuesday {
-        io::printfln("today is %s. we're on the early week", today)!
-    };
-    | wednesday, thursday {
-        io::printfln("today is %s. we're on mid week", today)!
-    };
-    | friday {
-        io::printfln("today is %s!", today)!
-    };
-    | saturday, sunday {
-        io::printfln("today is %s. were on the weekend", today)!
-    };
+    switch today;
+    | monday, tuesday do
+        io::printfln("today is %s. we're on the early week", today)!;
+    | wednesday, thursday do
+        io::printfln("today is %s. we're on mid week", today)!;
+    | friday do
+        io::printfln("today is %s!", today)!;
+    | saturday, sunday do
+        io::printfln("today is %s. were on the weekend", today)!;
 };
 ```
 similarly to the if-else blocks, switch also allows you to define local variables:
 ```rust
-    switch let r = some_fun(); r
-    | 0 { io::println("single constant")!; };
-    | 2, 3, 4 { io::println("set of constants")!; };
-    | 5 .. 10 { io::println("ranges of constants")!; };
-    | else { io::println("default case")!; };
+    switch let r = some_fun(); r;
+    | 0 do io::println("single constant")!;
+    | 2, 3, 4 do io::println("set of constants")!;
+    | 5 .. 10 do io::println("ranges of constants")!;
+    | else do io::println("default case")!;
 ```
 as seen in this example, when it's not possible or required to cover _all_ cases, you may add an `else` case to address anything that doesn't match the other cases. the else case may be placed at any point of the switch block.
 
-switches can only compare against constant values and can only switch for concrete types.
+worth mentioning that switches can only compare against constant values and can only switch for concrete types.
+
+unlike if-else chains, as you've seen, it's not mandatory to use scopes at every case, but you can also use them:
+```rust
+switch foo;
+| 0, 2, 4, 6 {
+    io::println("even and within 6!")!;
+    return true; 
+};
+| else do return false;
+```
 
 ## for-loop
 a for loop is simply a way to safely iterate over an array. if an array is empty, no execution happens:
@@ -725,9 +734,35 @@ for mut item, index .. list {
 ```
 this code left-shifts the array by one, appending a zero at the end with the use of `or`. for an array item reassignment, it is mandatory for the iteration array also be mutable.
 
+## while-loop
+the while loop is one of the simplest and somewhat deadliest forms of loops. it simply runs its body until the condition becomes false:
+```rust
+while mut x = 7 u32; x > 0 {
+    io::println("meow")!;
+    x = x - 1;
+};
+```
+as shown while loops also accept local variables.
+
+while loops are considered dangerous because they may run forever:
+```rust
+while true {
+    ...
+};
+```
+while this may be of some use, it is non-deterministic, which means a pure function could keep a program from terminating and hang execution, potentially causing stack overflows. that's why it is required for functions that use while loops to implement some effect tagging for it:
+```rust
+pub fn main() void = loop {
+    let mut x = 4 u32;
+    while x > 0 {
+        x = some_logic(x);
+    };
+};
+```
+
 ## test
-the test statement asserts for a boolean expression to be true, optionally prompting an error message, and then halting the program execution on fail.
-```rust 
+the test statement asserts for a boolean expression to be true, optionally prompting an error message, and then halting the program execution on a non-zero exit code.
+```rust
 let x = "foo";
 let y = "bar";
 
@@ -743,6 +778,51 @@ fn div(x u32, y u32) !u32 = {
 };
 ```
 
+## defer
+defers are a way do _defer_ the execution of something, for instance, to clean up resources most of the time:
+```rust
+let file = os::open("foo.txt", os::flags.RW)!;
+defer os::close(file)!;
+```
+defers in lichen are per-scope based and run in reverse order e.g. the following code
+```rust
+// parser and compiler test for the
+// `defer` statement semantics and
+// implementation
+
+io mod = use "std/io.lim";
+
+pub fn main() void = io {
+    ret();
+};
+
+fn ret() unit = io {
+    defer io::println("at exit")!;
+    io::println("on call")!;
+    if true {
+        defer io::println("at return")!;
+        io::println("on scope")!;
+        return;
+    };
+    io::println("won't run")!;
+};
+```
+prints:
+```
+on call
+on scope
+at return
+at exit
+```
+
+although, defers are a bit limieted. for instance, they cannot declare variables, once it would be meaningless, and also they cannot use `void` expressions, as calling a void function, returning a value or using `unreachable`, which all would twist the control flow.
+```rust
+fn some_fun() u32 = {
+    defer io::panic("haltnig the program")!; // this is confusing and totally prohibited at compile time
+    return 4;
+};
+```
+
 # memory arenas
 arenas are the only way to dynamically allocate memory in lichen. an arena is a "null garbage collector" or a "runtime stack", in the sense it allocates data contiguously on a pre-defined size chunk of memory and then deallocates everything at once at the end of its lifetime, unlike actual garbage collectors, arenas never individually free objects, but the entire chunk is freed at once at end of scope. and unlike actual stack frames, the arena can be arbitrarily large and allocate the actual memory reserved by the operating system on demand:
 ```rust
@@ -752,8 +832,10 @@ new arena | 1_000_000_000 {
     let mut buffer = new ! [128; 0...] u8 @ arena;
     // reads from stdin and places at this buffer
     io::read_to(buffer)!;
-    // casts it to a string and prints it back
-    io::printfln("you typed: %s", buffer str)!;
+    // casts it to a string
+    let mut buffer_as_str = buffer str;
+    // prints it back
+    io::printfln("you typed: %s", buffer_as_str)!;
 }!; // deallocates all required memory
 ```
 at the end of the scope, all allocations and the arena itself are guaranteed to be deallocated, except on a halt within the arena scope.
@@ -763,9 +845,9 @@ arenas may also be nested and passed to other functions for more specific alloca
 new input | 512 {
     let file_name = new ! [512; 0...] @ input;
     io::read_to(file_name)!;
-    mem file_buffer | 128 << 16 {
+    new file_buffer | 128 << 16 {
         let file = fs::open(file_name str, fs::flags.READONLY)!
-            or io::fatalf("could not open file \"%s\"", file_name str);
+            or io::reportfln("could not open file \"%s\"", file_name str);
 
         let data = fs::read_lines(file, file_buffer)!;
         for line .. data {
@@ -848,7 +930,7 @@ pub fn main() void = fs & io {
                 file' = file' ..! line @ arena;
             };
         } else {
-            io::fatalf("the file %s does not exist or cannot be opened", buffer');
+            io::panicf("the file %s does not exist or cannot be opened", buffer');
         };
     }!;
 };
@@ -893,6 +975,8 @@ pub fn main() void = {
 };
 ```
 this does not apply to void functions, once they never return i.e. no value exists to be used.
+
+`do` tags cannot be chained with any other tag.
 
 # modules
 modules are a simple and practical way to both encapsulate reusable code and effects behind a single tag. for instance, any module that implements an impure function (i.e. one that produce effects) requires that the caller function only declare the module binding as an effect tag:
@@ -967,10 +1051,10 @@ os mod = use "std/os.lim";
 
 pub fn main() void = io & os {
     let cmd = os::exec::command("cat", "main.lic")!;
-    cmd.run()! or fail | io::fatal("could not execute command");
+    cmd.run()! or error | io::panic("could not execute command");
 };
 ```
-see more about the `or fail | ...` syntax in [this section](#error-assertion).
+see more about the `or error | ...` syntax in [this section](#error-assertion).
 
 even if, semantically, there is no actual difference, once a module is first looked at the standard library at the lib path and, if not found, then looked at the source root folder, it is a convention to use the `.lim` (lichen module) for files you write to provide some resource as an isolated code unit, and the `.lic` (lichen code) extension for main source files, the ones you write to give the program functionality.
 
@@ -990,7 +1074,7 @@ you can place data on these arenas using two main operations: allocation and con
 ```rust
 let arr = new [number_of_items; 0...] u32 @ arena;
 ```
-this results in an optional type because the arena may not be able to place this data at the available memory.in an allocation failure, the error state is `nomem`. that's why we assert if we want to halt execution on a failure or bubble up if the failure should be recoverable:
+this results in an optional type because the arena may not be able to place this data at the available memory.in an allocation failure, the error state is `nil`. that's why we assert if we want to halt execution on a failure or bubble up if the failure should be recoverable:
 ```rust
 let required_for_further_execution = new ! [1, 2, 3, 4] u32 @ arena;
 let recoverable_from_failure = new ? [8; ""...] @ arena;
@@ -1005,7 +1089,7 @@ fn reduce_array(size u64) !u64 = {
             acc = acc + item;
         };
         return acc;
-    // if `size` is too large, the arena won't be allocated and bubble `nomem` up
+    // if `size` is too large, the arena won't be allocated and bubble `nil` up
     }?;
 };
 
@@ -1016,26 +1100,52 @@ pub fn main() void = io {
 when so happens, the entire arena scope is not executed.
 see more about error assertion syntax in [this section](#error-assertion).
 
-the concatenation happens using the concatenation operator `..` (the same operator used as a range operator when using case intervals in [switch cases](#switch)), can be used to concatenate two different arrays or strings into a new, single data unit:
+the concatenation happens using the keyword `cat` and the concatenation operator `..` (the same operator used as a range operator when using case intervals in [switch cases](#switch)), can be used to concatenate two different arrays or strings into a new, single data unit:
 ```rust
 let one_to_five = [1, 2, 3, 4, 5] u32;
 let six_to_nine = [6, 7, 8, 9] u32;
 
 new arena | (#one_to_five + #six_to_nine) * 4 {
-    let one_to_nine = one_to_five ..! six_to_nine @ arena;
+    let one_to_nine = cat one_to_five ..! six_to_nine @ arena;
 };
 ```
 just like any other allocation, the concatenation requires an explicit arena to be placed using `@ your_arena`.
 
-similarly, the concatenation operator also results in a partial type, but can be asserted for failures.
+similarly, concatenation also results in a partial type, but can be asserted for failures.
 ```rust
-let partial ![]u32 = [1, 2, 3] .. [5, 6, 7] @ arena;
-let bubble []u32 = [1, 2, 3] ..? [5, 6, 7] @ arena;
-let assert []u32 = [1, 2, 3] ..! [5, 6, 7] @ arena;
+let partial ![]u32 = cat [1, 2, 3] u32 .. [5, 6, 7] u32 @ arena;
+let bubble []u32 = cat [1, 2, 3] u32 ..? [5, 6, 7] u32 @ arena;
+let assert []u32 = cat [1, 2, 3] u32 ..! [5, 6, 7] u32 @ arena;
 ```
+it's worth noticing that once these arrays are static, the final array length is known at compile time as well i.e. these concatenations results in the type `[6]u32`.
+
+## dynamic arrays and slices
+when allocating arrays, often is needed to allocate an array of size of unkown size at compile time, but known at runtime, i.e. a variable:
+```rust
+let length = 4 * item_count u64;
+let arr = new ! [length; 0...] u32 @ arena;
+```
+when doing this, it's mandatory a two things:
+- the length be of type `u64`, because all memory length- and type size-related types are `u64`
+- the last item must be a fill expression (i.e. `val...`), because you must initialize all possible values
+
+this actually creates a type of `[]T`, i.e. a slice; a fat pointer containing a length and a pointer to the actual data, very similarly to strings. in fact, a `[]u8` is validly castable into a `str` and vice-versa. these types can also be constructed from _slicing_ an pre-existing array or slice:
+```rust
+let arr = [1, 2, 4, 6, 8] u32;
+let slice = arr[0..2]; // results in [1, 2, 3, 4]
+let slice' = arr[0...]; // results in [1, 2, 3, 4]
+let slice'' = arr[3...]; // results in [6, 8]
+```
+the indexes on the slice refers to which index should the slicing start and end, both ends inclusive.
+
+when actually allocating, say this slice:
+```rust
+let slice = new ! [length; 1, 4, 16, 0...] u32 @ arena;
+```
+the literal is explicitly saying that it should contain `1, 4, 16` and set all remaining items to 0, which means it's minimum length is 3. at runtime, when allocation is attempted, if length is less than 4, the allocation failure actually returns `error` instead of `nil`, because it failed not due to insufficient memory, but because of a runtime logic error.
 
 # mutability
-lichen addresses for mutability. unlike rust, this system is not associated with a lifetime or borrowing system. memory is still passed by value and not by reference, but, similarly to rust, mutability in lichen addresses for namespace _and_ value.
+lichen addresses for mutability. unlike rust, this system is not associated with a lifetime or borrowing system, but, similarly to rust, mutability in lichen addresses for namespace _and_ value.
 ```rust
 let x = 4; // can't reassign to `x`, will always be 4
 let mut y = x;
@@ -1048,21 +1158,21 @@ other_rec = { rec | field_2 = 5 }; // can reassign to `other_rec`
 ```
 see more about this `{ rec | field_2 = 5 }` syntax in [this section](#records).
 
-passing a known size value, such as records, is by value, but unknown/dybnamic sized values such as strings and dynamic arrays are passed by value. for this, it's required mutability matches:
+on assignments known size values, such as records, are passed by value, but unknown/dynamic sized values such as strings and dynamic arrays are passed by reference. for this, it's required mutability matches:
 ```rust
 let x = "str";
 let mut y = x; // invalid. mutating `y` would also affect constant `x`
 
 let mut w = [4; 0...] u32;
-let z = w; // also invalid. mutating `w` would also affect constant `z`
+let z = w; // valid. w can be deepcopied onto the stack
 ```
 
-passing a mutable variable to another function, in the other hand, is different and always passed by reference. that means that if a function updates a field of a record or writes to an array, the original variable also changes, once they carry the same value:
+passing a mutable variable to another function, in the other hand, is different and always passed by reference. that means that if a function have a mutable parameter to some aggregated type, for example, a record, and updates a field of it, or the parameter is an array and the function writes to it, the original variable also changes, once they are the same data:
 ```rust
 type person = record {
     age u8,
     name str,
-}
+};
 
 // x is marked as mutable, then the
 // function is marked with a given tag
@@ -1081,27 +1191,73 @@ pub fn main() void = chn {
 ```
 both tests succeeds when the code is run.
 
+note that, in lichen, substructures are laid down in memory as contiguous data i.e. no nested pointer to other fields are stored. rather, the actual structure is placed. this means all data is always deep copied. which means it's always safe to copy an immutable structure with known size, but a record of arrays dynamically allocated, for example, cannot be safely copied to another recipient:
+```rust
+type size_known = record {
+    foo u32[4];
+    bar u8[4];
+};
+
+type size_unknown = record {
+    foo u32[];
+    bar str;
+};
+
+pub fn main() void = {
+    let foo = size_known { foo = [0...], bar = [1, 2, 3, 4]};
+    let mut bar = foo; // deep copied
+
+    let foo' = size_unknown { foo = [3; 0...], bar = "abcd" };
+    let mut bar' = foo'; // dissalowed. cannot deep copy fields of foo'
+};
+```
+when dealing with records which not all fields are mutable, these constrains do not propagate backwards i.e. a mutable record with immutable fields can be passed as a mutable reference, but a immutable record with mutable fields cannot be reassigned or update its mutable fields. which means the following code is invalid:
+```rust
+type foo = record {
+    mut bar u64;
+};
+
+pub fn main() void = m {
+    let f = foo { bar = 0 };
+    f.bar = 4; // f is still immutable
+};
+```
+but this one is valid:
+```rust
+type foo = record {
+    bar [8]u8;
+    mut x u64;
+};
+
+fn take_ref(mut x foo) unit = m { };
+
+pub fn main() void = m {
+    let f = foo { bar = [0...], x = 0 };
+    take_ref(f); // as long as bar is not mutated, this is valid
+};
+```
+
 # error and propagation
-errors are the other side of partial types, as an invalid state with `fail` or a memory allocation failure with `nomem`. these singletons can't be operated by any means and not compared to anything, but can be returned, assigned and asserted on:
+errors are the other side of partial types, as an invalid state with `error` or a memory allocation failure with `nil`. these singletons can't be operated by any means and not compared to anything, but can be returned, assigned and asserted on:
 ```rust
 io mod = use "std/io.lim";
 
 fn state_error() !unit = { return fail; };
 fn memory_fail() !unit = {
-    mem empty | 0 {
+    new empty | 0 {
         let arr = new ? [128; 0...] u32 @ empty; // cannot fit 128 items of 32 bits in a 0-sized memory arena
     }!;
 };
 
 pub fn main() void = io {
-    let error = state_error();
-    let error' !u32 = fail;
-    memory_fail()! or io::fatal("allocation failed");
+    let err = state_error();
+    let err' !u32 = error;
+    memory_fail()! or io::panic("allocation failed");
 };
 ```
 when you bubble the error up, the function returning the error shall return a partial type as well:
 ```rust
-fn failure() !unit = { return fail; };
+fn failure() !unit = { return error; };
 fn propagates(x u32) !u32 {
     if x == 0 {
         failure()?;

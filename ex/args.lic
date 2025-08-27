@@ -1,0 +1,10 @@
+// how to fetch CLI arguments in lichen
+
+os mod = use "std/os.lim";
+
+// FFI for printing C strings
+fn puts(mut data cstr) u32 = C use "puts";
+
+fn main() void = C & os {
+    puts(os::args(1)? or ("none" cstr));
+};

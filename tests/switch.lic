@@ -1,0 +1,31 @@
+// parser and compiler test for the
+// switch statement
+
+io mod = use "std/io.lim";
+
+pub fn main() void = io {
+    let x = 4 u32;
+    switch x;
+    | 0..2 do io::println("test 1 fail")!;
+    | 3, 5 do io::println("test 1 fail")!;
+    | 6... do io::println("test 1 fail")!;
+    | else do io::println("test 1 ok")!;
+
+    let y = 8 u32;
+    switch y;
+    | 3, 4, 5... do io::println("test 2 ok")!;
+    | 1..2 do io::println("test 2 fail")!;
+    | else do unreachable;
+
+    let z = 16 u32;
+    switch z;
+    | else do io::println("test 3 fail")!;
+    | 9... do io::println("test 3 ok")!;
+
+    let w = "foo";
+    switch w;
+    | "foo" do io::println("test 4 ok")!;
+    | "bar" do io::println("test 1 fail")!;
+    | "egg" do io::println("test 1 fail")!;
+    | else  do io::println("test 1 fail")!;
+};

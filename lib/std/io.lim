@@ -1,208 +1,146 @@
-// the io module implements functions to writing
-// to and reading from file handlers.
+// the io module implements functions for writing to and
+// reading from file handlers and streams
+
+conv mod = use "str/conv.lim";
+mkr  mod = use "str/mkr.lim";
 
 // runtime wrappers for the std handles
 pub stdin  u32 = use "rt.stdin";
 pub stdout u32 = use "rt.stdout";
 pub stderr u32 = use "rt.stderr";
 
-// runtime wrappers for io functions
-fn rt_read(handle u32, mut buff []u8) i32 = rt & write use "rt.read";
-fn rt_write(handle u32, mut data str) i32 = rt use "rt.write";
+// runtime wrappers for IO functions
+fn rt_read(handle u32, mut buff []u8) i32 = io_read & buff_write use "rt.read";
+fn rt_write(handle u32, mut data []u8) i32 = io_write use "rt.write";
 
 // prints `data` to stdout
-// returns `fail` if any error occurs during printing
-pub fn print(data str) !unit = rt {
+// if data has length of zero, no printing occurs
+// returns `error` if any error occurs during printing
+pub fn print(data str) !unit = io_write {
     fprint(stdout, data)?;
 };
 
 // prints `data` followed by a line feed to stdout
-// returns `fail` if any error occurs during printing
-pub fn println(data str) !unit = rt {
+// if data has length of zero, no printing occurs
+// returns `error` if any error occurs during printing
+pub fn println(data str) !unit = io_write {
     fprintln(stdout, data)?;
 };
 
-// prints `data` followed by a line feed to stderr and halts the
-// program execution
-pub fn fatal(data str) !void = rt {
-    errorln(data)!;
+// prints `data` followed by a line feed to stderr and
+// halts the program execution with exit code of 1 
+pub fn panic(data str) !void = io_write {
+    reportln(data)!;
 };
 
 // prints `data` to stderr
-// returns `fail` if any error occurs during printing
-pub fn error(data str) !unit = rt {
+// if data has length of zero, no printing occurs
+// returns `error` if any error occurs during printing
+pub fn report(data str) !unit = io_write {
     fprint(stderr, data)?;
 };
 
 // prints `data` followed by a line feed to stderr
-// returns `fail` if any error occurs during printing
-pub fn errorln(data str) !unit = rt {
+// if data has length of zero, no printing occurs
+// returns `error` if any error occurs during printing
+pub fn reportln(data str) !unit = io_write {
     fprintln(stderr, data)?;
 };
 
-// prints `data` followed by a line feed to the given file handle
-// returns `fail` if any error occurs during printing
-pub fn fprintln(handle u32, data str) !unit = rt {
+// prints `data` followed by a line feed to the given file
+// handle
+// if data has length of zero, no printing occurs
+// returns `error` if any error occurs during printing
+pub fn fprintln(handle u32, data str) !unit = io_write {
     fprint(handle, data)?; fprint(handle, "\n")?;
 };
 
 // prints `data` to the given file handle
-// returns `fail` if any error occurs during printing
-pub fn fprint(handle u32, data str) !unit = rt {
-    if #data > 0 {
-        new dup | #data + 16 {
-            let mut dummy = new ? data @ dup;
-            if code = rt_write(handle, dummy); code < 0 {
-                return fail;
-            };
-        }?;
+// if data has length of zero, no printing occurs
+// returns `error` if any error occurs during printing
+pub fn fprint(handle u32, data str) !unit = io_write {
+    // empty data
+    if #data == 0 { return; };
+    // allocate mutable copy of data
+    new dup | #data + 16 {
+        let mut dummy = new ? data @ dup;
+        if code = rt_write(handle, dummy []u8); code < 0 {
+            return error;
+        };
+    }?;
+};
+
+// buffered IO stream type
+// requires to be instantiated and dynamically allocated
+type stream = record {
+    handle u32;
+    mut bufptr u64;
+    mut buffer []u8;
+};
+
+// instantiates a new stream of internal buffer of size
+// `buff_sz` that prints to `handle`
+// returns `nil` if the buffer allocation at the given
+// arena fails
+pub fn new_stream(handle u32, buff_sz u64, mut a mem) !stream @ a = init {
+    return stream {
+        buffer = new ? [buff_sz; 0...] @ a,
+        bufptr = 0,
+        handle = handle,
     };
 };
 
+// prints `data` to given stream's handle
+// data is buffered up to `st.buffer`'s length and then
+// it's flushed. once it reaches max capacity. if given
+// data does not fit within the current buffer, the stream
+// is automatically flushed and the data imediatly printed
+// if data is empty, no writing or flushing occurs
+pub fn stprint(mut st stream, data str) !unit = mkr & io_write {
+    // data fits within buffer
+    if #data > 0 && #data + st.bufptr < #st.buffer {
+        // write to buffer
+        mkr::write_to(st.buffer[st.bufptr .. #st.buffer]!, data)?;
+        st.bufptr = st.bufptr + #data;
+        // check if it's time to flush
+        if st.bufptr == #st.buffer {
+            stflush(st)?;
+        };
+    // flush out buffer and print given data
+    } else if #data > 0 {
+        stflush(st)?;
+        fprint(st.handle, data)?;
+    };
+};
+
+// empties out the given stream's buffer and resets it to
+// zero
+// if the buffer is empty, no flushing occurs
+pub fn stflush(mut st stream) !unit = io_write {
+    // empty buffer
+    if st.bufptr == 0 { return; };
+    // write to handle
+    fprint(st.handle, st.buffer[0..st.bufptr]! str)?;
+    // clear buffer
+    for mut itm, idx .. st.buffer[0..st.bufptr]! {
+        itm = 0;
+    };
+    // reset buffer pointer
+    st.bufptr = 0;
+};
 
 // reads from stdin and places in the given buffer
-// returns `fail` oif any error occurs during memory reading
-// returns `nomem` if buffer is too small
-pub fn read_to(mut buffer []u8) !unit = rt & write {
+// returns `error` oif any error occurs during memory reading
+// returns `nil` if buffer is too small
+pub fn read_to(mut buffer []u8) !u64 = io_read & buff_write {
     return fread_to(stdin, buffer)?;
 };
 
 // reads from a given handle and places in the given buffer
-pub fn fread_to(handle u32, mut buffer []u8) !unit = rt & write {
+pub fn fread_to(handle u32, mut buffer []u8) !u64 = io_read & buff_write {
     if code = rt_read(handle, buffer); code < 0 {
-        return fail;
+        return error;
+    } else {
+        return code u32;
     };
 };
-
-// // representative variants of valid formattable types
-// // all fields default to zero at initialization, so if given formatting
-// // and data type-mismatches, it results in valid data, but in invalid
-// // behaviour
-// pub type formattable = record {
-//     use as_u64;
-//     use as_i64;
-//     use as_f64;
-//     use as_bool;
-//     use as_str;
-//     use as_cstr;
-// };
-
-// // prints a formatted string `data` to stdout
-// // returns `fail` if any error occurs during printing or buffer
-// // allocation
-// pub fn printf(fmt str, args formattable...) !unit = rt {
-//     fprintf(stdout, fmt, args)?;
-// };
-
-// // prints a formatted string `data` followed by a line feed to stdout
-// // returns `fail` if any error occurs during printing or buffer
-// // allocation
-// pub fn printfln(fmt str, args formattable...) !unit = rt {
-//     fprintfln(stdout, fmt, args)?;
-// };
-
-// // prints a formatted string `data` to the given file handle
-// // returns `fail` if any error occurs during printing or buffer
-// // allocation
-// pub fn fprintf(handle u32, fmt str, args formattable...) !unit = rt {
-//     _fprintf(handle, fprint, fmt, args)?;
-// };
-
-// // prints a formatted string `data` followed by a line feed to the
-// // given file handle
-// // returns `fail` if any error occurs during printing or buffer
-// // allocation
-// pub fn fprintfln(handle u32, fmt str, args formattable...) !unit = rt {
-//     _fprintf(handle, fprintln, fmt, args)?;
-// };
-
-// fn _fprintf(handle u32, fun: fn(u32, str) !unit rt, fmt str,
-//     args formattable...) !unit = rt {
-//     let mut counter = 0;
-//     let mut escaped = false;
-//     mem buffer_mem | #fmt << 16 {
-//         let buff = new ? [#fmt << 16; 0] u8 @ buffer_mem;
-//         let mut buff' = buff?;
-//         for c, i .. (fmt []u8) {
-//             if c == '%' {
-//                 escaped = !escaped;
-//                 if !escaped {
-//                     buff' = buff' ..? c @ buffer_mem;
-//                 };
-//             } else {
-//                 switch c
-//                 | 'u', 'i', 'r', 'f' {
-//                     if escaped {
-//                         mem temp | #fmt << 8 {
-//                             // print unsigned int
-//                             if c == 'u' {
-//                                 let val u64 = args[counter]?;
-//                                 buff' = buff' ..? strconv::from_u64(val, temp)? @ buffer_mem;
-//                             // print signed int
-//                             } else if c == 'i' {
-//                                 let val i64 = args[counter]?;
-//                                 buff' = buff' ..? strconv::from_i64(val, temp)? @ buffer_mem;
-//                             // print floating point as ratio
-//                             } else if val f64 = args[counter]?; c == 'r' {
-//                                 buff' = (buff' ..? strconv::from_i64(val, false, temp)? @ buffer_mem;
-//                             // print floating point with decimal point notation
-//                             } else {
-//                                 buff' = buff' ..? strconv::from_f64(val, true, temp)? @ buffer_mem;
-//                             };
-//                         }?;
-//                         counter = counter + 1;
-//                         escaped = false;
-//                     } else {
-//                         buff' = buff' ..? c @ buffer_mem;
-//                     };
-//                 };
-//                 | 'b' {
-//                     // print boolean
-//                     if escaped {
-//                         let val bool = args[counter]?;
-//                         counter = counter + 1;
-//                         if val {
-//                             buff' = buff' ..? "true" @ buffer_mem;
-//                         } else {
-//                             buff' = buff' ..? "false" @ buffer_mem;
-//                         }
-//                         escaped = false;
-//                     } else {
-//                         buff' = buff' ..? c @ buffer_mem;
-//                     };
-//                 };
-//                 | 's' {
-//                     // print string
-//                     if escaped {
-//                         let val str = args[counter]?;
-//                         counter = counter + 1;
-//                         buff' = buff' ..? val @ buffer_mem;
-//                         escaped = false;
-//                     } else {
-//                         buff' = buff' ..? c @ buffer_mem;
-//                     };
-//                 };
-//                 | 'a' {
-//                     // print c-string
-//                     if escaped {
-//                         let val str = args[counter]?;
-//                         counter = counter + 1;
-//                         mem temp | #fmt << 8 {
-//                             buff' = buff' ..? strconv::from_cstr(val, temp)? @ buffer_mem;
-//                         }?;
-//                         escaped = false;
-//                     } else {
-//                         buff' = buff' ..? c @ buffer_mem;
-//                     };
-//                 };
-//                 | else {
-//                     if escaped {
-//                         return fail;
-//                     };
-//                     buff' = buff' ..? c @ buffer_mem;
-//                 };
-//             };
-//         };
-//         fun(handle, buff')?;
-//     }?;
-// };

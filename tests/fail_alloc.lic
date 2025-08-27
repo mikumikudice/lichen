@@ -1,0 +1,7 @@
+// parser test for invalid dynamic
+// array allocation
+
+pub fn main() void = {
+    let len = 4 u64;
+    let foo = [len; 1, 2, 3, 4, 0...] u32;
+};

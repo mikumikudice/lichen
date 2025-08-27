@@ -11,7 +11,7 @@ type goblin = record {
 
 fn spawn(level u32) !goblin = {
     if level == 0 {
-        return fail;
+        return error;
     } else {
         return goblin {
             level = level,
