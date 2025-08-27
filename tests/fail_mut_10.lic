@@ -1,0 +1,10 @@
+// parser test for asserting
+// invalid mutable value passing of
+// slices of immutable arrays
+
+fn take_ref(mut x []u8) unit = m { };
+
+pub fn main() void = m {
+    let arr = [4; 0...] u8;
+    take_ref(arr[0..1]);
+};

@@ -1,0 +1,11 @@
+// parser test for switch type checking
+
+io mod = use "std/io.lim";
+
+pub fn main() void = io {
+    let x = 0 u32;
+    switch x;
+    | 0 do io::println("zero")!;
+    | 0..3 do io::println("bellow 4")!;
+    | else do io::println("something else")!;
+};

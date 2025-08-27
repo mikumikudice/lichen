@@ -1,0 +1,66 @@
+type formattable = union {
+    as_str str;
+    as_u64 u64;
+    as_i64 i64;
+    as_f64 f64;
+    as_bool bool;
+};
+
+fn count_digit(x u64) u64 = ...
+
+pub fn format(
+    fmt str,
+    args []formattable,
+    here mem,
+) !maker = mkr {
+    let mut out = mkr::dynamic(#fmt, here)?;
+    let mut toggle = false;
+    let mut argcnt = 0 u64;
+    for char .. fmt {
+        if char == '%' do toggle = !toggle;
+        switch char;
+        | '%' do
+            if !toggle do mkr::append(out, char)?;
+        | 's', 'u', 'i', 'f', 'r', 'b' {
+            if !toggle do mkr::append(out, char)?;
+            else do switch char;
+            | 's' {
+                let val = args[argcnt]?.as_str?;
+                mkr::write(out, val)?;
+                argcnt = argcnt + 1;
+            };
+            | 'u' {
+                let val = args[argcnt]?.as_u64?;
+                new temp | count_digit(val) {
+                    mkr::write(out, conv::from_u64(val, temp)?)?;
+                }?;
+                argcnt = argcnt + 1;
+            };
+            | 'i' {
+                let val = args[argcnt]?.as_i64?;
+                new temp | count_digit(val) {
+                    mkr::write(out, conv::from_i64(val, temp)?)?;
+                }?;
+                argcnt = argcnt + 1;
+            };
+            | 'f' {
+                let val = args[argcnt]?.as_f64?;
+                // allocate the integer digit count plus
+                // a sign, the dot and 6 decimal places
+                new temp | count_digit(val u64) {
+                    mkr::write(out,
+                        conv::from_f64(val, false, 6, temp)?)?;
+                }?;
+                argcnt = argcnt + 1;
+            };
+            | 'b' {
+                let val = args[argcnt]?.as_bool?;
+                mkr::write(out, "true" if val else "false")?;
+                argcnt = argcnt + 1;
+            };
+        };
+        else if toggle do return error
+        else do mkr::append(out, char)?;
+    };
+    return out;
+};

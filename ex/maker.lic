@@ -1,0 +1,22 @@
+// demo for the str::mkr lib
+
+io  mod = use "std/io.lim";
+mkr mod = use "str/mkr.lim";
+
+pub fn main() void = io & mkr {
+    // create a static buffer
+    let mut static = [128; 0...] u8;
+    // initialize a string maker from it
+    let mut static' = mkr::static(static);
+    // write to it
+    mkr::write(static', "mornin'")!;
+    new here | 256 {
+        // initialize a dynamic string maker using an arena
+        let mut dynamic = mkr::dynamic(128, here)!;
+        // write to it as well
+        mkr::write(dynamic, " sailor!")!;
+        // dump the content of both makers
+        io::print(mkr::dump(static'))!;
+        io::println(mkr::dump(dynamic))!;
+    }!;
+};

@@ -4,7 +4,7 @@
 io mod = use "std/io.lim";
 
 pub fn main() void = io {
-    let x !u32 = fail;
+    let x !u32 = error;
     let y = x? or 0;
 
     if y == 0 {

@@ -1,9 +1,15 @@
 // runtime test for correct asserts
 // on fail states from a variables
 
-io mod = use "std/io.lim";
+fn foo(bar u32) !u32 = {
+    if bar > 0 {
+        return bar;
+    } else {
+        return error;
+    };
+};
 
 pub fn main() void = io {
-    let res = io::fprintln(3, "something");
+    let res = foo(0);
     let res' = res!;
 };

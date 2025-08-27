@@ -1,29 +1,35 @@
 use memio;
 
+type nm_kind = enum {
+    UNKNOWN, FUNC, PARAM, VAR, TYPE
+};
 type namespace = struct {
     pub: bool,
     mut: bool,
     glob: bool,
-    param: bool,
+    kind: nm_kind,
     name: str,
     ffi: (str | void),
+    owner: *context,
     tpe: lichen_t,
 };
 
 type keyword = enum u8 {
     USE, MOD, PUB, MUT, LET, FN, TYPE,
-    FOR, SWITCH, IF, ELSE,
+    FOR, WHILE, BREAK, NEXT, DEFER,
+    SWITCH, IF, ELSE,
     RETURN, UNREACHABLE, DO, TEST,
-    RECORD, ENUM, NEW, OR,
-    TRUE, FALSE, FAIL, NOMEM,
+    RECORD, ENUM, UNION, NEW, CAT, OR,
+    IS, TRUE, FALSE, ERROR, NIL,
 };
 
 const kwd_value = [
     "use", "mod", "pub", "mut", "let", "fn", "type",
-    "for", "switch", "if", "else",
+    "for", "while", "break", "next", "defer",
+    "switch", "if", "else",
     "return", "unreachable", "do", "test",
-    "record", "enum", "new", "or",
-    "true", "false", "fail", "nomem",
+    "record", "enum", "union", "new", "cat", "or",
+    "is", "true", "false", "error", "nil",
 ];
 
 type primitive = enum u8 {
@@ -45,9 +51,10 @@ const prim_value = [
     "untyped",
 ];
 
+type base_type = (primitive | *enum_t | *record | *tuple | *array | *fun_ptr); 
 type lichen_t = struct {
-    fail: bool,
-    base: (primitive | *enum_t | *record | *tuple | *array),
+    partial: bool,
+    base: base_type,
 };
 
 type enum_t = struct {
@@ -58,8 +65,10 @@ type enum_t = struct {
 type record = struct {
     name: namespace,
     export_name: str,
-    fields: [](bool, *decl_meta),
+    fields: []((void | bool), *decl_meta),
     defaults: []*const_meta,
+    copiable: bool,
+    safe_mut: bool,
 };
 
 type tuple = struct {
@@ -69,6 +78,13 @@ type tuple = struct {
 type array = struct {
     length: (size | void),
     base: lichen_t,
+};
+
+type fun_ptr = struct {
+    params: [](bool, lichen_t),
+    returns: lichen_t,
+    effect: []str,
+    shares_efx: bool,
 };
 
 const oper_value = [
@@ -122,6 +138,9 @@ type context = struct {
     path: str,
     main: bool,
     branching: bool,
+    allocating: bool,
+    loop_pos: (void | size),
+    iterating_on: []*var_meta,
     src: []u8,
     ptr: size,
     last: size,
@@ -132,6 +151,9 @@ type context = struct {
     lifetime: (void | size),
     re_emit: bool,
     global: *scope,
+    types: *[]*type_meta,
+    free_on_ret: []str,
+    defer_stack: []path_meta,
     scp: *scope,
 };
 
@@ -140,16 +162,21 @@ type scope = struct {
     upper: nullable *scope,
 };
 
+type chain_exp_t = (*field_meta | *indexing_meta | *slicing_meta);
+
 type member_t = (*const_meta | *array_lit_meta | *record_lit_meta |
-    *indexing_meta | *field_meta | *var_meta | *funcall_meta | *alloc_meta);
+    *field_meta | *indexing_meta | *slicing_meta | *var_meta | *funcall_meta |
+    *fn_ptr_meta | *alloc_meta | *concat_meta);
+
 type hand_t = (*hand_meta | *member_meta | *ternary_meta | *expr_meta);
 
-type path_meta = (*hand_meta | *hand_meta | *member_meta | *ternary_meta |
-    *expr_meta | *const_meta | *array_lit_meta | *record_lit_meta |
-    *indexing_meta | *field_meta | *var_meta | *funcall_meta | *alloc_meta |
-    *decl_meta | *assign_meta | *arena_meta | *fun_meta | *scope_meta |
-    *expr_meta | *branch_meta | *return_meta | *test_meta | *for_meta |
-    *type_meta | *module_meta | unreachable);
+type path_meta = (*hand_meta | *member_meta | *ternary_meta | *expr_meta |
+    *const_meta | *array_lit_meta | *record_lit_meta | *field_meta |
+    *indexing_meta | *slicing_meta | *var_meta | *funcall_meta | *fn_ptr_meta |
+    *alloc_meta | *concat_meta | *decl_meta | *assign_meta | *arena_meta |
+    *fun_meta | *scope_meta | *expr_meta | *branch_meta | *return_meta |
+    *test_meta | *for_meta | *while_meta | *switch_meta | *type_meta |
+    *module_meta | loop_break | loop_next | *defer_meta | unreachable);
 
 type const_meta = struct {
     pre: (void | operator),
@@ -157,13 +184,16 @@ type const_meta = struct {
 };
 
 type array_lit_meta = struct {
+    pos: size,
     tpe: lichen_t,
     items: []*expr_meta,
+    length: (void | *expr_meta),
     spreads_at: (void | size),
+    has_allocs: bool,
 };
 
 type indexing_meta = struct {
-    before: (void | *field_meta | *indexing_meta),
+    before: (void | *field_meta | *indexing_meta | *slicing_meta),
     index: (*const_meta | *expr_meta),
     base: nullable *member_meta,
     pos: size,
@@ -172,15 +202,28 @@ type indexing_meta = struct {
     from_tpe: lichen_t,
 };
 
+type slicing_meta = struct {
+    before: (void | *field_meta | *indexing_meta | *slicing_meta),
+    begin: (*const_meta | *expr_meta),
+    end: (*const_meta | *expr_meta),
+    base: nullable *member_meta,
+    pos: size,
+    tpe: lichen_t,
+    safe: bool,
+    prop: (void | propagation),
+};
+
 type record_lit_meta = struct {
     tpe: lichen_t,
-    values: [](str, *expr_meta),
+    has_allocs: bool,
+    values: [](str, size, *expr_meta),
 };
 
 type field_meta = struct {
-    before: (void | *field_meta | *indexing_meta),
+    before: (void | ...chain_exp_t),
     field: *decl_meta,
     base: nullable *member_meta,
+    mut: bool,
     pos: size,
     tpe: lichen_t,
     prop: (void | propagation),
@@ -208,25 +251,36 @@ type arena_meta = struct {
     length: *expr_meta,
 };
 
+type short_prop = (operator, size, *memio::stream);
 type alloc_meta = struct {
     pos: size,
     val: *member_meta,
     tpe: lichen_t,
-    prop: (void | operator),
+    prop: (void | short_prop),
+    host: lichen_t,
+    arena: *var_meta,
+};
+
+type concat_meta = struct {
+    pos: size,
+    left: iterator_t,
+    right: (iterator_t | *member_meta),
+    are_slices: bool,
+    tpe: lichen_t,
+    prop: (void | short_prop),
     host: lichen_t,
     arena: *var_meta,
 };
 
 type var_meta = struct {
     nm: namespace,
-    owner: *context,
     lifetime: (void | size),
+    allocated: bool,
     pos: size,
 };
 
 type fun_meta = struct {
     fun: namespace,
-    owner: *context,
     pos: size,
     begins: size,
     origin: str,
@@ -234,8 +288,9 @@ type fun_meta = struct {
     params: []*decl_meta,
     effect: []str,
     used: bool,
-    variadic: bool,
+    recursive: bool,
     borrows: (void | size),
+    shares_efx: []size,
 };
 
 type funcall_meta = struct {
@@ -244,17 +299,22 @@ type funcall_meta = struct {
     pos: size,
     args: []*expr_meta,
     lifetime: (void | size),
+    tailcall: bool,
+};
+
+type fn_ptr_meta = struct {
+    points_to: *fun_meta,
 };
 
 type scope_meta = struct {
     pos: size,
     stt: []path_meta,
+    defer_stack: []path_meta,
     tpe: lichen_t,
-    self: *scope,
     rets: bool,
 };
 
-type propagation = (operator, (void | path_meta));
+type propagation = (operator, (void | path_meta), size, *memio::stream);
 
 type expr_meta = struct {
     pos: size,
@@ -282,6 +342,7 @@ type member_meta = struct {
 
 type branch_meta = struct {
     pos: size,
+    tpe: lichen_t,
     rets: bool,
     nested: bool,
     conds: []*expr_meta,
@@ -311,14 +372,49 @@ type test_meta = struct {
     host_tpe: (void | lichen_t),
 };
 
+type iterator_t = (*var_meta | *funcall_meta | *array_lit_meta |
+    *indexing_meta | *slicing_meta | *field_meta | *alloc_meta |
+    *concat_meta | *const_meta);
+
 type for_meta = struct {
     pos: size,
     mut: bool,
+    tpe: lichen_t,
+    rets: bool,
     indx: nullable *decl_meta,
     local: nullable *decl_meta,
-    iter: (*decl_meta | *array_lit_meta),
+    iter: iterator_t,
+    iter_t: lichen_t,
     item: *decl_meta,
     body: *scope_meta,
+};
+
+type while_meta = struct {
+    pos: size,
+    tpe: lichen_t,
+    rets: bool,
+    local: nullable *decl_meta,
+    cond: *expr_meta,
+    body: *scope_meta,
+};
+
+type loop_break = size;
+type loop_next = size;
+
+type defer_meta = struct {
+    self: path_meta,
+    pos: size,
+};
+
+type switch_case = (([]*const_meta | void), (operator | void), path_meta);
+
+type switch_meta = struct {
+    pos: size,
+    rets: bool,
+    tpe: lichen_t,
+    cases: []switch_case,
+    check: *expr_meta,
+    else_case: (void | size),
 };
 
 type type_meta = struct {

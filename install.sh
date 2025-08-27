@@ -1,4 +1,4 @@
-set -xe
+set -e
 mkdir -p ~/.local/bin/
 mkdir -p ~/.local/lib/
 cd ./src/

@@ -1,0 +1,20 @@
+// parser and compiler test for the
+// `defer` statement semantics and
+// implementation
+
+io mod = use "std/io.lim";
+
+pub fn main() void = io {
+    ret();
+};
+
+fn ret() unit = io {
+    defer io::println("at exit")!;
+    io::println("on call")!;
+    if true {
+        defer io::println("at return")!;
+        io::println("on scope")!;
+        return;
+    };
+    io::println("won't run")!;
+};

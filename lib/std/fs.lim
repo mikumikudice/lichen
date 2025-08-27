@@ -1,4 +1,5 @@
-// the fs module provides all sorts of file system functions
+// the fs module provides all sorts of functions for
+// interacting with the underlying file system
 
 // [fs::open] file flags
 pub READONLY  u32 = 0o0000;
@@ -10,42 +11,41 @@ pub TRUNCATE  u32 = 0o1000;
 pub APPEND    u32 = 0o2000;
 
 // runtime wrapper for the open syscall
-fn rt_open(mut filename cstr, flags u32, mode u32) i32 = rt use "rt.open";
+fn rt_open(mut filename cstr, flags u32, mode u32) i32 = fs_read use "rt.open";
 
 // runtime wrapper for the close syscall
-fn rt_close(handle u32) i32 = rt use "rt.close";
+fn rt_close(handle u32) i32 = fs use "rt.close";
 
 // runtime wrapper for the unlink syscall
-fn rt_unlink(mut filename cstr) i32 = rt use "rt.unlink";
+fn rt_unlink(mut filename cstr) i32 = fs use "rt.unlink";
 
 // runtime wrapper for the rename syscall
-fn rt_rename(mut oldname cstr, mut newname cstr) i32 = rt use "rt.rename";
+fn rt_rename(mut oldname cstr, mut newname cstr) i32 = fs use "rt.rename";
 
 // opens a file and returns a file handle
-// TODO: wrap negative values as an error type
-pub fn open(mut filename str, flags u32) !u32 = rt {
+pub fn open(mut filename str, flags u32) !u32 = fs_read {
     let handle = rt_open(filename cstr, flags, 0o7000);
     if handle > 0 {
         return handle u32;
     } else {
-        return fail;
+        return error;
     };
 };
 
-pub fn close(handle u32) !unit = rt {
+pub fn close(handle u32) !unit = fs {
     if rt_close(handle) < 0 {
-        return fail;
+        return error;
     };
 };
 
-pub fn remove(mut filename str) !unit = rt {
+pub fn remove(mut filename str) !unit = fs {
     if rt_unlink(filename cstr) < 0 {
-        return fail;
+        return error;
     };
 };
 
-pub fn rename(mut oldname str, mut newname str) !unit = rt {
+pub fn rename(mut oldname str, mut newname str) !unit = fs {
     if rt_rename(oldname cstr, newname cstr) < 0 {
-        return fail;
+        return error;
     };
 };

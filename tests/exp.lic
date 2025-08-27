@@ -5,6 +5,8 @@ pub fn main() void = {
     let x = 7 u32;
     let y = x + foo(x);
     let z = bar(y);
+
+    test x + y + z == 3312;
 };
 
 fn foo(x u32) u32 = {

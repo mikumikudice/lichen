@@ -1,0 +1,17 @@
+// compiler test for checking if issue
+// with literal arrays passed as slices
+// is fixed
+
+fn foo(mut arr []u8) []u8 = rev {
+	for mut itm, idx .. arr {
+		itm = idx u8;
+	};
+	return arr;
+};
+
+pub fn main() void = rev {
+    let a = foo([1, 2, 3, 4]);
+    for itm, idx .. a {
+        test itm u64 == idx;
+    };
+};

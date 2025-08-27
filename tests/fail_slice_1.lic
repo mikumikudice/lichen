@@ -1,0 +1,7 @@
+// parser test for asserting invalid
+// array slicing
+
+pub fn main() void = {
+    let arr = [1, 2, 3, 4] u32;
+    let slice = arr[0..10];
+};

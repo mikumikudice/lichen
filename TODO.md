@@ -1,14 +1,14 @@
-- assert for functions returning borrowed data
-- implement switch case
-- implement submodules
-- string concatenation
+- unions
+- optimize concatenation for in-place data appending and contiguous data override
 - tuples
+- enumerators
+- enforce use of tags for other effects when only implementing module tags
+- submodules
+- short-assignment operators
+- do statement for if-else and for-loop blocks
+- implement behavior: bubbled tests messages are assigned to global error message
+- implement behavior: asserts set global error message to be shown at @fail 
 - assert for division by zero
-- assert for mutual-recursive import
-- implement enumerators
-- implement logic operator chain
-- implement record arithmetic
-- implement sub-typing for records
-- implement first-class functions
-- implement empty assignments
-- implement global test block
+- global test block
+- optimize out private global variables
+- add hints for partial type assertion on for loop iterators and other expected concrete types

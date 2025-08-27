@@ -1,0 +1,22 @@
+//parser and compiler test for break
+// and next statements
+
+pub fn main() void = {
+    let arr = [ 1, 2, 3, 4 ] u32;
+    let mut arr' = [4; 0...] u32;
+
+    for mut itm, idx .. arr' {
+        if idx == 0 { next; };
+        itm = arr[idx - 1]!;
+    };
+    test arr'[0] == 0 && arr'[3] == 3;
+
+    let mut count = 0 u32;
+    for itm .. arr {
+        if itm == 3 {
+            break;
+        };
+        count = count + 1;
+    };
+    test count == 2;
+};

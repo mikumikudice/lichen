@@ -5,7 +5,7 @@ io mod = use "std/io.lim";
 
 fn div(x u32, y u32) !u32 = {
     if y == 0 {
-        return fail;
+        return error;
     } else {
         return x / y;
     };
@@ -13,9 +13,9 @@ fn div(x u32, y u32) !u32 = {
 
 pub fn main() void = io {
     let x = div(4, 2)!;
-    let y = div(4, 0)? or 69;
+    let y = div(4, 0)? or 0;
 
-    if y == 69 {
+    if y == 0 {
         io::println("test 1 ok")!;
     } else {
         io::println("test 1 fail")!;

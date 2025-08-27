@@ -1,9 +1,73 @@
-// converts an array of bytes to an
-// ascii encoded string
-// resulting object shares the memory
-// with source data
-pub fn from_bytes(mut src []u8) str @ src = rt use "rt.btoa";
+// the conv module implements functions for converting
+// types to and from strings, such as integer parsing and
+// printing
 
-// pub fn to_u64(src u64, buff mem) !str = {
-//     unreachable;
-// };
+fn digit_count(x u64, c u64) u64 = {
+    if x == 0 {
+        return c;
+    } else {
+        return digit_count(x / 10, c + 1);
+    };
+};
+
+pub fn from_u64(src u64, mut a mem) !str @ a = alloc {
+    // quick results
+    switch src;
+    | 0 do return "0";
+    | 1 do return "1";
+    | else {};
+    // allocate string buffer
+    let len = digit_count(src, 0);
+    test len > 0;
+    let mut buff = new ? [len u64; 0...] u8 @ a;
+    // convert
+    let mut acc = src;
+    for mut digit .. buff {
+        digit = (acc % 10 + '0') u8;
+        acc = acc / 10;
+    };
+    // reverse
+    let mut buff' = new ? [len u64; 0...] u8 @ a;
+    for mut digit, idx .. buff' {
+        digit = buff[len - idx - 1]!;
+    };
+    return buff' str;
+};
+
+pub fn from_i64(src i64, mut a mem) !str @ a = alloc {
+    let mut neg = src < 0;
+    let val = -src if neg else src;
+    let val' = from_u64(val u64, a)?;
+    if neg {
+        return (cat "-" ..? val' @ a) str;
+    } else {
+        return val';
+    };
+};
+
+pub fn from_f64(src f64, ratio bool, mut a mem) !str @ a = alloc {
+    return error;
+};
+
+pub fn to_u64(src str) !u64 = {
+    // quick results
+    switch src;
+    | "0" do return 0;
+    | "1" do return 1;
+    | else {};
+    // convert in base 10
+    let mut dest = 0 u64;
+    for digit .. src {
+        // validate digit
+        test ? digit >= '0' && digit <= '9';
+        // move numbers foward
+        dest = dest * 10;
+        // sum the next digit
+        dest = dest + (digit u64 - '0');
+    };
+    return dest;
+};
+
+pub fn from_cstr(src cstr, mut a mem) !str @ a = alloc {
+    return error;
+};

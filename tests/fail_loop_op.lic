@@ -1,0 +1,6 @@
+// parser test for asserting for out
+// of place control statments
+
+pub fn main() void = {
+    break;
+};

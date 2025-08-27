@@ -1,0 +1,7 @@
+// parser test for empty assignments
+
+fn nothing() !unit = {};
+
+fn main() void = {
+    let _ = nothing();
+};

@@ -1,0 +1,9 @@
+// parser test for asserting against
+// iterator reassignment within loop
+
+pub fn main() void = {
+    let mut foo = [1, 2, 3, 4] u32;
+    for i .. foo {
+        foo = [];
+    };
+};

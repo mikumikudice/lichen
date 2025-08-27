@@ -1,0 +1,13 @@
+// parser and compiler test for the
+// `while loop` statement semantics and
+// implementation
+
+pub fn main() void = loop {
+    let mut x = 6742 u32;
+    let mut c = 0 u64;
+    while x > 0 {
+        c = c + 1;
+        x = x / 10;
+    };
+    test c == 4;
+};

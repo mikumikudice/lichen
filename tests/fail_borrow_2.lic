@@ -1,5 +1,5 @@
 // parser test for asserting for
-// correct behaviour of borrowing
+// correct behavior of borrowing
 
 io mod = use "std/io.lim";
 

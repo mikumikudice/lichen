@@ -1,0 +1,128 @@
+// the vec module implements functions for interacting,
+// modifying and iterating over arrays and slices
+
+// static mapping of str to str
+// maps a given `arr`'s items onto `dest` with `map`
+// this function shares the same effects as `map`
+// the length of `dest` must be at least the same of `src`
+pub fn smaps(
+    src []str,
+    mut dest []str,
+    map fn(str) str #efx,
+) []str = #efx & muts {
+    for mut itm, idx .. dest {
+        itm = map(src[idx]!);
+    };
+    return dest;
+};
+
+// allocated mapping of str to str
+// maps a given `arr`'s items onto an array allocated at
+// `buff` with `map`
+// this function shares the same effects as `map`
+pub fn amaps(
+    src []str,
+    buff mem,
+    map fn(str) str #efx,
+) ![]str @ buff = #efx {
+    let mut dest = new ? [#src; ""...] @ buff;
+    for mut itm, idx .. dest {
+        itm = map(src[idx]!);
+    };
+    return dest;
+};
+
+// static mapping of str to u64
+// maps a given `arr`'s items onto `dest` with `map`
+// this function shares the same effects as `map`
+// the length of `dest` must be at least the same of `src`
+pub fn smapsi(
+    src []str,
+    mut dest []u64,
+    map fn(str) u64 #efx,
+) []u64 = #efx & muts {
+    for mut itm, idx .. dest {
+        itm = map(src[idx]!);
+    };
+    return dest;
+};
+
+// allocated mapping of str to u64
+// maps a given `arr`'s items onto an array allocated at
+// `buff` with `map`
+// this function shares the same effects as `map`
+pub fn amapsi(
+    src []str,
+    buff mem,
+    map fn(str) u64 #efx,
+) ![]u64 @ buff = #efx {
+    let mut dest = new ? [#src; 0...] u64 @ buff;
+    for mut itm, idx .. dest {
+        itm = map(src[idx]!);
+    };
+    return dest;
+};
+
+// static mapping of u64 to u64
+// maps a given `arr`'s items onto `dest` with `map`
+// this function shares the same effects as `map`
+// the length of `dest` must be at least the same of `src`
+pub fn smapi(
+    src []u64,
+    mut dest []u64,
+    map fn(u64) u64 #efx,
+) []u64 = #efx & muts {
+    for mut itm, idx .. dest {
+        itm = map(src[idx]!);
+    };
+    return dest;
+};
+
+// allocated mapping of u64 to u64
+// maps a given `arr`'s items onto an array allocated at
+// `buff` with `map`
+// this function shares the same effects as `map`
+pub fn amapi(
+    src []u64,
+    buff mem,
+    map fn(u64) u64 #efx,
+) ![]u64 @ buff = #efx {
+    let mut dest = new ? [#src; 0...] u64 @ buff;
+    for mut itm, idx .. dest {
+        itm = map(src[idx]!);
+    };
+    return dest;
+};
+
+// folds `src` from left to right and collects all
+// iterations of `pre` on its items and returns the
+// final iteration result
+// the predicate must accept the current iteration
+// item and the last state and return a new state
+pub fn foldli(src []u64, pre fn(u64, u64) u64 #efx) u64 = #efx {
+    let mut state = 0 u64;
+    for itm .. src {
+        state = pre(itm, state);
+    };
+    return state;
+};
+
+// folds `src` from right to left and collects all
+// iterations of `pre` on its items and returns the
+// final iteration result
+// the predicate must accept the current iteration
+// item and the last state and return a new state
+pub fn foldri(src []u64, pre fn(u64, u64) u64 #efx) u64 = #efx {
+    let mut state = 0 u64;
+    for itm, idx .. src {
+        state = pre(src[#src - idx - 1]!, state);
+    };
+    return state;
+};
+
+fn srevs(mut arr []str, mut dest []str) []str = muts {
+	for mut itm, idx .. dest {
+		itm = arr[#arr - idx - 1]!;
+	};
+	return dest;
+};

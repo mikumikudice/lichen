@@ -4,20 +4,26 @@ Program     ::= global_def+;
 // variable definition, function definition or a constant test followed by
 // a semicolon
 global_def  ::= (("pub"? type_def | const_def | fun_def) | const_test) eol;
-// a type definition is either an enumerator or record definition or an alias
-// for a non-primitive type
-type_def    ::= "type" namespace "=" (enum_def | record_def | array | tuple | function);
+// a type definition is either an enumerator, union or record definition or an
+// alias for a non-primitive type
+type_def    ::= "type" namespace "=" (enum_def | union_def | record_def | array | tuple
+            | function);
 // a namespace is any sequence of underlines and alphanumeric characters that
 // doesn't start with a number or a sequence of underlines and a number and
 // optionally ends in any number of quotes (prime notation)
 namespace   ::= "_"*[a-zA-Z][a-zA-Z0-9_]* "'"*;
-// an enumerator definition is a sequence of variants of a given type
-enum_def    ::= "enum" type "{" variant ("," variant)* "}";
+// an enumerator definition is the keyword "enum" followed by a type and a
+// sequence of variants of a the given type
+enum_def    ::= "enum" type "{" variant ("," variant)* ","? "}";
 // a variant is a namespace optionally assigned with a constant value
-variant     ::= namespace ("=" constant)?;    
-// a record definition is a sequence of declarations ending in a semicolon that
-// may be optionally marked with a `use``keyword
-record_def  ::= "record" "{" ("use"? declaration eol)+ "}";
+variant     ::= namespace ("=" constant)?;
+// a tagged union definition is the keyword "union" followed by a sequence of
+// declarations ending in a semicolon
+union_def   ::= "union" "{" (declaration eol)+ "}";
+// a record definition is the keyword "record" followed by a sequence of
+// declarations ending in a semicolon that may be optionally marked with
+// a `mut` keyword
+record_def  ::= "record" "{" ("mut"? declaration eol)+ "}";
 // a type can be optionally marked as partial and be either a primitive, a
 // namespace, an array definition, a tuple definition or a function type
 // definition
@@ -26,21 +32,23 @@ type        ::= "!"? (primitive | namespace | array | tuple | function);
 // constant
 declaration ::= namespace type ("=" constant)?;
 // a primitive type is either one of these base types
-primitive   ::= "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "f32" | "f64" | "bool" | "str" | "cstr" | "unit" | "void" | "mem";
+primitive   ::= "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64"
+            | "f32" | "f64" | "bool" | "str" | "cstr" | "unit" | "void" | "mem";
 // an array definition is a closed set of square brackets with an optional
 // number within followed by a type
 array       ::= "[" number? "]" type;
 // a tuple is a sequence of types enclosed by parenthesis
-tuple       ::= "(" type ("," type)+ ")";
+tuple       ::= "(" type ("," type)+ ","? ")";
 // a function type definition is a generic notation for any possible function
-function    ::= "fn" "(" ( type ("," type)* ","? )* (type "...")? ")" type effect?;
+function    ::= "fn" "(" ( type ("," type)* ","? )* ")" type effect?;
 // a constant definition is a namespace with a type or a module `mod` notation
 // assigned with a constant optionally starting with an unary operator or an
 // import statement
 const_def   ::= namespace (type | "mod") "=" (unary_oper? constant) | import;
 // a constant is either a number, decimal number, string, rune, boolean, error
 // state singleton or a constant array literal
-constant    ::= number | decimal | string | rune | boolean | error_state | const_array;
+constant    ::= number | decimal | string | rune | boolean | error_state 
+            | const_array;
 // an import statement is the keyword `use` followed by a string containing the
 // file path for a source file to be loaded
 import      ::= "use" string;
@@ -50,11 +58,13 @@ mod_field   ::= namespace ("::" namespace)+;
 // a number is either a hexadecimal, octal, binary or decimal notation of a
 // number, all optionally using digit separators (`_`). said separator cannot
 // separate the numerical base prefix from the number
-number      ::= ("0x" [a-fA-f0-9][a-fA-f0-9_]*) | ("0o" [0-7][0-7_]*) | ("0b" [01][01_]*) | ([0-9][0-9_]*);
+number      ::= ("0x" [a-fA-f0-9][a-fA-f0-9_]*) | ("0o" [0-7][0-7_]*) 
+            | ("0b" [01][01_]*) | ([0-9][0-9_]*);
 // a decimal number is any non digit-separator-starting sequence of decimal
 // numbers separated by a dot or a scientific notation for the same numeric
 // sequences
-decimal     ::= ([0-9][0-9_]* "." [0-9][0-9_]*) | [0-9] "." [0-9][0-9_]* "e" "-"? [0-9][0-9_]*;
+decimal     ::= ([0-9][0-9_]* "." [0-9][0-9_]*)
+            | ([0-9][0-9_]* "." [0-9][0-9_]* "e" "-"? [0-9][0-9_]*);
 // an string is any sequence of escape characters or non-quotes surrounded by
 // double quotes
 string      ::= '"' ([^"] | escape_char)* '"';
@@ -66,25 +76,28 @@ escape_char ::= "\t" | "\b" | "\a" | "\r" | "\n" | "\f" | "\0" | '\"' | "\'";
 // a boolean literal is either of these values
 boolean     ::= "true" | "false";
 // an error state singleton literal is either of these values
-error_state ::= "fail" | "nomem";
+error_state ::= "error" | "nil";
 // a constant array is any square-brackets-enclosed sequence of constants
 // separated by commas or a given number as size followed by and semicolon and
 // then an optional sequence of constants and then a single constant followed
 // by a spread operator
-const_array ::= "[" ((constant ("," constant)*)*) | (number eol (constant ("," constant)*)* constant "...") "]";
+const_array ::= "[" ((constant ("," constant)* ","?)*)
+            | (number eol (constant ("," constant)* ","?)* constant "...") "]";
 // an array literal is any square-brackets-enclosed sequence of expressions
 // separated by commas or a given number or namespace as size followed by and
 // semicolon and then an optional sequence of other expressions and then a
 // single expression followed by a spread operator
-array_lit   ::= "[" ((expression ("," expression)*)*) | (expression eol (expression ("," expression)*)* expression "...") "]";
+array_lit   ::= "[" ((expression ("," expression)*)*)
+            | (expression eol (expression ("," expression)*)* expression "...") "]";
 // a function definition is the keyword `fn` followed by a namespace, a
 // sequence of parenthesis-enclosed, optionally marked with "mut", declarations
 // separated by commas, an optional single, optionally marked with "mut",
 // declaration followed by the spread function. then, a type, an optional
 // effect list and either a scope or an FFI importing expression
-fun_def     ::= "fn" namespace "(" ( "mut"? declaration ("," "mut"? declaration)* ","? )* ("mut"? declaration "...")? ")" type effect? scope | ffi;
+fun_def     ::= "fn" namespace "(" ( "mut"? declaration
+            ("," "mut"? declaration)* ","? )* ")" type effect? scope | ffi;
 // an effect list is either the keyword `do` or a sequence of namespaces separated by the `&` operator
-effect      ::= "do" | (namespace ("&" namespace)*);
+effect      ::= "do" | ("#"? namespace ("&" "#"? namespace)*);
 // a scope if a sequence of at least one statement followed by a semicolon
 scope       ::= "{" (statement eol)+ "}";
 // a FFI importing expression is the keyword `use` followed by a string
@@ -93,7 +106,8 @@ ffi         ::= "use" string;
 // an statement is either a test block, expression, variable definition,
 // assignment, arena declaration, if-else block, switch case, for-loop,
 // return or unreachable statement.
-statement   ::= test | expression | var_def | assignment | arena | if_else | switch | for_loop | return | "unreachable";
+statement   ::= test | expression | var_def | assignment | arena | if_else
+            | switch | for_loop | while_loop | return | defer | "unreachable";
 // a test block is the keyword `test` followed by an optional bubble-up
 // operator, an assertion expression and an optional string containing
 // the error message to be printed on an error
@@ -101,51 +115,62 @@ test        ::= "test" "?"? expression string?;
 // the return statement is the keyword `return` optionally followed by an
 // expression
 return      ::= "return" expression?;
+// the defer statement is the keyword `defer` followed by an statement
+defer       ::= "defer" statement;
 // an expression is a potentially parenthesis-enclosed list of members
 // separated by binary operators. the first member may optionally be
 // preceded with an unary operator
-expression  ::= (unary_oper? member (binary_oper member)*) | ("(" unary_oper? member (binary_oper member)* ")");
+expression  ::= (unary_oper? member (binary_oper member)*) 
+            | ("(" unary_oper? member (binary_oper member)* ")");
 // a binary operator is any of the following operators
-binary_oper ::= "+" | "-" | "*" | "/" | "%" | "<<" | ">>" | "|" | "&" | "^" | "==" | "!=" | "<" | ">" | "<=" | ">=" | "..";
+binary_oper ::= "+" | "-" | "*" | "/" | "%" | "<<" | ">>" | "|" | "&" | "^"
+            | "==" | "!=" | "<" | ">" | "<=" | ">=" | "..";
 // an unary operator is any of the following operators
 unary_oper  ::= "-" | "+" | "!" | "~" | "#";
 // a member is either a constant, ternary expression, array literal, tuple
-// literal, record literal or edit or either a namespace, function call, record
-// field access, array indexing, module field, these optionally followed by a
-// propagation expression. both cases can be casted to another given type
-member      ::= (constant | ((namespace | fun_call | rec_field | array_index | mod_field) propagation?) | ternary | array_lit | tuple_lit | rec_lit | rec_edit) type?;
+// literal, record literal or edit or an fail state comparison or either a
+// namespace, function call, record field access, array indexing, module
+// field, these optionally followed by a propagation expression. both cases
+// can be casted to another given type
+member      ::= (constant | ((namespace | fun_call | rec_field | array_index
+            array_slice | mod_field) propagation?) |  ternary | array_lit |
+            tuple_lit | rec_lit | rec_edit | fail_comp) type?;
 // a record field access is any sequence of at one or more objects or array
 // indexing followed by an assertion operator, separated by dots
-rec_field   ::= (object | (array_index ("?" | "!")?)) ("." (object | array_index ("?" | "!")?))+;
+rec_field   ::= ((member ("?" | "!")?) ("." member ("?" | "!")?))+;
 // an array indexing is either an object or record field followed by an
 // square-bracket-enclosed expression
-array_index ::= (object | rec_field) "[" expression "]";
-// an object is either a namespace or function call
-object      ::= namespace | fun_call;
+array_index ::= (member ("[" expression "]")+)+;
+array_slice ::= (member ("[" expression? ".." expression? "]")+)+;
 // function call is either a namespace or module field access followed by a
 // parenthesis-enclosed sequence of zero or more expressions separated by
 // commas
-fun_call    ::= (namespace | mod_field) "(" (expression ("," expression)*)* ")";
+fun_call    ::= member "(" (expression ("," expression)* ","?)* ")";
 // a propagation expression is either a bang or an interrogation optionally
 // followed by zero or more optionally error-singleton-specified handling cases
-propagation ::= ("?" ("or" expression?)*) | ("!" (">" (error_state "|")? statement)*);
+propagation ::= ("?" ("or" expression?)*)
+            | ("!" (">" (error_state "|")? statement)*);
 // a ternary expression is a true-case expression followed by the keyword `if`, a
 // checking expression, the `else` keyword and a final false-case expression
 ternary     ::= expression "if" expression "else" expression;
 // a tuple literal is a parenthesis-enclosed list of two or more expressions
 // separated by a comma
-tuple_lit   ::= "(" expression ("," expression)+ ")";
+tuple_lit   ::= "(" expression ("," expression)+ ","? ")";
 // a record literal is a sequence of zero or more assignments separated by
 // commas, optionally followed by a spread operator
-rec_lit     ::= "{" (assignment ("," assignment)*)? | "..." "}"
+rec_lit     ::= "{" (assignment ("," assignment)* ","?)? | "..." "}"
 // an record edit is an curly-braces-enclosed  of a namespace, a pipe
 // operator, and a sequence of one or more assignments separated by commas
-rec_edit    ::= "{" namespace "|" assignment ("," assignment)+ "}"
+rec_edit    ::= "{" namespace "|" assignment ("," assignment)+ ","? "}"
+// a fail state comparison is a namespace, the keyword `is` and an error state
+fail_comp   ::= namespace "is" error_state;
 // a variable definition is the `let` keyword, optionally followed by the `mut`
-// keyword, then a sequence of one or more namespaces, followed by an optional
-// type notation and then either an assignment, arena allocation or
-// concatenation expression
-var_def     ::= "let" "mut"? namespace ("," namespace)* type? "=" expression | allocation | concat_exp;
+// keyword, then a sequence a asingle namespace or multiple namespaces enclosed
+// by parenthesis, followed by an optional type notation and then either an
+// assignment, arena allocation or concatenation expression
+var_def     ::= "let" "mut"?
+            (namespace | ("(" namespace ("," namespace)+ ","? ")")) type?
+            "=" expression | allocation | concat_exp;
 // an assignment is a namespace or record field followed by an assignment
 // operator and then an expression
 assignment  ::= (namespace | rec_field) "=" expression | allocation | concat_exp;
@@ -156,39 +181,48 @@ arena       ::= "new" namespace "|" (number | expression) scope propagation?;
 // an arena allocation is the `new` keyword, optionally either a bubble-up or
 // assert operator, and then either an array literal, a record, a record edit
 // or a namespace, and finally the at operator and an arena namespace.
-allocation  ::= "new" ("?" | "!")? (array_lit | rec_lit | rec_edit | namespace) "@" namespace;
+allocation  ::= "new" ("?" | "!")?
+            (array_lit | rec_lit | rec_edit | namespace) "@" namespace;
 // a concatenation expression is two namespaces separated by a range operator,
 // that can be optionally followed by either a bubble-up or assert operator,
 // and then the at operator and the arena namespace
-concat_exp  ::= namespace ".." ("?" | "!")? namespace "@" namespace
+concat_exp  ::= "cat "namespace ".." ("?" | "!")? namespace "@" namespace;
 // an if-else block is an if block, optionally followed by zero or more the
 // `else` keyword followed by another if block, and then, finally an optional
 // sequence of another `else` keyword, an optional local variable definition,
 // and then a scope
 if_else     ::= if_block ("else" if_block)* ("else" (local_var eol)? scope)?;
 // an if block is the keyword `if`, followed by an optional local variable,
-// then an conditional expression and finally a scope;
-if_block    ::= "if" (local_var eol)? expression scope;
+// then an conditional expression or error state matching and finally a scope
+if_block    ::= "if" (local_var eol)? (expression | error_match) scope;
 // a local variable is a namespace, an optional type, an assignment operator
 // and finally an assignment expression
 local_var   ::= namespace type? "=" expression;
-// a switch case statement is the `switch` keyword, followed by a local
-// variable definition, an expression and then a sequence of one or more
-// set of a pipe operator, either a list of constants separated by commas,
-// a range of two constants or a single constant, a scope and then a semicolon,
-// all optionally followed by an `else` keyword, a pipe operator and a scope
-// ending in a semicolon
-switch      ::= "switch" (local_var eol)? expression ("|" constant (("," constant)* | (".." constant))? scope eol)+ ("else" "|" scope eol)?;
+// a error state matching is a namespace, a bubble up operator and another
+// namespace
+error_match ::= namespace "?" namespace;
+// a switch case statement is the `switch` keyword, followed by an optional
+// local variable definition, an expression followed by a semicolon and then a
+// sequence of one or more set of a pipe operator, either a list of constants
+// separated by commas, a range of two constants or a single constant, or
+// "else" a scope or "do" followed by a statement and then a semicolon
+switch      ::= "switch" (local_var eol)? expression ";" ("|"
+            ((constant ((("," constant)* ("," | "...")?)) | (".." constant)) | "else")
+            (scope | ("do" statement eol)) eol)+
 // a for loop is the keyword `for` followed by an optional local variable
 // definition, an array iteration and then a scope
 for_loop    ::= "for" (local_var eol)? array_iter scope;
+// a while loop is the keyword "while" followed by an optional local variable
+// definition, a condition to loop until becomes false and its body
+while_loop  ::= "while" (local_var eol)? expression scope;
 // an array iteration is an optionally marked with `mut` namespace, followed
 // by an optional second comma and namespace, the range operator and another
 // namespace or array for iteration
-array_iter  ::= "mut"? namespace ("," namespace) ".." (namespace | array);
+array_iter  ::= "mut"? namespace ("," namespace) ".." expression;
 // a constant test block is the keyword `test` followed by either a constant or
 // namespace, a comparison operator, another constant or namespace and then an
 // optional string for the error logging
-const_test  ::= "test" (constant | namespace) ("==" | "!=" | "<" | ">" | "<=" | ">=") (constant | namespace) string?;
+const_test  ::= "test" (constant | namespace)
+            ("==" | "!=" | "<" | ">" | "<=" | ">=") (constant | namespace) string?;
 // a semicolon (end of line)
 eol         ::= ";";

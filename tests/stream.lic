@@ -1,0 +1,16 @@
+io mod = use "std/io.lim";
+
+pub fn main() void = io {
+    new buff | 128 + 16 {
+        let mut stdout = io::new_stream(io::stdout, 128, buff)!;
+        test #stdout.buffer == 128;
+        test stdout.handle == io::stdout;
+        test stdout.bufptr == 0;
+
+        io::stprint(stdout, "mornin' sailor!\n")!;
+        test stdout.bufptr == 16;
+
+        io::stflush(stdout)!;
+        test stdout.bufptr == 0;
+    }!;
+};

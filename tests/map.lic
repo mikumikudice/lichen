@@ -1,0 +1,18 @@
+io mod = use "std/io.lim";
+
+fn map(data [8]str, predicate fn(str) str #any) [8]str = #any {
+    let mut data' = data;
+    for mut itm, idx .. data' {
+        itm = predicate(itm);
+    };
+    return data';
+};
+
+fn pre(src str) str = io {
+    io::println(src)!;
+    return src;
+};
+
+pub fn main() void = io {
+    map(["mia", "leo", "lue"], pre);
+};

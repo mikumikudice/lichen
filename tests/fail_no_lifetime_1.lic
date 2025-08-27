@@ -1,0 +1,19 @@
+// parser test for asserting for
+// dynamically allocated data nested
+// within aggregated types
+
+type foo = record {
+    bar []u32;
+};
+
+fn new_foo(mut a mem) foo = alloc {
+    return foo {
+        bar = new ! [4; 0...] @ a,
+    };
+};
+
+pub fn main() void = alloc {
+    new a | 128 {
+        let f = new_foo(a);
+    }!;
+};

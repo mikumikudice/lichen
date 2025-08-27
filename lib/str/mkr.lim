@@ -1,0 +1,121 @@
+// the mkr module implements functions for creating and
+// buffering string concatenations
+
+// string maker type
+// it creates a buffered stream for long string printings
+//in an uniform approach. can be static or dynamic
+type maker = record {
+    placed !mem;
+    mut buffer []u8;
+    mut bufptr u64;
+    mut length u64;
+};
+
+// instantiates a dynamic buffered string maker
+// the given memory arena will be used to grow the buffer
+// when needed and possible
+pub fn dynamic(ini u64, mut a mem) !maker @ a = alloc {
+    return maker {
+        placed = a,
+        buffer = new ? [ini; 0...] @ a,
+        bufptr = 0,
+        length = ini,
+    };
+};
+
+// instantiates a dynamic buffered string maker and writes
+// the given string as an initial data to the buffer
+// the given memory arena will be used to grow the buffer
+// when needed and possible
+pub fn dynamic_with(ini str, mut a mem) !maker @ a = alloc & buff_write & buff_grow {
+    let mut self = dynamic(#ini, a)?;
+    write(self, ini)?;
+    return self;
+};
+
+// instantiates a static buffered string maker
+// the given array cannot grow and will return an error if
+// written to when full or without enough space
+pub fn static(mut buff []u8) maker = buff_write {
+    return maker {
+        placed = nil,
+        buffer = buff,
+        bufptr = 0,
+        length = #buff,
+    };
+};
+
+// grows the given maker's buffer by the given factor
+// if the given maker is static or the available memory is
+// not enougth, nil is returned. the reallocation may keep
+// the same address if no other allocation was used on that
+pub fn grow(mut self maker, factor u64) !unit = buff_grow {
+    // on a static maker, just return error
+    let mut where = self.placed?;
+    // update length
+    self.length = self.length * factor;
+    // calculate how much it should grow
+    let diff = self.length - #self.buffer;
+    let zeroed = new ? [diff; 0...] u8 @ where;
+    // double the size with a zeroed array
+    self.buffer = cat self.buffer ..? zeroed @ where;
+};
+
+// writes a given string to a string maker
+// if the maker is dynamic, calls mkr::grow on it to extend
+// the length by a default factor of 1/2
+pub fn write(mut self maker, data str) !unit = buff_write & buff_grow {
+    // extend buffer if it's is too small
+    if self.bufptr + #data > #self.buffer {
+        grow(self, 1 / 2)?;
+    };
+    // print to buffer and move pointer forward
+    write_to(self.buffer[self.bufptr..#self.buffer]!, data)?;
+    self.bufptr = self.bufptr + #data;
+};
+
+// writes `data` to given `buffer`
+// if buffer is not large enough to store the data, `error`
+// is returned
+pub fn write_to(mut buffer []u8, data str) !unit = buff_write {
+    if #data > #buffer {
+        return error;
+    };
+    for mut itm, idx .. buffer {
+        if idx == #data { break; };
+        itm = (data []u8)[idx]!;
+    };
+};
+
+// appends a single byte to the end of the string maker bufer
+// if buffer is full but is dynamic, it is concatenated with
+// the new byte
+pub fn append(mut self maker, data u8) !unit = buff_write {
+    if self.bufptr < #self.buffer {
+        // TODO: perhaps direct assignment to arrays?
+        for mut itm .. self.buffer[self.bufptr..#self.buffer]! {
+            itm = data;
+            break;
+        };
+    } else {
+        let mut where = self.placed?;
+        self.buffer = cat self.buffer ..? data @ where;
+    };
+};
+
+// returns an slice of the current string maker buffer as a
+// string
+// the function asserts for trailing zeroes and trims down
+// the buffer to the actual data size
+pub fn as_str(self maker) str = {
+    return self.buffer[0..self.bufptr]! str;
+};
+
+// returns an slice of the current string maker buffer and
+// resets it to the beggining of the buffer
+// the data is not actually cleared
+pub fn dump(mut self maker) str = reset {
+    let data = as_str(self);
+    self.bufptr = 0;
+    return data;
+};

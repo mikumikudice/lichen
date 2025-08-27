@@ -9,7 +9,7 @@ fn new_arr(x u32, y u32, z u32) [3]u32 = {
 
 fn part_arr(x u32, y u32, z u32) ![3]u32 = {
     if (x + y + z) == 0 {
-        return fail;
+        return error;
     } else {
         return new_arr(x, y, z);
     };

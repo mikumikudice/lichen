@@ -6,7 +6,7 @@ use os;
 use strings;
 
 const temp_folder = ".lcc_temp/";
-const version = "0.21.2";
+const version = "0.22.0";
 const help =
     "\n%gflags usage:%d\n"
     "\n %g-h\t\t"
@@ -30,9 +30,9 @@ const help =
     "%y-- sets path for stdlib and runtime"
 
     "\n %g-E\t\t"
-    "%y-- only checks for compile errors and generates no output files"
+    "%y-- only checks for compilation errors and generates no output files"
 
-    "\n %g-verbose\t\t"
+    "\n %g-verbose\t"
     "%y-- logs each compilation step. if %g-c%y is also set, dumps qbe IR instead"
 
     "\n %g-clean\t\t"
@@ -69,7 +69,7 @@ export fn main() void = {
         if(strings::hasprefix(arg, "-")){
             if(arg == "-l"){
                 color_error("%rmissing link object name with %y-l");
-                os::exit(1);
+                os::exit(4);
             };
             if(strings::hasprefix(arg, "-l")){
                 append(also_link, arg)!;
@@ -98,18 +98,18 @@ export fn main() void = {
                     continue;
                 } else {
                     color_error("%rmissing lib path for -std flag");
-                    os::exit(1);
+                    os::exit(4);
                 };
             case "-static" =>
                 if(shared_lib){
                     color_error("%rcannot set both static and shared flags");
-                    os::exit(1);
+                    os::exit(4);
                 };
                 static_lib = true;
             case "-shared" =>
                 if(static_lib){
                     color_error("%rcannot set both static and shared flags");
-                    os::exit(1);
+                    os::exit(4);
                 };
                 shared_lib = true;
             // verbose mode
@@ -129,7 +129,7 @@ export fn main() void = {
                 continue;
             case =>
                 color_error("%runknown flag %g{}", arg);
-                os::exit(1);
+                os::exit(4);
             };
         } else {
             // input file
@@ -140,7 +140,7 @@ export fn main() void = {
                 // define only once
                 if(target_file != ""){
                     color_error("%rmultiple output files given");
-                    os::exit(1);
+                    os::exit(4);
                 };
                 target_file = arg;
             };
@@ -148,7 +148,7 @@ export fn main() void = {
     };
     if(source_file == ""){
         color_error("%rno input file given");
-        os::exit(1);
+        os::exit(4);
     };
     // set the output filename to default if not set
     if(target_file == ""){

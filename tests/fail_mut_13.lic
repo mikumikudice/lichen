@@ -1,0 +1,12 @@
+// parser test for asserting for
+// immutable records with mutable
+// fields still not being reassignable
+
+type foo = record {
+    mut bar u64;
+};
+
+pub fn main() void = m {
+    let f = foo { bar = 0 };
+    f.bar = 4;
+};

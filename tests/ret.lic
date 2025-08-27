@@ -1,0 +1,19 @@
+// parser and compiler test for return
+// on error
+
+fn may_fail(x u32) !u32 = {
+    if x % 2 == 0 {
+        return error;
+    } else {
+        return x * x;
+    };
+};
+
+fn never_fail(x u32, x' u32) u32 = {
+    return may_fail(x)! or return x';
+};
+
+pub fn main() void = {
+    let x = never_fail(4, 1);
+    test x == 1;
+};

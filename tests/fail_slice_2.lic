@@ -1,0 +1,8 @@
+// parser and compiler test for correct
+// behavior of invalid slicing
+
+pub fn main() void = {
+    let arr = [1, 2, 3, 4] u32;
+    let upper = 10 u64;
+    let slice = arr[0..upper]!;
+};

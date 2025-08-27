@@ -19,11 +19,8 @@ _start.loop:
 _start.end:
    add    $0x8,%rdx
    // store argc and argv for later use
-   mov    %edi,%eax
-   add    $8,%eax
-   mov    %eax,rt.args
-   mov    %edi,rt.args+8
-   movq   %rsi,rt.args+16
+   mov    %edi,rt.args
+   movq   %rsi,rt.args+8
    // call entry point
    callq  main
    hlt

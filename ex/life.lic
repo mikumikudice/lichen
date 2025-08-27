@@ -1,0 +1,68 @@
+// compile this with the -lc flag set,
+// so it links against libc.
+
+io mod = use "std/io.lim";
+
+// c::std::rand
+fn rand() u32 = C use "rand";
+// c::std::srand
+fn randseed(s u32) u32 = C use "srand";
+// c::unistd::sleep
+fn sleep(t u32) u32 = C use "usleep";
+// c::time::time
+fn time(dummy u64) u32 = C use "time";
+
+pub fn main() void = C & io & conv {
+    let empty = [16; 0...] u8;
+    let zeroed = [16; empty...];
+    let mut grid = [16; empty...];
+    // set random seed
+    randseed(time(0));
+    // set initial state
+    for mut line .. grid {
+        for mut cell .. line {
+            cell = (rand() % 2) u8;
+        };
+    };
+    let save = [0o33, '[', 's'] u8;
+    let restore = [0o33, '[', 'u'] u8;
+    // save cursor position
+    io::print(save[0..3] str)!;
+    // iterate
+    while mut gen = 50 u64; gen > 0 {
+        // restore after each iteration
+        let mut grid' = zeroed;
+        io::print(restore[0..3] str)!;
+        for mut line, y .. grid' {
+            for mut cell, x .. line {
+                let upleft   = (grid[y - 1]? or empty)[x - 1]? or 0;
+                let up       = (grid[y - 1]? or empty)[x]? or 0;
+                let upright  = (grid[y - 1]? or empty)[x + 1]? or 0;
+
+                let midleft  = grid[y]![x - 1]? or 0;
+                let midright = grid[y]![x + 1]? or 0;
+
+                let downleft  = (grid[y + 1]? or empty)[x - 1]? or 0;
+                let down      = (grid[y + 1]? or empty)[x]? or 0;
+                let downright = (grid[y + 1]? or empty)[x + 1]? or 0;
+
+                let total = upleft + up + upright + midleft +
+                    midright + downleft + down + downright;
+
+                cell = grid[y]![x]!;
+                if cell == 0 && total == 3 {
+                    cell = 1;
+                } else if cell == 1 && total < 2 {
+                    cell = 0;
+                } else if cell == 1 && total >= 4 {
+                    cell = 0;
+                };
+                io::print("# " if cell bool else ". ")!;
+            };
+            io::print("\n")!;
+        };
+        gen = gen - 1;
+        grid = grid';
+        sleep(300 * 1000);
+    };
+};

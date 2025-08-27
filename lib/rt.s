@@ -1,4 +1,5 @@
 .data
+.section ".rodata"
 .balign 16
 .globl rt.zero
 // generic zeroed value to strings and arrays
@@ -8,6 +9,7 @@ rt.zero:
     .quad 0
 
 .data
+.section ".rodata"
 .balign 16
 .globl rt.stdin
 // internal runtime definition of standard input file handle
@@ -15,6 +17,7 @@ rt.stdin:
 	.int 0
 
 .data
+.section ".rodata"
 .balign 16
 .globl rt.stdout
 // internal runtime definition of standard output file handle
@@ -22,6 +25,7 @@ rt.stdout:
 	.int 1
 
 .data
+.section ".rodata"
 .balign 16
 .globl rt.stderr
 // internal runtime definition of standard error file handle
@@ -30,10 +34,30 @@ rt.stderr:
 
 .data
 .balign 16
+.globl rt.errmsg
+// internal runtime handle for the last error message
+rt.errmsg:
+    .quad 0
+    .quad 0
+
+.data
+.balign 16
+.globl rt.errmsgset
+rt.errmsgset:
+    .int 0
+
+.data
+.balign 16
+.globl rt.errno
+// internal runtime handle for the last errno code
+rt.errno:
+    .int 0
+
+.data
+.balign 16
 .globl rt.args
 // internal runtime handle for the argv
 rt.args:
-    .quad 0
     .quad 0
     .quad 0
 
@@ -57,11 +81,12 @@ rt.read:
     push   %rdx
     push   %rsi
     mov    (%rsi),%rdx
-    add    $0x8,%rsi
+    mov    0x8(%rsi),%rsi
     mov    $0x0,%eax
     syscall
     pop    %rsi
     pop    %rdx
+    mov    %eax,(rt.errno)
     ret
 
 .type rt.read, @function
@@ -80,6 +105,13 @@ rt.write:
     mov    0x8(%rsi),%rsi
     mov    $0x1,%eax
     syscall
+    cmp    $0,%eax
+    jl     rt.write.err
+    pop    %rdx
+    pop    %rsi
+    ret
+rt.write.err:
+    mov    %eax,(rt.errno)
     pop    %rdx
     pop    %rsi
     ret
@@ -96,6 +128,7 @@ rt.write:
 rt.open:
     mov    $0x2,%eax
     syscall
+    mov    %eax,(rt.errno)
     ret
 
 .type rt.open, @function
@@ -110,6 +143,7 @@ rt.open:
 rt.close:
     mov    $0x3,%eax
     syscall
+    mov    %eax,(rt.errno)
     ret
 
 .type rt.close, @function
@@ -137,6 +171,7 @@ rt.alloc:
     or     $0x20,%r10d
     mov    $0x9,%eax
     syscall
+    mov    %eax,(rt.errno)
     pop    %r8
     pop    %r9
     pop    %r10
@@ -192,6 +227,128 @@ rt.copy:
 .type rt.copy, @function
 .size rt.copy, .-rt.copy
 
+.section ".text.rt.copyh", "ax"
+.balign 16
+.globl rt.copyh
+rt.copyh:
+    push   %rdi
+    push   %rsi
+    push   %rdx
+    rt.copyh.rep:
+    cmp    $0,%rdx
+    je     rt.copyh.done
+    mov    (%rsi),%ax
+    mov    %ax,(%rdi)
+    dec    %rdx
+    add    $2,%rdi
+    add    $2,%rsi
+    jmp    rt.copyh.rep
+    rt.copyh.done:
+    pop    %rdx
+    pop    %rsi
+    pop    %rdi
+    ret
+
+.type rt.copyh, @function
+.size rt.copyh, .-rt.copyh
+
+.section ".text.rt.copyw", "ax"
+.balign 16
+.globl rt.copyw
+rt.copyw:
+    push   %rdi
+    push   %rsi
+    push   %rdx
+    rt.copyw.rep:
+    cmp    $0,%rdx
+    je     rt.copyw.done
+    mov    (%rsi),%eax
+    mov    %eax,(%rdi)
+    dec    %rdx
+    add    $4,%rdi
+    add    $4,%rsi
+    jmp    rt.copyw.rep
+    rt.copyw.done:
+    pop    %rdx
+    pop    %rsi
+    pop    %rdi
+    ret
+
+.type rt.copyw, @function
+.size rt.copyw, .-rt.copyw
+
+.section ".text.rt.copyl", "ax"
+.balign 16
+.globl rt.copyl
+rt.copyl:
+    push   %rdi
+    push   %rsi
+    push   %rdx
+    rt.copyl.rep:
+    cmp    $0,%rdx
+    je     rt.copyl.done
+    mov    (%rsi),%rax
+    mov    %rax,(%rdi)
+    dec    %rdx
+    add    $8,%rdi
+    add    $8,%rsi
+    jmp    rt.copyl.rep
+    rt.copyl.done:
+    pop    %rdx
+    pop    %rsi
+    pop    %rdi
+    ret
+
+.type rt.copyl, @function
+.size rt.copyl, .-rt.copyl
+
+.section ".text.rt.idx_argv", "ax"
+.balign 16
+.globl rt.idx_argv
+rt.idx_argv:
+    endbr64
+    pushq %rbp
+    movq %rsp, %rbp
+    movq rt.args(%rip), %rax
+    cmpq %rax, %rdi
+    jb rt.idx_argv.ok
+    subq $16, %rsp
+    movq %rsp, %rcx
+    movq $-1, (%rcx)
+    movq (%rcx), %rax
+    movq 8(%rcx), %rdx
+    jmp rt.idx_argv.fail
+rt.idx_argv.ok:
+    movq rt.args+8(%rip), %rax
+    movq (%rax, %rdi, 8), %rax
+    subq $16, %rsp
+    movq %rsp, %rcx
+    movq $1, (%rcx)
+    movq %rax, 8(%rcx)
+    movq (%rcx), %rax
+    movq 8(%rcx), %rdx
+rt.idx_argv.fail:
+    movq %rbp, %rsp
+    subq $0, %rsp
+    leave
+    ret
+
+.type rt.idx_argv, @function
+.size rt.idx_argv, .-rt.idx_argv
+
+.section ".text.rt.idx_argv_unsafe", "ax"
+.balign 16
+.globl rt.idx_argv_unsafe
+rt.idx_argv_unsafe:
+    endbr64
+    movq rt.args+8(%rip), %rax
+    movq (%rax, %rdi, 8), %rax
+    ret
+
+.type rt.idx_argv_unsafe, @function
+.size rt.idx_argv_unsafe, .-rt.idx_argv_unsafe
+/* end function idx_argv_unsafe */
+
 // removes a given file by unlinking its filesytem node
 // returns an errno in case of error as a negative value
 // prototype: fn(filepath) i32
@@ -201,6 +358,7 @@ rt.copy:
 rt.unlink:
     mov    $0x57,%eax
     syscall
+    mov    %eax,(rt.errno)
     ret
 
 .type rt.unlink, @function
@@ -215,6 +373,7 @@ rt.unlink:
 rt.rename:
     mov    $0x52,%eax
     syscall
+    mov    %eax,(rt.errno)
     ret
 
 .type rt.rename, @function
@@ -244,13 +403,19 @@ rt.strcmp:
     push   %rbx
     push   %rcx
     push   %rdx
+    // same string
+    cmp    %rdi,%rsi
+    je     rt.strcmp.t
+    // load length
     mov    (%rdi),%rbx
     mov    (%rsi),%rcx
+    // not the same length
     cmp    %rcx,%rbx
     jne    rt.strcmp.f
     mov    %rbx,%rdx
     mov    0x8(%rdi),%rdi
     mov    0x8(%rsi),%rsi
+    // compare each byte until the end of mismatch
     rt.strcmp.rpt:
     cmp    $0x0,%rdx
     je     rt.strcmp.t
@@ -296,7 +461,6 @@ rt.btoa:
     movq   %rax,8(%rsp)
     movl   $0,%eax
     movl   $0,%ecx
-.p2align 4
 rt.btoa.rep:
     cmpq   %rdx, %rcx
     jae    rt.btoa.end

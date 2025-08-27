@@ -1,0 +1,26 @@
+type foo = record {
+    arr []u64;
+    len u64;
+};
+
+fn init(len u64, mut a mem) !foo = init {
+    let mut f = foo {
+        arr = [],
+        len = len,
+    };
+    f.arr = new ? [f.len; 0...] @ a;
+    for mut itm, idx .. f.arr {
+        itm = f.len - idx;
+    };
+    return f;
+};
+
+pub fn main() void = init {
+    let len = 4 u64;
+    new buff | len * 8 + 24 {
+        let f = init(len, buff)!;
+        for itm, idx .. f.arr {
+            test itm == #f.arr - idx;
+        };
+    }!;
+};

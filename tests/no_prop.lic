@@ -5,4 +5,4 @@ pub fn main() void = {
     let foo = bar();
 };
 
-fn bar() !unit = { return fail; };
+fn bar() !unit = { return error; };

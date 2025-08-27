@@ -1,0 +1,10 @@
+// compiler test for correctly
+// iterating over an allocation
+
+pub fn main() void = {
+    new here | 128 {
+        for itm, idx .. new ! [0, 1, 2, 3] u32 @ here {
+            test idx u32 == itm;
+        };
+    }!;
+};

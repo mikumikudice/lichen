@@ -1,0 +1,15 @@
+pub fn main() void = {
+    new arena | 128 {
+        let length = 4 u64;
+        let mut arr = new ! [length; 0...] u64 @ arena;
+        test #arr == length;
+
+        for mut itm, idx .. arr {
+            itm = idx;
+        };
+
+        for itm, idx .. arr {
+            test itm == idx; 
+        };
+    }!;
+};

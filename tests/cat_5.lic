@@ -1,0 +1,16 @@
+// compiler test for checking if the
+// concatenation machinery works with
+// contiguous-allocated arrays
+
+io mod = use "std/io.lim";
+
+pub fn main() void = io {
+    new here | 512 {
+        let foo = ["mia", "leo", "lue"];
+        let bar = "kim";
+        let egg = cat foo ..! bar @ here;
+        for itm .. egg {
+            io::println(itm)!;
+        };
+    }!;
+};

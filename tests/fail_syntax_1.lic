@@ -1,5 +1,5 @@
 // parser test to address wrong
-// behaviour for scope skipping
+// behavior for scope skipping
 
 pub fn main() void = {
     if false {

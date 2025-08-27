@@ -1,0 +1,10 @@
+// parser and compiler test for the
+// semantically empty returns
+
+io mod = use "std/io.lim";
+
+fn empty() unit = {};
+
+pub fn main() void = io {
+    return empty();
+};

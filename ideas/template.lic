@@ -1,0 +1,19 @@
+template [st, dt]
+tmap(src []st, mut dest []dt, pre fn(st) dt #efx) []dt = #efx & muts {
+    for mut itm, idx .. dest {
+        itm = pre(src[idx]!);
+    };
+    return dest;
+};
+
+use tmap[str, u64] map;
+
+fn length(foo str) u64 = {
+    return #foo;
+};
+
+pub fn main() void = {
+    let mut lens = [4; 0...] u64;
+    let names = ["mia", "leo", "lue", "kim"];
+    map(names, lens, length);
+};

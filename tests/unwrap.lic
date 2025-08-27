@@ -2,12 +2,16 @@
 // unwrapping of primitives
 
 pub fn main() void = {
-    let y = foo(1)!;
+    let x = foo(2)? or 0;
+    test x == 5;
+
+    let y = foo(2)!;
+    test y == 5;
 };
 
 fn foo(x u32) !u32 = {
     if x == 0 {
-        return fail;
+        return error;
     } else {
         return 10 / x; 
     };

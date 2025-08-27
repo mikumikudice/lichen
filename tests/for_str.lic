@@ -1,0 +1,14 @@
+// parser test for checking if with
+// expression casting within for-loop
+// iterators is fixed
+
+fn debug(x u8) unit = rt use "rt.debug";
+
+pub fn main() void = rt {
+    let mut sum = 0 u8;
+    for c .. "abc" {
+        debug(c);
+        sum = sum + c;
+    };
+    test sum == 'a' + 'b' + 'c';
+};

@@ -1,0 +1,19 @@
+io mod = use "std/io.lim";
+
+type data = channel u32;
+
+fn send(ch data) unit = io & data {
+    let mut x = 0 u32;
+    for i .. [1, 2, 3, 4, 5, 6] u32 {
+        x += i;
+    };
+    io::println("sending through channel")!;
+    ch <~ x;
+};
+
+pub fn main() void = io & data {
+    let ch data = new ch;
+    async send(ch);
+    let res = <~ch;
+    io::printfln("received %u from channel", res)!;
+};

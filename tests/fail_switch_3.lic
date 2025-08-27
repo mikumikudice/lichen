@@ -1,0 +1,11 @@
+// parser test for switch type checking
+
+io mod = use "std/io.lim";
+
+pub fn main() void = io {
+    let x = "foo";
+    switch x;
+    | "foo"... do io::println("foo")!;
+    | "bar" do io::println("bar")!;
+    | else do io::println("something else")!;
+};

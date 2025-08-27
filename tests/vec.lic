@@ -1,0 +1,21 @@
+io  mod = use "std/io.lim";
+vec mod = use "std/vec.lim";
+
+fn println(data str) str = io {
+    io::println(data)!;
+    return data;
+};
+
+fn sum(i u64, t u64) u64 = {
+    return t + i;
+};
+
+pub fn main() void = do {
+    let sarr = ["mia", "leo", "lue"];
+    let mut sdest = [3; ""...];
+    vec::smaps(sarr, sdest, println);
+
+    let iarr = [1, 2, 3, 4] u64;
+    let res = vec::foldli(iarr, sum);
+    test res == 10;
+};

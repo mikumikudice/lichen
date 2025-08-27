@@ -1,19 +1,19 @@
-# lichen: a small plant for big jobs
-lichen is a simple, small, procedural, programming language with functional features.
+# lichen: correct by construction
+lichen is a simple, small, procedural, programming language with functional features focusing on writing code that is safe at compile time and yet simple to read, understand and follow.
 
 ## special features
 - mutable semantics
 - array indexing safety through partial types
 - effect system
-- memory arena allocators
+- memory arena allocators with lifetime checking
 - no dependencies on (gnu) lib-c
-- small runtime and no implicit control flow
+- no implicit control flow
 - lazy evaluation and function code emission
 - record sub-typing for generic programming
-- singletons for generic error (`fail`) and memory allocation failure (`nomem`)
+- singletons for logic failure (`error`) and invalid memory (`nil`)
 
 ## inspirations
-lichen is directly inspired by [hare](https://harelang.org), [Flix](https://flix.dev/), [Odin](https://odin-lang.org), jai, [elm](https://elm-lang.org) and [Rust](https://rust-lang.org).
+lichen is directly inspired by [hare](https://harelang.org), [Flix](https://flix.dev/), [Odin](https://odin-lang.org), [go](https://go.dev/), jai, [elm](https://elm-lang.org) and [Rust](https://rust-lang.org).
 
 ## code examples
 a hello world
@@ -24,67 +24,49 @@ pub fn main() void = io {
     io::println("mornin' sailor!")!;
 };
 ```
-a hello user
+
+how to gather user input in lichen
 ```rust
 io mod = use "std/io.lim";
 
-pub fn main() void = io {
-    // set buffer size
-    let size u64 = 128 << 16;
-    // create memory arena for buffer
-    mem buffer | size {
-        // allocate string buffer
-        let name mut = new [size; 0] @ buffer;
-        // read from user
-        io::read(size, name!)!
-            or io::fatal("failed to read from user");
-        // greetings!
-        io::printfln("hello %s!", name str)!;
+pub fn main() void = io & conv {
+    let length = 128 u64;
+    new arena | length + 16 {
+        // allocate input buffer
+        let mut name = new ! [length; 0...] u8 @ arena;
+        // gather input
+        io::print("type your name > ")!;
+        let len = io::read_to(name)!
+            or io::panic("failed to read from user");
+        // greetings
+        io::print("hello, ")!;
+        io::print(name[0..len]! str)!;
+        io::println("!")!;
     }!;
 };
 ```
-read a file and print asked line
+
+usage of the string maker module
 ```rust
-conv mod = use "str/conv.lim";
-fs mod = use "std/fs.lim";
-io mod = use "std/io.lim";
-os mod = use "std/os.lim";
 
-pub fn main() void = fs & io {
-    // fetch CLI argument list
-    let args = os::args();
+io  mod = use "std/io.lim";
+mkr mod = use "str/mkr.lim";
 
-    // assert for arguments
-    let file_name = args[1]?
-        or io::fatal("line number not given");
-    let line_number = args[2]?
-        or io::fatal("line number not given");
-
-    // allocate buffer for file lines array
-    mem line_buffer | count << 16 {
-        // convert given argument as string to number
-        let line_number' = conv::to_u64(line_number, line_buffer)!
-            or fail | io::fatalf("invalid line number %s", line_number);
-            or nomem | io::fatal("buffer for line number not big enough");
-        // set max size for file buffer
-        let max = 128 << 16;
-        // allocate buffer for file
-        mem file_buffer | max {
-            // try to open given file
-            let file = fs::open(file_name, fs::flags.READONLY)!
-                or io::fatalf("file %s could not be opened", file_name);
-            // read entire file by lines
-            let lines = fs::read_lines(file, file_buffer)!;
-            // check if line number is valid
-            if #lines < line_number' {
-                io::fatal("file %s doesn't have line %u", line_number');
-            };
-            // assert value from array
-            let line = lines[line_number']!;
-            // print it
-            io::println(line)!;
-        // assert for memory allocation failure
-        }! or io::fatal("failed to create file buffer");
+pub fn main() void = io & mkr {
+    // create a static buffer
+    let mut static = [128; 0...] u8;
+    // initialize a string maker from it
+    let mut static' = mkr::static(static);
+    // write to it
+    mkr::write(static', "mornin'")!;
+    new here | 256 {
+        // initialize a dynamic string maker using an arena
+        let mut dynamic = mkr::dynamic(128, here)!;
+        // write to it as well
+        mkr::write(dynamic, " sailor!")!;
+        // dump the content of both makers
+        io::print(mkr::dump(static'))!;
+        io::println(mkr::dump(dynamic))!;
     }!;
 };
 ```
@@ -119,22 +101,21 @@ roadmap:
             - [done] oct
             - [done] bin
         - [done] boolean
-        - [done] fail and nomem
+        - [done] `error` and `nil`
         - [partial] decimal numbers
             - [done] decimal point
             - [undone] scientific notation
         - [done] array literals
             - [done] spreading
-        - [undone] record literals
+        - [partial] record literals
             - [undone] autofill
     - [partial] declarations
         - [partial] functions
             - [done] declaration
-            - [partial] variadic
             - [done] effect tags
             - [done] effect tag matching assertion
             - [done] FFI
-            - [undone] first-class type declaration
+            - [done] first-class type declaration
         - [done] variables
             - [done] declaration
             - [done] reassignment
@@ -143,11 +124,11 @@ roadmap:
         - [partial] records
             - [done] declaration
             - [done] literal
-            - [undone] change-copying
+            - [undone] udpate-copying
             - [done] duplication
-            - [partial] field assignment
-        - [partial] arrays
-            - [partial] declaration
+            - [done] field assignment
+        - [done] arrays
+            - [done] declaration
             - [done] indexing
                 - [done] partial result
         - [partial] tuples
@@ -164,33 +145,44 @@ roadmap:
             - [done] lazy
         - [done] function call
         - [done] value assertion
+        - [undone] fail state checking
     - [partial] statements
-        - [done] if-else blocks
+        - [partial] if-else blocks
             - [done] branching
             - [done] local variables
+            - [undone] conditional unwrap
         - [done] return
             - [done] expression return
             - [done] empty return
-        - [undone] switch
-            - [undone] base functionality
+        - [partial] switch
+            - [done] base functionality
+            - [partial] duplicated case assertion
             - [undone] local variables
-            - [undone] multiple constants
-            - [undone] constant range
-            - [undone] else case
-            - [undone] exhaustiveness
+            - [done] multiple constants
+            - [done] constant range
+            - [done] else case
+            - [done] exhaustiveness
         - [done] for-loop
             - [done] base functionality
             - [done] local variables
             - [done] optional index
+        - [done] while-loop
+            - [done] base functionality
+            - [done] local variables
         - [partial] memory arenas
             - [done] creation
             - [done] allocation
-            - [undone] concatenation
-            - [done] nomem error
+            - [partial] concatenation
+                - [done] base functionality
+                - [undone] in-place optimizations
+            - [done] nil error
             - [done] first class object
         - [partial] test block
             - [undone] static/global
             - [done] dynamic/local
+        - [partial] defer block
+            - [done] base functionality
+            - [undone] defer on fail
     - [done] partial types
         - [done] assertion
             - [done] basing assert and bubble
@@ -207,7 +199,7 @@ roadmap:
     - [partial] io
     - [partial] os
         - [undone] exec
-    - [undone] vect
+    - [partial] vect
     - [partial] str
         - [undone] encode
         - [partial] conv

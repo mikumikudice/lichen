@@ -1,0 +1,21 @@
+// parser test for asserting for valid
+// immutable record with all mutable
+// fields
+
+type foo = record {
+    mut bar []u8;
+    mut x u64;
+};
+
+type bar = record {
+    egg []u8;
+    x u64;
+};
+
+pub fn main() void = m {
+    let f = foo { bar = [8; 0...], x = 0 };
+    let mut ref = f;
+
+    let b = bar { egg = [8; 0...], x = 0 };
+    let mut ref' = b;
+};

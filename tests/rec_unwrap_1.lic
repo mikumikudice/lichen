@@ -1,0 +1,32 @@
+// parser and compiler test for partial
+// record type unwrapping
+
+io mod = use "std/io.lim";
+
+type foo = record {
+    bar !u32;
+};
+
+fn bar'(x u32) !u32 = {
+    if x == 0 {
+        return error;
+    } else {
+        return x;
+    };
+};
+
+pub fn main() void = io {
+    let r = foo { bar = bar'(1) };
+    if r.bar! == 1 {
+        io::println("test 1 ok")!;
+    } else {
+        io::println("test 1 fail")!;
+    };
+
+    let r' = foo { bar = bar'(0) };
+    if (r'.bar? or 69) == 69 {
+        io::println("test 2 ok")!;
+    } else {
+        io::println("test 2 fail")!;
+    };
+};

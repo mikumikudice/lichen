@@ -1,0 +1,13 @@
+// parser test for asserting for
+// dynamically allocated data nested
+// within aggregated types
+
+fn new_foo(mut a mem) [4]str = alloc {
+    return [new ! "foo" @ a...];
+};
+
+pub fn main() void = alloc {
+    new a | 128 {
+        let f = new_foo(a);
+    }!;
+};

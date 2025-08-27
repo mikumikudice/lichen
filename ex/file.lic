@@ -1,0 +1,13 @@
+// how to create, open, write to and
+// close a file in lichen
+
+fs mod = use "std/fs.lim";
+io mod = use "std/io.lim";
+
+pub fn main() void = fs & io {
+    // create and open file
+    let file = fs::open("foo.txt", fs::READWRITE | fs::CREATE)!;
+    defer fs::close(file)!;
+    // write to it
+    io::fprintln(file, "mornin' sailor!")!;
+};

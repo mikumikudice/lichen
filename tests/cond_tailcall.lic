@@ -1,0 +1,13 @@
+// parser test for asserting if
+// tailcalls on branches are allowed
+
+pub fn main() void = {
+    let x = loop(4);
+};
+
+fn loop(x u32) u32 = {
+    if x > 0 {
+        return loop(x - 1);
+    };
+    return 0;
+};
