@@ -72,7 +72,8 @@ pub fn main() void = io & mkr {
 ```
 
 # disclaimer
-lichen, previously called moss, is still heavily in development. not only the compiler, but everything related to the project. everything, including syntax, semantics and general framework are subject to change at any time:
+lichen, previously called moss, is still heavily in development. not only the compiler, but everything related to the project. everything, including syntax, semantics and general framework are subject to change at any time.
+
 roadmap:
 - [partial] tutorial
 - [partial] specification
@@ -232,9 +233,9 @@ support include standard library port to the available syscalls/APIs and binary 
 lichen has not and will never have native support for closed source/proprietary OSes such as windows and macOS.
 
 # building and installation
-lichen is written in the [hare programming language](https://hare-lang.org) and uses the [QBE](https://c9x.me/compile/) IR as a backend to generate the binaries. once all dependencies are installed, you're ready to both build the compiler and use it with no other dependencies. note that each of lichen' dependencies have theirs own dependencies. once everything is set, simply run the `install.sh`. it will copy a binary called `lcc` and the runtime and standard library to `~/.local/bin` and `~/.local/lib/lcclib`, respectively, and will be available only for your current user. you also can specify which directory the compiler should look for the runtime and standard library using the `-std` flag.
+lichen is written in the [hare programming language](https://hare-lang.org) and uses the [QBE](https://c9x.me/compile/) IR as a backend to generate the binaries. once all dependencies are installed, you're ready to both build the compiler and use it with no other dependencies. note that each of lichen' dependencies have theirs own dependencies. once everything is set, simply run the `install.sh`. it will copy a binary called `lcc` and the runtime and standard library to `~/.local/bin` and `~/.local/lib/lcc`, respectively, and will be available only for your current user. you also can specify which directory the compiler should look for the runtime and standard library using the `-std` flag.
 
-optionally, if you have lua 5.3, you can run an automated test unit for all milestones with `run_tests.lua`.
+optionally, if you have lua 5.3, you can run an automated test unit for with `run_tests.lua`, found in scrips/.
 
 # learning lichen
 you can learn lichen in a course of one to three days. [this](doc/tut.md) is the tutorial.
