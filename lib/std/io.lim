@@ -3,47 +3,44 @@
 
 conv mod = use "str/conv.lim";
 mkr  mod = use "str/mkr.lim";
+rt   mod = use "std/rt.lim";
 
 // runtime wrappers for the std handles
 pub stdin  u32 = use "rt.stdin";
 pub stdout u32 = use "rt.stdout";
 pub stderr u32 = use "rt.stderr";
 
-// runtime wrappers for IO functions
-fn rt_read(handle u32, mut buff []u8) i32 = io_read & buff_write use "rt.read";
-fn rt_write(handle u32, mut data []u8) i32 = io_write use "rt.write";
-
 // prints `data` to stdout
 // if data has length of zero, no printing occurs
 // returns `error` if any error occurs during printing
-pub fn print(data str) !unit = io_write {
+pub fn print(data str) !unit = rt & io_write {
     fprint(stdout, data)?;
 };
 
 // prints `data` followed by a line feed to stdout
 // if data has length of zero, no printing occurs
 // returns `error` if any error occurs during printing
-pub fn println(data str) !unit = io_write {
+pub fn println(data str) !unit = rt & io_write {
     fprintln(stdout, data)?;
 };
 
 // prints `data` followed by a line feed to stderr and
 // halts the program execution with exit code of 1 
-pub fn panic(data str) !void = io_write {
+pub fn panic(data str) !void = rt & io_write {
     reportln(data)!;
 };
 
 // prints `data` to stderr
 // if data has length of zero, no printing occurs
 // returns `error` if any error occurs during printing
-pub fn report(data str) !unit = io_write {
+pub fn report(data str) !unit = rt & io_write {
     fprint(stderr, data)?;
 };
 
 // prints `data` followed by a line feed to stderr
 // if data has length of zero, no printing occurs
 // returns `error` if any error occurs during printing
-pub fn reportln(data str) !unit = io_write {
+pub fn reportln(data str) !unit = rt & io_write {
     fprintln(stderr, data)?;
 };
 
@@ -51,20 +48,20 @@ pub fn reportln(data str) !unit = io_write {
 // handle
 // if data has length of zero, no printing occurs
 // returns `error` if any error occurs during printing
-pub fn fprintln(handle u32, data str) !unit = io_write {
+pub fn fprintln(handle u32, data str) !unit = rt & io_write {
     fprint(handle, data)?; fprint(handle, "\n")?;
 };
 
 // prints `data` to the given file handle
 // if data has length of zero, no printing occurs
 // returns `error` if any error occurs during printing
-pub fn fprint(handle u32, data str) !unit = io_write {
+pub fn fprint(handle u32, data str) !unit = rt & io_write {
     // empty data
     if #data == 0 { return; };
     // allocate mutable copy of data
     new dup | #data + 16 {
         let mut dummy = new ? data @ dup;
-        if code = rt_write(handle, dummy []u8); code < 0 {
+        if code = rt::write(handle, dummy []u8); code < 0 {
             return error;
         };
     }?;
@@ -96,7 +93,7 @@ pub fn new_stream(handle u32, buff_sz u64, mut a mem) !stream @ a = init {
 // data does not fit within the current buffer, the stream
 // is automatically flushed and the data imediatly printed
 // if data is empty, no writing or flushing occurs
-pub fn stprint(mut st stream, data str) !unit = mkr & io_write {
+pub fn stprint(mut st stream, data str) !unit = rt & mkr & io_write {
     // data fits within buffer
     if #data > 0 && #data + st.bufptr < #st.buffer {
         // write to buffer
@@ -116,7 +113,7 @@ pub fn stprint(mut st stream, data str) !unit = mkr & io_write {
 // empties out the given stream's buffer and resets it to
 // zero
 // if the buffer is empty, no flushing occurs
-pub fn stflush(mut st stream) !unit = io_write {
+pub fn stflush(mut st stream) !unit = rt & io_write {
     // empty buffer
     if st.bufptr == 0 { return; };
     // write to handle
@@ -132,13 +129,13 @@ pub fn stflush(mut st stream) !unit = io_write {
 // reads from stdin and places in the given buffer
 // returns `error` oif any error occurs during memory reading
 // returns `nil` if buffer is too small
-pub fn read_to(mut buffer []u8) !u64 = io_read & buff_write {
+pub fn read_to(mut buffer []u8) !u64 = rt & io_read & buff_write {
     return fread_to(stdin, buffer)?;
 };
 
 // reads from a given handle and places in the given buffer
-pub fn fread_to(handle u32, mut buffer []u8) !u64 = io_read & buff_write {
-    if code = rt_read(handle, buffer); code < 0 {
+pub fn fread_to(handle u32, mut buffer []u8) !u64 = rt & io_read & buff_write {
+    if code = rt::read(handle, buffer); code < 0 {
         return error;
     } else {
         return code u32;

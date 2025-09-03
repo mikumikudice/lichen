@@ -2,15 +2,15 @@
 // the operating system environment and its variables, such
 // as argv, env and errno
 
+rt mod = use "std/rt.lim";
+
 pub errno i32 = use "rt.errno";
 
-fn rt_index_argv(addr u64) !cstr = os_env use "rt.idx_argv";
-
-pub fn args(i u64) !cstr = os_env {
-    return rt_index_argv(i);
+pub fn args(i u64) !cstr = rt & os_env {
+    return rt::idx_argv(i);
 };
 
-pub fn alloc_argv(max u64, mut a mem) ![]cstr @ a = os_env {
+pub fn alloc_argv(max u64, mut a mem) ![]cstr @ a = rt & os_env & alloc {
     let mut argv = new ? [max; "" cstr ...] @ a;
     for mut arg, idx .. argv {
         arg = args(idx)! or break;

@@ -8,6 +8,7 @@
 - enforce use of tags for other effects when only implementing module tags
 - submodules
 - do statement for if-else and for-loop blocks
+- hex literal characters for strings
 - implement behavior: bubbled tests messages are assigned to global error message
 - implement behavior: asserts set global error message to be shown at @fail 
 - assert for division by zero

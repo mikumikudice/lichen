@@ -323,8 +323,9 @@ fn emit_obj(
     // emit assembly
     run_cmd(silent, "qbe", "-o", asm_src, qbe_out);
 
-    // append runtime to assembly emittion
-    const rt_src = strings::concat(lib_path, "rt.s")!;
+    const host = os::sysname();
+    // append runtime to assembly emission
+    const rt_src = fmt::asprintf("{}rt/rt+{}.s", lib_path, host)!;
     defer free(rt_src);
 
     const rt_file = os::open(rt_src, fs::flag::RDONLY)!;
@@ -340,13 +341,12 @@ fn emit_obj(
         free(l);
     };
     io::close(rt_file)!;
-
+    // append prelude to assembly emission
     const pre_asm = &memio::dynamic();
     defer io::close(pre_asm)!;
     if(!static_lib && !shared_lib){
-        const pre_src = strings::concat(lib_path, "pre.s")!;
+        const pre_src = fmt::asprintf("{}rt/pre+{}.s", lib_path, host)!;
         defer free(pre_src);
-
         const pre_file = os::open(pre_src, fs::flag::RDONLY)!;
 
         // read all runtime content, line by line

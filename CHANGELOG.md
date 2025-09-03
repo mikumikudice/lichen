@@ -8,10 +8,11 @@ correct behavior assert
 - none
 
 others
-- none
+- make compiler load runtime stuff based on which os it's hosted
 
 breaking changes
 - none
 
 standard library changes
-- fix dump function for str::mkr
+- add readme and separated versioning
+- add std::rt and make all other modules use it instead of direct FFI
