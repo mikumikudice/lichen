@@ -1,3 +1,6 @@
+// parser test for assertinf against
+// void expressions within defer
+
 fn halt() void = {};
 
 pub fn main() void = io {

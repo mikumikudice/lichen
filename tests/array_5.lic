@@ -1,0 +1,11 @@
+// parser test for array assignment
+
+pub fn main() void = {
+    let mut arr = [6, 2, 3, 7, 5] u32;
+    arr[0] = 1;
+    let x = 3 u32;
+    arr[x]! = 4;
+    for itm, idx .. arr {
+        test (itm - 1) u64 == idx;
+    };
+};

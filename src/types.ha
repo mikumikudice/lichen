@@ -154,6 +154,7 @@ type context = struct {
     types: *[]*type_meta,
     free_on_ret: []str,
     defer_stack: []path_meta,
+    on_defer: bool,
     scp: *scope,
 };
 
@@ -239,7 +240,7 @@ type assign_meta = struct {
     pos: size,
     var: *var_meta,
     val: *expr_meta,
-    host: (void | *decl_meta | *field_meta),
+    host: (void | ...chain_exp_t),
 };
 
 type arena_meta = struct {
@@ -410,8 +411,9 @@ type switch_case = (([]*const_meta | void), (operator | void), path_meta);
 
 type switch_meta = struct {
     pos: size,
-    rets: bool,
     tpe: lichen_t,
+    rets: bool,
+    local: nullable *decl_meta,
     cases: []switch_case,
     check: *expr_meta,
     else_case: (void | size),

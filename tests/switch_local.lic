@@ -1,0 +1,9 @@
+// parser and compiler test for switch
+// local variables 
+
+pub fn main() void = {
+    switch c = 4 u32; c;
+    | 1 do test c == 1;
+    | 2..4 do test c >= 2 && c <= 4;
+    | else do unreachable;
+};

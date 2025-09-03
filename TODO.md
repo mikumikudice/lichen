@@ -7,7 +7,6 @@
 - enumerators
 - enforce use of tags for other effects when only implementing module tags
 - submodules
-- short-assignment operators
 - do statement for if-else and for-loop blocks
 - implement behavior: bubbled tests messages are assigned to global error message
 - implement behavior: asserts set global error message to be shown at @fail 

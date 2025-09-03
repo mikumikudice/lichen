@@ -1,0 +1,19 @@
+// parser and compiler test for complex
+// chain of fields
+
+type foo = record {
+    bar []u32;
+};
+
+type egg = record {
+    fizz foo;
+};
+
+pub fn main() void = {
+    let mut f = foo { bar = [8, 1, 2, 3] };
+    let mut e = egg { fizz = f };
+    e.fizz.bar[0]! = 0;
+    for itm, idx .. e.fizz.bar {
+        test itm u64 == idx;
+    };
+};

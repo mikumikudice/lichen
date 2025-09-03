@@ -1,0 +1,9 @@
+// parser test for asserting for effect
+// tagging mismatch on function
+// pointers
+
+pub fn main() void = a & b {
+    take_fun(main);
+};
+
+fn take_fun(fun fn() void a) unit = {};

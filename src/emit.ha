@@ -419,7 +419,7 @@ fn gen_qbe_ir(ctxt: *context) memio::stream = {
     for(let lit = 0z; lit < len(ctxt.literals); lit += 1){
         // emit string literal
         fmt::fprintfln(&ir, "section \".rodata\"")!;
-        fmt::fprintfln(&ir, "data $lit.{} = align 8 {{ b \"{}\" }}",
+        fmt::fprintfln(&ir, "data $lit.{} = align 8 {{ b \"{}\", b 0 }}",
             lit, ctxt.literals[lit])!;
         // emit constant string value
         fmt::fprintfln(&ir, "section \".rodata\"")!;
@@ -783,6 +783,10 @@ fn gen_stt(
         // generate defer-independent label
         const lbl = fmt::asprintf("{}{}", swtch.pos, lbl_append)!;
         defer free(lbl);
+        // local variable
+        if(swtch.local is *decl_meta){
+            gen_decl(ctxt, buff, swtch.local as *decl_meta, defer_id);
+        };
         const check = fmt::asprintf("%switch.check.{}", lbl)!;
         defer free(check);
         const val = gen_exp(ctxt, buff, check,
@@ -945,19 +949,18 @@ fn gen_stt(
         fmt::fprintfln(buff, "\tdbgloc {}, {}", l, c)!;
         const wrap = fmt::asprintf("%asg.val.{}", asg.pos)!;
         defer free(wrap);
-        const val = gen_exp(ctxt, buff, wrap,
-            asg.var.nm.tpe, asg.val, defer_id);
-        const asg_val =
-            if(val != ""){
-                yield val;
-            } else {
-                yield wrap;
-            };
-        defer if(val != "") free(val);
-
+        const name = fix_nm(ctxt, buff, asg.var.nm);
+        defer free(name);
         if(asg.host is void){
-            const name = fix_nm(ctxt, buff, asg.var.nm);
-            defer free(name);
+            const val = gen_exp(ctxt, buff, wrap,
+                asg.var.nm.tpe, asg.val, defer_id);
+            const asg_val =
+                if(val != ""){
+                    yield val;
+                } else {
+                    yield wrap;
+                };
+            defer if(val != "") free(val);
             if(is_aggregated(asg.var.nm.tpe) && size_known(asg.var.nm.tpe)){
                 const mem_size = type_size(asg.var.nm.tpe);
                 fmt::fprintfln(buff, "\tblit {}, {}, {}",
@@ -967,21 +970,84 @@ fn gen_stt(
                     qbe_t(ctxt, asg.var.nm.tpe, mode::ASSIGN), asg_val)!;
             };
         } else {
-            const host = asg.host as *decl_meta;
-            const host_name = fix_nm(ctxt, buff, host.var.nm);
-
-            const offst = field_offset(host.var.nm.tpe.base as *record,
-                asg.var.nm.name);
-            fmt::fprintfln(buff,
-                "\t{0}.ptr =l add {0}, {1}", host_name, offst)!;
-            if(is_aggregated(asg.var.nm.tpe)){
-                const mem_size = type_size(asg.var.nm.tpe);
-                fmt::fprintfln(buff, "\tblit {}, {}.ptr, {}",
-                    asg_val, host_name, mem_size)!;
+            const load_stack: []chain_exp_t = [];
+            let next: (void | ...chain_exp_t) = asg.host;
+            let root: chain_exp_t = asg.host as chain_exp_t;
+            for(next is chain_exp_t){
+                const valid = next as chain_exp_t;
+                root = valid;
+                append(load_stack, valid)!;
+                match(valid){
+                case let idx: *indexing_meta =>
+                    next = idx.before;
+                case let slc: *slicing_meta =>
+                    next = slc.before;
+                case let fld: *field_meta =>
+                    next = fld.before;
+                };
+            };
+            const base =
+                match(root){
+                case let idx: *indexing_meta =>
+                    yield idx.base as *member_meta;
+                case let slc: *slicing_meta =>
+                    yield slc.base as *member_meta;
+                case let fld: *field_meta =>
+                    yield fld.base as *member_meta;
+                };
+            let last =
+                if(root is *field_meta){
+                    yield fmt::asprintf("%rec.{}",
+                        (root as *field_meta).pos)!;
+                } else if(root is *indexing_meta){
+                    yield fmt::asprintf("%arr.{}",
+                        (root as *indexing_meta).pos)!;
+                } else {
+                    yield fmt::asprintf("%slc.{}",
+                        (root as *slicing_meta).pos)!;
+                };
+            assign_memb(ctxt, buff, last, base.tpe, base, defer_id);
+            let last_t = asg.var.nm.tpe;
+            for(let f = len(load_stack); f > 0; f -= 1){
+                const this = load_stack[f - 1];
+                match(this){
+                case let idx: *indexing_meta =>
+                    const new = gen_index(ctxt, buff, last,
+                        idx.from_tpe, f, idx, defer_id, true);
+                    last_t = idx.tpe;
+                    free(last);
+                    last = new;
+                case let fld: *field_meta =>
+                    const new = gen_field(ctxt, buff, last,
+                        fld.tpe, f, fld, defer_id, true);
+                    last_t = fld.tpe;
+                    free(last);
+                    last = new;
+                case let slc: *slicing_meta =>
+                    const new = gen_slice(ctxt, buff, last,
+                        slc.tpe, f, slc, defer_id);
+                    last_t = slc.tpe;
+                    free(last);
+                    last = new;
+                };
+            };
+            defer free(last);
+            const val = gen_exp(ctxt, buff, wrap,
+                last_t, asg.val, defer_id);
+            const asg_val =
+                if(val != ""){
+                    yield val;
+                } else {
+                    yield wrap;
+                };
+            defer if(val != "") free(val);
+            const val_tpe_sz = type_size(last_t);
+            if(val_tpe_sz <= 8){
+                fmt::fprintfln(buff, "\tstore{} {}, {}",
+                    qbe_t(ctxt, last_t), asg_val, last)!;
             } else {
-                fmt::fprintfln(buff, "\tstore{} {}, {}.ptr", 
-                    qbe_t(ctxt, asg.var.nm.tpe),
-                    asg_val, host_name)!;
+                fmt::fprintfln(buff, "\tblit {}, {}, {}",
+                    asg_val, last, val_tpe_sz)!;
             };
         };
     case let arena: *arena_meta =>
@@ -1721,21 +1787,15 @@ fn assign_memb(
                 defer if(res != "") free(res);
                 const field_src = fmt::asprintf("{}.src", field)!;
                 defer free(field_src);
-                const type_l =
-                    if((!rec_field.1.var.nm.tpe.partial &&
-                        !val.2.tpe.partial) ||
-                        (rec_field.1.var.nm.tpe.partial &&
-                        val.2.tpe.partial) ||
-                        (!rec_field.1.var.nm.tpe.partial &&
-                        val.2.tpe.partial)){
-                        gen_cast(ctxt, buff, asg_val, val.2.tpe,
-                            field_src, rec_field.1.var.nm.tpe);
-                        yield type_size(rec_field.1.var.nm.tpe);
-                    } else {
-                        fmt::fprintfln(buff, "\t{} ={} copy {}", field_src,
-                            qbe_t(ctxt, rec_field.1.var.nm.tpe), asg_val)!;
-                        yield type_size(rec_field.1.var.nm.tpe, true);
-                    };
+                const type_l = type_size(rec_field.1.var.nm.tpe);
+                if(!comp_type(rec_field.1.var.nm.tpe, val.2.tpe)){
+                    gen_cast(ctxt, buff, asg_val, val.2.tpe,
+                        field_src, rec_field.1.var.nm.tpe);
+                } else {
+                    fmt::fprintfln(buff, "\t{} ={} copy {}", field_src,
+                        qbe_t(ctxt, rec_field.1.var.nm.tpe, mode::ASSIGN),
+                        asg_val)!;
+                };
                 if(type_l <= 8){
                     fmt::fprintfln(buff, "\tstore{} {}, {}.ptr",
                         qbe_t(ctxt, rec_field.1.var.nm.tpe),
@@ -2464,6 +2524,7 @@ fn gen_field(
     idx: size,
     this: *field_meta,
     defer_id: (void | size),
+    return_ptr: bool = false,
 ) str = {
     move_ptr(ctxt, ctxt.tokens[this.pos]);
     const (l, c) = get_pos(ctxt);
@@ -2490,6 +2551,21 @@ fn gen_field(
         } else {
             yield base;
         };
+    // we do not care about the current value, only the address of it
+    if(return_ptr){
+        // field has propagation
+        if(this.prop is propagation){
+            const prop = this.prop as propagation;
+            const wrap = fmt::asprintf("{}.wrap", val)!;
+            const unwrap_t = this.tpe;
+            unwrap_t.partial = false;
+            gen_prop(ctxt, buff, prop, this.tpe,
+                unwrap_t, this.pos, wrap, val, defer_id);
+            return wrap;
+        };
+        return strings::dup(val)!;
+    };
+    // read value
     const type_l = type_size(this.field.var.nm.tpe);
     if(type_l <= 8){
         fmt::fprintfln(buff, "\t{} ={} load{} {}", field,
@@ -2501,7 +2577,6 @@ fn gen_field(
         if(this.prop is propagation){
             const prop = this.prop as propagation;
             const wrap = fmt::asprintf("{}.wrap", field)!;
-            defer free(field);
             const unwrap_t = this.tpe;
             unwrap_t.partial = false;
             gen_prop(ctxt, buff, prop, this.tpe,
@@ -2525,6 +2600,7 @@ fn gen_index(
     idx: size,
     this: *indexing_meta,
     defer_id: (void | size),
+    return_ptr: bool = false,
 ) str = {
     move_ptr(ctxt, ctxt.tokens[this.pos]);
     const (l, c) = get_pos(ctxt);
@@ -2575,7 +2651,6 @@ fn gen_index(
     defer free(index);
     // adjust offset
     const item = fmt::asprintf("{}.item", base)!;
-    const offst = fmt::asprintf("{}.offset", base)!;
     const unwrap_sz = type_size(this.tpe);
     if(!zero){
         if(unwrap_sz > 1){
@@ -2591,19 +2666,35 @@ fn gen_index(
     if(!safe){
         const item_t = unwrap_array(this.from_tpe);
         item_t.partial = true;
-        const tpe_sz = type_size(item_t);
 
-        fmt::fprintfln(buff, "\t{} =l alloc8 {}", item, tpe_sz)!;
         fmt::fprintfln(buff, "\t{0}.len =l loadl {0}", base)!;
         fmt::fprintfln(buff, "\t%idex.safe =l cultl {}, {}.len", index, base)!;
         fmt::fprintfln(buff,
             "\tjnz %idex.safe, @some.item.{0}{1}, @no.item.{0}{1}\n@no.item.{0}{1}",
             this.pos + idx, lbl_append)!;
+        const host = ctxt.host_fun as *fun_meta;
+        fmt::fprintfln(buff, "\t{} =l alloc8 {}",
+            item, type_size(host.fun.tpe))!;
         fmt::fprintfln(buff, "\tstorel 0, {}", item)!;
-        fmt::fprintfln(buff,
-            "\tjmp @index.end.{0}{1}\n@some.item.{0}{1}",
-            this.pos + idx, lbl_append)!;
-
+        // for reading item
+        if(!return_ptr){
+            fmt::fprintfln(buff,
+                "\tjmp @index.end.{0}{1}\n@some.item.{0}{1}",
+                this.pos + idx, lbl_append)!;
+            fmt::fprintfln(buff, "\t{} =l alloc8 {}",
+                item, type_size(item_t))!;
+        // for writing to item
+        } else {
+            const prop = this.prop as propagation;
+            if(prop.0 == operator::BUBBLE){
+                fmt::fprintfln(buff, "\tret {}\n@some.item.{0}{1}",
+                    item, this.pos + idx, lbl_append)!;
+            } else {
+                fmt::fprintfln(buff, "\tjmp @fail\n@some.item.{0}{1}",
+                    this.pos + idx, lbl_append)!;
+            };
+            return fmt::asprintf("{}.ptr", base)!;
+        };
         if(unwrap_sz <= 8){
             fmt::fprintfln(buff, "\tstorel 1, {}", item)!;
             fmt::fprintfln(buff, "\t{0} =l add {0}, 8", item)!;
@@ -2632,6 +2723,8 @@ fn gen_index(
             };
             return wrap;
         };
+    } else if(return_ptr){
+        return fmt::asprintf("{}.ptr", base)!;
     } else {
         fmt::fprintfln(buff, "\t{} ={} load{} {}.ptr",
             item, qbe_t(ctxt, this.tpe, mode::ASSIGN),
@@ -3127,15 +3220,16 @@ fn gen_cast(
         };
     // concrete to partial
     } else if(!src_t.partial && dest_t.partial){
-        const size_t = type_size(dest_t);
-        fmt::fprintfln(buff, "\t{} =l alloc8 {}", dest, size_t)!;
+        const src_sz = type_size(src_t);
+        const dest_sz = type_size(dest_t);
+        fmt::fprintfln(buff, "\t{} =l alloc8 {}", dest, dest_sz)!;
         fmt::fprintfln(buff, "\tstorel 1, {}", dest)!;
         fmt::fprintfln(buff, "\t{0} =l add {0}, 8", dest)!;
-        if(size_t <= 8){
+        if(src_sz <= 8){
             fmt::fprintfln(buff, "\tstore{} {}, {}", qbe_t(ctxt, src_t),
                 src, dest)!;
         } else {
-            fmt::fprintfln(buff, "\tblit {}, {}, {}", src, dest, size_t)!;
+            fmt::fprintfln(buff, "\tblit {}, {}, {}", src, dest, src_sz)!;
         };
         fmt::fprintfln(buff, "\t{0} =l sub {0}, 8", dest)!;
     // both error types;

@@ -133,7 +133,7 @@ unary_oper  ::= "-" | "+" | "!" | "~" | "#";
 // field, these optionally followed by a propagation expression. both cases
 // can be casted to another given type
 member      ::= (constant | ((namespace | fun_call | rec_field | array_index
-            array_slice | mod_field) propagation?) |  ternary | array_lit |
+            array_slice | mod_field) propagation?) | ternary | array_lit |
             tuple_lit | rec_lit | rec_edit | fail_comp) type?;
 // a record field access is any sequence of at one or more objects or array
 // indexing followed by an assertion operator, separated by dots
@@ -145,7 +145,8 @@ array_slice ::= (member ("[" expression? ".." expression? "]")+)+;
 // function call is either a namespace or module field access followed by a
 // parenthesis-enclosed sequence of zero or more expressions separated by
 // commas
-fun_call    ::= member "(" (expression ("," expression)* ","?)* ")";
+fun_call    ::= member "(" ((expression ("," expression)* ","?)+
+                ("," namespace "=" expression)*)? ")";
 // a propagation expression is either a bang or an interrogation optionally
 // followed by zero or more optionally error-singleton-specified handling cases
 propagation ::= ("?" ("or" expression?)*)

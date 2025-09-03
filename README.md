@@ -1,5 +1,5 @@
 # lichen: correct by construction
-lichen is a simple, small, procedural, programming language with functional features focusing on writing code that is safe at compile time and yet simple to read, understand and follow.
+lichen is a simple, small, procedural programming language with functional features focusing on writing code that is safe at compile time and yet simple to read, understand and follow, producing a program that is safe and predictable at runtime.
 
 ## special features
 - mutable semantics
@@ -9,7 +9,7 @@ lichen is a simple, small, procedural, programming language with functional feat
 - no dependencies on (gnu) lib-c
 - no implicit control flow
 - lazy evaluation and function code emission
-- record sub-typing for generic programming
+- C-like unions with type tagging assertion
 - singletons for logic failure (`error`) and invalid memory (`nil`)
 
 ## inspirations
@@ -125,7 +125,7 @@ roadmap:
         - [partial] records
             - [done] declaration
             - [done] literal
-            - [undone] udpate-copying
+            - [undone] priming
             - [done] duplication
             - [done] field assignment
         - [done] arrays
@@ -155,10 +155,11 @@ roadmap:
         - [done] return
             - [done] expression return
             - [done] empty return
+        - [done] unreachable
         - [partial] switch
             - [done] base functionality
             - [partial] duplicated case assertion
-            - [undone] local variables
+            - [done] local variables
             - [done] multiple constants
             - [done] constant range
             - [done] else case
@@ -195,14 +196,13 @@ roadmap:
         - [done] publicity assertion
         - [partial] submodules
 - [partial] standard library
-    - [undone] buff
     - [partial] fs
     - [partial] io
     - [partial] os
         - [undone] exec
     - [partial] vect
     - [partial] str
-        - [undone] encode
+        - [done] mkr
         - [partial] conv
 - [undone] os library
     - bios syscalls FFI

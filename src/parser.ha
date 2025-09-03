@@ -216,12 +216,24 @@ fn strtype(tpe: lichen_t, mode: strtype_mode = strtype_mode::NORMAL) str = {
         const rets = strtype(ptr.returns, strtype_mode::SKIP);
         defer free(rets);
 
+        const efx_list = memio::dynamic();
+        defer io::close(&efx_list)!;
+        let first = true;
+        for(let e .. ptr.effect){
+            if(first){
+                fmt::fprintf(&efx_list, " {}", e)!;
+                first = false;
+            } else {
+                fmt::fprintf(&efx_list, " & {}", e)!;
+            };
+        };
+        const efx = memio::string(&efx_list)!;
         if(tpe.partial){
-            return fmt::asprintf("partial function ({}) {}",
-                memio::string(&params)!, rets)!;
+            return fmt::asprintf("partial function fn({}) {}{}",
+                memio::string(&params)!, rets, efx)!;
         } else {
-            return fmt::asprintf("function ({}) {}",
-                memio::string(&params)!, rets)!;
+            return fmt::asprintf("function fn({}) {}{}",
+                memio::string(&params)!, rets, efx)!;
         };
     };
 };
@@ -451,6 +463,7 @@ fn compile(filename: str,
             },
         free_on_ret = [],
         defer_stack = [],
+        on_defer = false,
         scp = glob,
     })!;
     // tokenize
@@ -510,12 +523,12 @@ fn compile(filename: str,
                     return error(ctxt, "invalid floating point literal");
                 };
             };
-            const num = strings::replace(
-                strings::fromutf8(path)!, "_", "")!;
+            const unalias = strings::fromutf8(path)!;
+            const num = strings::replace(unalias, "_", "")!;
             defer free(num);
 
             // hex literal
-            if(strings::hasprefix(num, "0x")){
+            if(strings::hasprefix(unalias, "0x")){
                 match(strconv::stou64(strings::sub(num, 2),
                 strconv::base::HEX)){
                 case let n: u64 =>
@@ -526,7 +539,7 @@ fn compile(filename: str,
                     return error(ctxt, "invalid hexadecimal literal");
                 };
             // oct literal
-            } else if(strings::hasprefix(num, "0o")){
+            } else if(strings::hasprefix(unalias, "0o")){
                 match(strconv::stou64(strings::sub(num, 2),
                 strconv::base::OCT)){
                 case let n: u64 =>
@@ -537,7 +550,7 @@ fn compile(filename: str,
                     return error(ctxt, "invalid hexadecimal literal");
                 };
             // bin literal
-            } else if(strings::hasprefix(num, "0b")){
+            } else if(strings::hasprefix(unalias, "0b")){
                 match(strconv::stou64(strings::sub(num, 2),
                 strconv::base::BIN)){
                 case let n: u64 =>
@@ -2007,6 +2020,13 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
                 "expected %bend of line%r, but got %y{}")?;
             return (test, end);
         case keyword::LET =>
+            if(ctxt.on_defer){
+                move_ptr(ctxt, tk);
+                return error_hint(ctxt,
+                    "\n%gthis variable would never be used, hence this "
+                    "code path would be meaningless",
+                    "cannot %bdefine variables%r within %ydefer statement");
+            };
             end += 1;
             const (decl, _end) = eval_var_def(ctxt, end)?;
             decl.var.nm.kind = nm_kind::VAR;
@@ -2041,6 +2061,10 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
             end = _end;
             return (swtch, end);
         case keyword::RETURN =>
+            if(ctxt.on_defer){
+                move_ptr(ctxt, tk);
+                return error(ctxt, "cannot %bhalt%r within %ydefer statement");
+            };
             end += 1;
             tk = next_tk(ctxt, end,
                 "expected %breturn value%r or %bend of line%r, but got %y{}")?;
@@ -2149,17 +2173,13 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
             return ((ctxt.loop_pos as size): loop_next, end);
         case keyword::DEFER =>
             end += 1;
+            // set context to be aware we are in a defer
+            // state and save the previous state
+            const old_defer = ctxt.on_defer;
+            ctxt.on_defer = true;
             const (self, _end) = eval_statement(ctxt, end)?;
-            const (self_tpe, last_tpe, _) = fetch_ret_state(ctxt,
-                quick_t(primitive::ANY), false, self);
-            move_ptr(ctxt, ctxt.tokens[end]);
-            if(is_terminal(self_tpe) || is_terminal(last_tpe)){
-                return error(ctxt, "invalid void expression on defer");
-            } else if(self is *decl_meta){
-                return error(ctxt, "invalid declaration on defer");
-            };
-            assert_ret_state(ctxt, ctxt.tokens[end], self,
-                ctxt.host_fun as *fun_meta, self_tpe, false)?;
+            // restore previous state
+            ctxt.on_defer = old_defer;
             const out = alloc(defer_meta {
                 self = self,
                 pos = at,
@@ -2291,112 +2311,31 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
                 return error(ctxt,
                     "namespace %b{}%r undefined at this point", var.name);
             };
-        // record field assignment
-        } else if(comp_tk(tk.val, symbol::DOT)){
-            const begin = end;
-            end += 2;
-            tk = next_tk(ctxt, end,
-                "expected %bfield name%r or %bexpression continuation%r, but got %y{}")?;
-            if(!(tk.val is namespace)){
-                move_ptr(ctxt, tk);
-                const arg = strtoken(tk.val);
-                defer free(arg);
-                return error(ctxt,
-                    "expected %bfield name%r or %bexpression continuation%r, but got %y{}", arg);
-            };
-            const pos = tk;
-            const field_name = tk.val as namespace;
-            end += 1;
-            tk = next_tk(ctxt, end,
-                "expected %bassignment%r or %bexpression continuation%r, but got %y{}")?;
-
-            // not an assignment
-            if(!comp_tk(tk.val, operator::ASG)){
-                const (exp, _end) = eval_expression(ctxt, begin, quick_t(primitive::ANY))?;
-                end = pop_assert(ctxt, _end, symbol::EOL,
-                    "expected %bend of line%r, but got %y{}")?;
-                return (exp: path_meta, end);
-            };
-            end += 1;
-            match(get_def(ctxt, var, ctxt.scp)){
-            case let var_def: *decl_meta =>
-                // assert for mutability
-                if(!var_def.var.nm.mut){
-                    move_ptr(ctxt, tk);
-                    return error(ctxt,
-                        "cannot %breassign to immutable%r record %y{}",
-                        var.name);
-                };
-                const tpe = var_def.var.nm.tpe;
-                // assert for type
-                move_ptr(ctxt, pos);
-                if(!(tpe.base is *record)){
-                    const name = strtype(tpe);
-                    defer free(name);
-                    return error(ctxt, "object of %b{}%r has %yno fields", name);
-                };
-                const rec = tpe.base as *record;
-                let field: (void | *decl_meta) = void;
-                for(let f .. rec.fields){
-                    if(f.1.var.nm.name == field_name.name){
-                        if(f.0 is bool && f.0 as bool == false){
-                            return error(ctxt,
-                                "field %b{}%r is %yimmutable",
-                                field_name.name);
-                        };
-                        field = f.1;
-                    };
-                };
-                if(field is void){
-                    return error(ctxt,
-                        "no field named %y{}", field_name.name);
-                };
-                const (val, _end) = eval_expression(ctxt, end,
-                    (field as *decl_meta).var.nm.tpe)?;
-
-                const root = extract_root(val);
-                // assert for immutability dropping
-                if(root is *var_meta){
-                    const pass = root as *var_meta;
-                    if(!size_known(tpe)){
-                        assert_mutability(ctxt, tk,
-                            var_def.var.nm.name, var_def.var.nm.mut, pass)?;
-                    };
-                };
-                end = pop_assert(ctxt, _end, symbol::EOL,
-                    "expected %bend of line%r, but got %y{}")?;
-                const asg = alloc(assign_meta {
-                    pos = begin,
-                    var = (field as *decl_meta).var,
-                    val = val,
-                    host = var_def,
-                })!;
-                append(allocd_nodes, asg)!;
-                return (asg, end);
-            case let fun_def: *fun_meta =>
-                move_ptr(ctxt, ctxt.tokens[begin]);
-                return error(ctxt,
-                    "cannot reassign to function %b{}%r", fun_def.fun.name);
-            case let module: *module_meta =>
-                move_ptr(ctxt, ctxt.tokens[begin]);
-                return error(ctxt,
-                    "cannot reassign to module binding %b{}%r", module.name);
-            case void =>
-                move_ptr(ctxt, ctxt.tokens[begin]);
-                return error(ctxt,
-                    "namespace %b{}%r undefined at this point", var.name);
-            };
+        // expression
         } else {
-            const (exp, _end) = eval_expression(ctxt, end, quick_t(primitive::ANY))?;
+            const (_exp, _end) = eval_asg_or_exp(ctxt, end, quick_t(primitive::ANY), true)?;
+            if(_exp is *expr_meta){
+                const exp = _exp as *expr_meta;
+                if(is_terminal(exp.tpe) && ctxt.on_defer){
+                    move_ptr(ctxt, ctxt.tokens[begin]);
+                    return error(ctxt, "cannot %bhalt%r within %ydefer statement");
+                };
+            };
             end = pop_assert(ctxt, _end, symbol::EOL,
                 "expected %bend of line%r, but got %y{}")?;
-            return (exp: path_meta, end);
+            return (_exp, end);
         };
+    // expression
     case =>
         const (exp, _end) = eval_expression(ctxt, end, quick_t(primitive::ANY))?;
+        fmt::println(is_terminal(exp.tpe), ctxt.on_defer)!;
+        if(is_terminal(exp.tpe) && ctxt.on_defer){
+            move_ptr(ctxt, tk);
+            return error(ctxt, "cannot %bhalt%r within %ydefer statement");
+        };
         end = pop_assert(ctxt, _end, symbol::EOL,
             "expected %bend of line%r, but got %y{}")?;
-        return (exp: path_meta, end);
+        return (exp, end);
     };
 };
 
@@ -3184,10 +3123,10 @@ fn process_iter(
                 "cannot %yreassign to array literal");
         };
         return (lit, unwrap_array(lit.tpe));
-    case let idx: *indexing_meta =>
+    case let index: *indexing_meta =>
         const base =
-            if(idx.base is null) {
-                yield match(idx.before){
+            if(index.base is null) {
+                yield match(index.before){
                 case let field: *field_meta =>
                     yield field.base as *member_meta;
                 case let idx: *indexing_meta =>
@@ -3198,7 +3137,7 @@ fn process_iter(
                     fmt::fatal("unreachable");
                 };
             } else {
-                yield idx.base as *member_meta;
+                yield index.base as *member_meta;
             };
         if(mut){
             if(base.val is *var_meta){
@@ -3216,13 +3155,13 @@ fn process_iter(
                     "cannot %yreassign to array literal");
             };
         };
-        return (idx, unwrap_array(idx.tpe));
-    case let slc: *slicing_meta =>
+        return (index, unwrap_array(index.tpe));
+    case let slice: *slicing_meta =>
         const base =
-            if(slc.base is null) {
-                yield match(slc.before){
-                case let field: *field_meta =>
-                    yield field.base as *member_meta;
+            if(slice.base is null) {
+                yield match(slice.before){
+                case let fld: *field_meta =>
+                    yield fld.base as *member_meta;
                 case let idx: *indexing_meta =>
                     yield idx.base as *member_meta;
                 case let slc: *slicing_meta =>
@@ -3231,7 +3170,7 @@ fn process_iter(
                     fmt::fatal("unreachable");
                 };
             } else {
-                yield slc.base as *member_meta;
+                yield slice.base as *member_meta;
             };
         if(mut){
             if(base.val is *var_meta){
@@ -3249,9 +3188,23 @@ fn process_iter(
                     "cannot %yreassign to array literal");
             };
         };
-        return (slc, unwrap_array(slc.tpe));
+        return (slice, unwrap_array(slice.tpe));
     case let field: *field_meta =>
-        const base = field.base as *member_meta;
+        const base =
+            if(field.base is null) {
+                yield match(field.before){
+                case let fld: *field_meta =>
+                    yield fld.base as *member_meta;
+                case let idx: *indexing_meta =>
+                    yield idx.base as *member_meta;
+                case let slc: *slicing_meta =>
+                    yield slc.base as *member_meta;
+                case void =>
+                    fmt::fatal("unreachable");
+                };
+            } else {
+                yield field.base as *member_meta;
+            };
         if(mut){
             if(base.val is *var_meta){
                 const var = base.val as *var_meta;
@@ -3291,7 +3244,33 @@ fn process_iter(
 fn eval_switch(ctxt: *context, at: size) ((*switch_meta, size) | ERROR) = {
     assert(comp_tk(ctxt.tokens[at].val, keyword::SWITCH));
     let end = at + 1;
-    // TODO: local variables for switch blocks
+    let tk = next_tk(ctxt, end,
+        "expected %bswitch item%r or %blocal variable%r, but got %y{}")?;
+    const mut =
+        if(comp_tk(tk.val, keyword::MUT)){
+            end += 1;
+            tk = next_tk(ctxt, end,
+                "expected %biteration variable%r or %blocal declaration%r, but got %y{}")?;
+            yield true;
+        } else {
+            yield false;
+        };
+    let local_def: nullable *decl_meta = null;
+    // local variable
+    if(tk.val is namespace){
+        const name = tk.val as namespace;
+        const decl = get_def(ctxt, name, ctxt.scp);
+        // namespace not defined suggests an assignment
+        if(decl is void){
+            const (local, _end) = eval_var_def(ctxt, end)?;
+            end = pop_assert(ctxt, _end, symbol::EOL,
+                "expected %bend of line%r, but got %y{}")?;
+            local.var.nm.mut = mut;
+            local.var.nm.kind = nm_kind::VAR;
+            push_def(ctxt, tk, local.var.nm, local)?;
+            local_def = local;
+        };
+    };
     const (check, _end) = eval_expression(ctxt, end, quick_t(primitive::ANY))?;
     if(check.tpe.partial){
         move_ptr(ctxt, ctxt.tokens[end]);
@@ -3306,7 +3285,7 @@ fn eval_switch(ctxt: *context, at: size) ((*switch_meta, size) | ERROR) = {
     let rets = false;
     let tpe = quick_t(primitive::ANY);
     let else_case: (void | size) = void;
-    let tk = next_tk(ctxt, end, "expected %bswitch branch%r, but got %y{}")?;
+    tk = next_tk(ctxt, end, "expected %bswitch branch%r, but got %y{}")?;
     // TODO: assert for duplicate cases within ranges
     for(comp_tk(tk.val, operator::BOR)){
         end += 1;
@@ -3534,10 +3513,23 @@ fn eval_switch(ctxt: *context, at: size) ((*switch_meta, size) | ERROR) = {
     if(comp_type(tpe, primitive::ANY) || !rets){
         tpe = quick_t(primitive::UNIT);
     };
+    // pop local variable off
+    if(local_def is *decl_meta){
+        for(let d = len(ctxt.scp.defs); d > 0; d -= 1){
+            if(ctxt.scp.defs[d - 1] is *decl_meta){
+                const decl = ctxt.scp.defs[d - 1] as *decl_meta;
+                if(decl == local_def as *decl_meta){
+                    delete(ctxt.scp.defs[d - 1]);
+                    break;
+                };
+            };
+        };
+    };
     const out = alloc(switch_meta {
         pos = at,
-        rets = rets,
         tpe = tpe,
+        rets = rets,
+        local = local_def,
         cases = cases,
         check = check,
         else_case = else_case,
@@ -3546,13 +3538,24 @@ fn eval_switch(ctxt: *context, at: size) ((*switch_meta, size) | ERROR) = {
     return (out, end);
 };
 
-// evaluates an expression of members and operators
 fn eval_expression(
     ctxt: *context,
     at: size,
     hint: lichen_t,
     ternary: bool = false,
 ) ((*expr_meta, size) | ERROR) = {
+    const (exp, end) = eval_asg_or_exp(ctxt, at, hint, false, ternary)?;
+    return (exp as *expr_meta, end);
+};
+
+// evaluates an expression of members and operators or an assignment
+fn eval_asg_or_exp(
+    ctxt: *context,
+    at: size,
+    hint: lichen_t,
+    allow_asg: bool = false,
+    ternary: bool = false,
+) (((*expr_meta | *assign_meta), size) | ERROR) = {
     let end = at;
     let members: [](hand_t | operator) = [];
     // eval first member
@@ -3570,11 +3573,196 @@ fn eval_expression(
     };
     let tk = next_tk(ctxt, _end,
         "expected %boperator%r, %bternary operator%r or %bend of line%r, but got %y{}")?;
+    // field assignment
+    if(comp_tk(tk.val, operator::ASG)){
+        move_ptr(ctxt, tk);
+        const begin = _end;
+        if(left is *expr_meta){
+            return error_hint(ctxt,
+                "\n%gcannot assign to expresison",
+                "unexpected %yassignment%r found here");
+        };
+        const dest = left as *member_meta;
+        if(!allow_asg){
+            const root =
+                if(dest.val is chain_exp_t){
+                    const chain = dest.val as chain_exp_t;
+                    const base = extract_base_from_chain(ctxt, chain)!;
+                    yield extract_previous_base(base).val;
+                } else {
+                    yield dest.val;
+                };
+            if(root is *record_lit_meta || root is *field_meta){
+                if(root is *field_meta){
+                    const field = root as *field_meta;
+                    if(field.prop is propagation){
+                        return error_hint(ctxt,
+                            "\n%gcannot assign to fallback expression",
+                            "unexpected %yassignment%r found here");
+                    };
+                };
+                return error_hint(ctxt,
+                    "\n%gcannot assign to a record literal",
+                    "unexpected %yassignment%r found here");
+            } else if(root is *array_lit_meta || root is *indexing_meta){
+                if(root is *indexing_meta){
+                    const index = root as *indexing_meta;
+                    if(index.prop is propagation){
+                        return error_hint(ctxt,
+                            "\n%gcannot assign to fallback expression",
+                            "unexpected %yassignment%r found here");
+                    };
+                };
+                return error_hint(ctxt,
+                    "\n%gcannot assign to an array literal",
+                    "unexpected %yassignment%r found here");
+            } else {
+                return error(ctxt,
+                    "unexpected %yassignment%r found here");
+            };
+        };
+        const (val, finish) = eval_expression(ctxt, _end + 1, dest.tpe)?;
+        end = finish;
+        const obj = dest.val as chain_exp_t;
+        let root = extract_base_from_chain(ctxt, obj, true)?;
+        const base =
+            match(root){
+            case let idx: *indexing_meta =>
+                yield idx.base as *member_meta;
+            case let fld: *field_meta =>
+                yield fld.base as *member_meta;
+            case let slc: *slicing_meta =>
+                yield slc.base as *member_meta;
+            };
+        if(base.val is *var_meta){
+            const var = base.val as *var_meta;
+            if(!var.nm.mut){
+                if(var.nm.tpe.base is *record){
+                    return error(ctxt,
+                        "cannot %breassign to immutable%r record %y{}",
+                        var.nm.name);
+                } else if(var.nm.tpe.base is *array){
+                    return error(ctxt,
+                        "cannot %breassign to immutable%r array %y{}",
+                        var.nm.name);
+                };
+            };
+        } else if(base.val is *record_lit_meta){
+                return error_hint(ctxt,
+                    "\n%gcannot assign to a record literal",
+                    "unexpected %yassignment%r found here");
+            } else if(base.val is *array_lit_meta){
+                return error_hint(ctxt,
+                    "\n%gcannot assign to an array literal",
+                    "unexpected %yassignment%r found here");
+            } else {
+                return error(ctxt,
+                    "unexpected %yassignment%r found here");
+            };
+        // assert mutability
+        move_ptr(ctxt, ctxt.tokens[begin]);
+        match(obj){
+        case *slicing_meta => assert(false);
+        case let field: *field_meta =>
+            if(field.base is null) {
+                match(field.before){
+                case let fld: *field_meta =>
+                    const memb = fld.base as *member_meta;
+                    if(!(memb.val is *var_meta)){
+                        return error(ctxt, "invalid assignment");
+                    };
+                case let idx: *indexing_meta =>
+                    const memb = idx.base as *member_meta;
+                    if(!(memb.val is *var_meta)){
+                        return error(ctxt, "invalid assignment");
+                    };
+                case let slc: *slicing_meta =>
+                    const memb = slc.base as *member_meta;
+                    if(!(memb.val is *var_meta)){
+                        return error(ctxt, "invalid assignment");
+                    };
+                case void =>
+                    fmt::fatal("unreachable");
+                };
+            } else {
+                const memb = field.base as *member_meta;
+                if(!(memb.val is *var_meta)){
+                    return error(ctxt, "invalid assignment");
+                };
+            };
+            if(!field.field.var.nm.mut){
+                return error(ctxt,
+                    "field %b{}%r is %yimmutable",
+                    field.field.var.nm.name);
+            };
+            assert_mutability(ctxt, ctxt.tokens[begin],
+                field.field.var.nm.name,
+                field.field.var.nm.mut, val)?;
+            const asg = alloc(assign_meta {
+                pos = at,
+                var = field.field.var,
+                val = val,
+                host = obj,
+            })!;
+            append(allocd_nodes, asg)!;
+            return (asg, end);
+        case let index: *indexing_meta =>
+            if(index.tpe.partial){
+                return error_hint(ctxt,
+                    "\n%gtry asserting or bubbling the "
+                    "indexing before assigning to it",
+                    "invalid unsafe array item reassignment");
+            };
+            const pass =
+                if(index.base is null) {
+                    yield match(index.before){
+                    case let fld: *field_meta =>
+                        yield fld.field.var;
+                    case let idx: *indexing_meta =>
+                        const memb = extract_previous_base(idx);
+                        if(!(memb.val is *var_meta)){
+                            return error(ctxt, "invalid assignment");
+                        };
+                        yield memb.val as *var_meta;
+                    case let slc: *slicing_meta =>
+                        const memb = extract_previous_base(slc);
+                        if(!(memb.val is *var_meta)){
+                            return error(ctxt, "invalid assignment");
+                        };
+                        yield memb.val as *var_meta;
+                    case void =>
+                        fmt::fatal("unreachable");
+                    };
+                } else {
+                    const memb = index.base as *member_meta;
+                    if(!(memb.val is *var_meta)){
+                        return error(ctxt, "invalid assignment");
+                    };
+                    yield memb.val as *var_meta;
+                };
+            if(!pass.nm.mut){
+                return error(ctxt,
+                    "cannot reassign to field %b{}%r, an %yimmutable array",
+                    pass.nm.name);
+            };
+            assert_mutability(ctxt, ctxt.tokens[begin],
+                pass.nm.name, pass.nm.mut, val)?;
+            const asg = alloc(assign_meta {
+                pos = at,
+                var = base.val as *var_meta,
+                val = val,
+                host = obj,
+            })!;
+            append(allocd_nodes, asg)!;
+            return (asg, end);
+        };
+    };
     // ternary operator
     if(comp_tk(tk.val, keyword::IF) && _end != end){
         free(members);
-        return eval_ternary(ctxt, _end, end,
-            left as (*member_meta | *expr_meta));
+        const (ternary, finish) = eval_ternary(ctxt, _end, end,
+            left as (*member_meta | *expr_meta))?;
+        return (ternary, finish);
     };
     let first_t = hint;
     match(left){
@@ -3625,7 +3813,8 @@ fn eval_expression(
         // ternary operator
         if(comp_tk(tk.val, keyword::IF) && _end != end){
             const (hand, _) = reduce_members(ctxt, at, members)?;
-            return eval_ternary(ctxt, _end, end, hand);
+            const (ternary, finish) = eval_ternary(ctxt, _end, end, hand)?;
+            return (ternary, finish);
         };
         end = _end;
         // break if encountered an invalid path
@@ -4099,6 +4288,106 @@ fn eval_member(
     assert_hint(ctxt, tk, out.tpe, hint)?;
 
     return (out, end, false);
+};
+
+fn extract_base_from_chain(
+    ctxt: *context,
+    obj: chain_exp_t,
+    assignment: bool = false,
+) (chain_exp_t | ERROR) = {
+    let root = match(obj){
+        case let idx: *indexing_meta =>
+            yield if(idx.before is void){
+                yield idx;
+            } else {
+                yield idx.before;
+            };
+        case let fld: *field_meta =>
+            yield if(fld.before is void){
+                yield fld;
+            } else {
+                yield fld.before;
+            };
+        case let slc: *slicing_meta =>
+            if(assignment){
+                return error(ctxt, "cannot assign to %yslicing literal");
+            };
+            yield if(slc.before is void){
+                yield slc;
+            } else {
+                yield slc.before;
+            };
+        };
+    for(true){
+        match(root){
+        case let idx: *indexing_meta =>
+            if(idx.before is void) break;
+            root = idx.before;
+        case let fld: *field_meta =>
+            if(fld.before is void) break;
+            root = fld.before;
+        case let slc: *slicing_meta =>
+            if(slc.before is void) break;
+            root = slc.before;
+        };
+    };
+    return root as chain_exp_t;
+};
+
+fn extract_previous_base(obj: chain_exp_t) *member_meta = {
+    match(obj){
+    case let field: *field_meta =>
+        const base = field.base;
+        const before = field.before;
+        for(base is null){
+            match(before as chain_exp_t){
+            case let fld: *field_meta =>
+                base = fld.base;
+                before = fld.before;
+            case let idx: *indexing_meta =>
+                base = idx.base;
+                before = idx.before;
+            case let slc: *slicing_meta =>
+                base = slc.base;
+                before = slc.before;
+            };
+        };
+        return base as *member_meta;
+    case let index: *indexing_meta =>
+        const base = index.base;
+        const before = index.before;
+        for(base is null){
+            match(before as chain_exp_t){
+            case let fld: *field_meta =>
+                base = fld.base;
+                before = fld.before;
+            case let idx: *indexing_meta =>
+                base = idx.base;
+                before = idx.before;
+            case let slc: *slicing_meta =>
+                base = slc.base;
+                before = slc.before;
+            };
+        };
+        return base as *member_meta;
+    case let slice: *slicing_meta =>
+        const base = slice.base;
+        const before = slice.before;
+        for(base is null){
+            match(before as chain_exp_t){
+            case let fld: *field_meta =>
+                base = fld.base;
+                before = fld.before;
+            case let idx: *indexing_meta =>
+                base = idx.base;
+                before = idx.before;
+            case let slc: *slicing_meta =>
+                base = slc.base;
+                before = slc.before;
+            };
+        };
+        return base as *member_meta;
+    };
 };
 
 fn eval_fields_and_indexes(
@@ -5608,6 +5897,8 @@ fn eval_type(
                             f.1.var.nm.name, arg1);
                     };
                 };
+                // assume everything is mutable at first
+                field.var.nm.mut = true;
                 if(!size_known(field.var.nm.tpe)) all_known = false;
                 append(fields, (mut_field, field))!;
 
@@ -5628,6 +5919,7 @@ fn eval_type(
                     if(fields[f].0 is void){
                         fields[f].0 = false;
                         safe_mut = false;
+                        fields[f].1.var.nm.mut = false;
                     };
                 };
             };

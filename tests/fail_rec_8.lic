@@ -1,0 +1,14 @@
+// parser test for asserting for field
+// assignment exhaustiveness
+
+type foo = record {
+    fizz str;
+};
+
+type bar = record {
+    buzz foo;
+};
+
+pub fn main() void = io {
+    (bar { buzz = foo { fizz = "bob" } }).buzz.fizz = "ana";
+};

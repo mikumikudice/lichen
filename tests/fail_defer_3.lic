@@ -1,3 +1,7 @@
+// parser test for assertinf against
+// meaningless declarations within
+// defers
+
 fn halt() void = {};
 
 pub fn main() void = io {

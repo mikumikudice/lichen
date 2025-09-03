@@ -42,6 +42,8 @@ local tests = {
     { src = "fail_mut_11", code = 1, nocomp = true },
     { src = "fail_mut_12", code = 1, nocomp = true },
     { src = "fail_mut_13", code = 1, nocomp = true },
+    { src = "fail_mut_14", code = 1, nocomp = true },
+    { src = "fail_mut_15", code = 1, nocomp = true },
     { src = "fail_array_1", code = 1, nocomp = true },
     { src = "fail_array_2", code = 1, nocomp = true },
     { src = "fail_array_3", code = 1, nocomp = true },
@@ -57,8 +59,13 @@ local tests = {
     { src = "fail_rec_5", code = 1, nocomp = true },
     { src = "fail_rec_6", code = 1, nocomp = true },
     { src = "fail_rec_7", code = 1, nocomp = true },
+    { src = "fail_rec_8", code = 1, nocomp = true },
+    { src = "fail_rec_9", code = 1, nocomp = true },
+    { src = "fail_rec_10", code = 1, nocomp = true },
     { src = "fail_void_1", code = 1, nocomp = true },
     { src = "fail_void_2", code = 1, nocomp = true },
+    { src = "fail_funptr_1", code = 1, nocomp = true },
+    { src = "fail_funptr_2", code = 1, nocomp = true },
     -- memory error --
     { src = "fail_arena_1", code = 1, nocomp = true },
     { src = "fail_arena_2", code = 1, nocomp = true },
@@ -86,6 +93,7 @@ local tests = {
     { src = "fail_defer_1", code = 1, nocomp = true },
     { src = "fail_defer_2", code = 1, nocomp = true },
     { src = "fail_defer_3", code = 1, nocomp = true },
+    { src = "fail_defer_4", code = 1, nocomp = true },
     -- issue fixing --
     { src = "fail_outlive_1", code = 1, nocomp = true },
     { src = "fail_outlive_2", code = 1, nocomp = true },
@@ -120,6 +128,7 @@ local tests = {
     { src = "array_2", output = "test ok\n", code = 0 },
     { src = "array_3", output = "test 1 ok\ntest 2 ok\n", code = 0 },
     { src = "array_4", output = "test ok\n", code = 0 },
+    { src = "array_5", code = 0 },
     { src = "rec_1", output = "test ok\n", code = 0 },
     { src = "rec_2", output = "test ok\n", code = 0 },
     { src = "rec_3", output = "test ok\n", code = 0 },
@@ -127,6 +136,10 @@ local tests = {
     { src = "rec_5", output = "test ok\n", code = 0 },
     { src = "rec_6", output = "test ok\n", code = 0 },
     { src = "rec_7", code = 0 },
+    { src = "rec_8", code = 0 },
+    { src = "rec_9", code = 0 },
+    { src = "rec_10", code = 0 },
+    { src = "rec_11", code = 0 },
     { src = "arr_rec", output = "test ok\n", code = 0 },
     { src = "str_fun", output = "test 1 ok\ntest 2 ok\ntest 3 ok\n", code = 0 },
     { src = "empty_assign", code = 0 },
@@ -137,6 +150,7 @@ local tests = {
     { src = "switch",
         output = "test 1 ok\ntest 2 ok\ntest 3 ok\ntest 4 ok\n",
         code = 0 },
+    { src = "switch_local", code = 0 },
     { src = "for_loop", output = "mia\nleo\nlue\n", code = 0 },
     { src = "for_ops", code = 0 },
     { src = "for_str", code = 0 },
@@ -300,6 +314,7 @@ if arg[1] ~= nil then
             io.flush()
             run_test(t, failed, true)
         end
+        run("rm foo.txt");
     else
         for i = 1, #arg do
             if not isin(tests, arg[i]) then

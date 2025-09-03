@@ -1,0 +1,8 @@
+// parser test for asserting for type
+// mismatch on function pointers
+
+pub fn main() void = {
+    take_fun(main);
+};
+
+fn take_fun(fun fn() unit) unit = {};

@@ -1,0 +1,20 @@
+// parser test for asserting long
+// chain of fields mutability matching
+
+type foo = record {
+    bar []u32;
+    mut fizz u32;
+};
+
+type egg = record {
+    buzz foo;
+};
+
+pub fn main() void = {
+    let mut f = foo { bar = [8, 1, 2, 3], fizz = 4 };
+    let mut e = egg { buzz = f };
+    e.buzz.bar[0]! = 0;
+    for itm, idx .. e.buzz.bar {
+        test itm u64 == idx;
+    };
+};
