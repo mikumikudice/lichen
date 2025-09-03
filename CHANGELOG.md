@@ -14,6 +14,4 @@ breaking changes
 - none
 
 standard library changes
-- now str::mkr zero-terminate buffers
-- fixed os::alloc_argv function
-- temporarly removed math module
+- fix dump function for str::mkr

@@ -77,7 +77,6 @@ pub fn write(mut self maker, data str) !unit = buff_write & buff_grow {
     self.bufptr = self.bufptr + #data;
     // null-ternimate string in case of a cstr casting
     self.buffer[self.bufptr]! = 0;
-    self.bufptr = self.bufptr + 1;
 };
 
 // writes `data` to given `buffer`
@@ -99,9 +98,9 @@ pub fn write_to(mut buffer []u8, data str) !unit = buff_write {
 pub fn append(mut self maker, data u8) !unit = buff_write {
     if self.bufptr + 1 < #self.buffer {
         self.buffer[self.bufptr]! = data;
+        self.bufptr = self.bufptr + 1;
         // null-ternimate string in case of a cstr casting
-        self.buffer[self.bufptr + 1]! = 0;
-        self.bufptr = self.bufptr + 2;
+        self.buffer[self.bufptr]! = 0;
     } else {
         let mut where = self.placed?;
         self.buffer = cat self.buffer ..? ([data, 0])[0..2] @ where;
@@ -122,6 +121,5 @@ pub fn as_str(self maker) str = {
 pub fn dump(mut self maker) str = reset {
     let data = as_str(self);
     self.bufptr = 0;
-    self.buffer[0]! = 0;
     return data;
 };
