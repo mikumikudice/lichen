@@ -1,18 +1,19 @@
 new features
-- local variables for switch blocks
-- complex chaining for record fields assignment
-- array item arbitrary assignment
+- none
 
 bugfixes
-- a few issues with record fields involving partial types
+- none
 
 correct behavior assert
-- require no digit separator on numeric base prefixes
-- deep-assert for halts within defers
-- null-terminates all string literals to avoid any error when casting to c-strings
+- none
 
 others
-- now `unreachable` is allowed to be used in defer contexts
+- none
 
 breaking changes
 - none
+
+standard library changes
+- now str::mkr zero-terminate buffers
+- fixed os::alloc_argv function
+- temporarly removed math module

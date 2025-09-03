@@ -10,7 +10,7 @@ pub fn args(i u64) !cstr = os_env {
     return rt_index_argv(i);
 };
 
-pub fn alloc_argv(max u64, a mem) ![]cstr = os_env {
+pub fn alloc_argv(max u64, mut a mem) ![]cstr @ a = os_env {
     let mut argv = new ? [max; "" cstr ...] @ a;
     for mut arg, idx .. argv {
         arg = args(idx)! or break;

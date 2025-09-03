@@ -36,7 +36,9 @@ pub fn dynamic_with(ini str, mut a mem) !maker @ a = alloc & buff_write & buff_g
 // instantiates a static buffered string maker
 // the given array cannot grow and will return an error if
 // written to when full or without enough space
+// expects buffer length is greater than zero
 pub fn static(mut buff []u8) maker = buff_write {
+    test #buff > 0, "expected buffer to not be empty";
     return maker {
         placed = nil,
         buffer = buff,
@@ -62,16 +64,20 @@ pub fn grow(mut self maker, factor u64) !unit = buff_grow {
 };
 
 // writes a given string to a string maker
-// if the maker is dynamic, calls mkr::grow on it to extend
-// the length by a default factor of 1/2
+// if needed, calls mkr::grow on it to extend the length by
+// a default factor of 1/2. returns nil if maker is not
+// dynamic
 pub fn write(mut self maker, data str) !unit = buff_write & buff_grow {
     // extend buffer if it's is too small
-    if self.bufptr + #data > #self.buffer {
+    if self.bufptr + #data + 1 > #self.buffer {
         grow(self, 1 / 2)?;
     };
     // print to buffer and move pointer forward
     write_to(self.buffer[self.bufptr..#self.buffer]!, data)?;
     self.bufptr = self.bufptr + #data;
+    // null-ternimate string in case of a cstr casting
+    self.buffer[self.bufptr]! = 0;
+    self.bufptr = self.bufptr + 1;
 };
 
 // writes `data` to given `buffer`
@@ -91,15 +97,14 @@ pub fn write_to(mut buffer []u8, data str) !unit = buff_write {
 // if buffer is full but is dynamic, it is concatenated with
 // the new byte
 pub fn append(mut self maker, data u8) !unit = buff_write {
-    if self.bufptr < #self.buffer {
-        // TODO: perhaps direct assignment to arrays?
-        for mut itm .. self.buffer[self.bufptr..#self.buffer]! {
-            itm = data;
-            break;
-        };
+    if self.bufptr + 1 < #self.buffer {
+        self.buffer[self.bufptr]! = data;
+        // null-ternimate string in case of a cstr casting
+        self.buffer[self.bufptr + 1]! = 0;
+        self.bufptr = self.bufptr + 2;
     } else {
         let mut where = self.placed?;
-        self.buffer = cat self.buffer ..? data @ where;
+        self.buffer = cat self.buffer ..? ([data, 0])[0..2] @ where;
     };
 };
 
@@ -117,5 +122,6 @@ pub fn as_str(self maker) str = {
 pub fn dump(mut self maker) str = reset {
     let data = as_str(self);
     self.bufptr = 0;
+    self.buffer[0]! = 0;
     return data;
 };
