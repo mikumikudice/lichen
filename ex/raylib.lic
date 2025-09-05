@@ -1,0 +1,56 @@
+// compile this with the following flags:
+// -lc -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
+
+fn _init_window(w i32, h i32, mut title cstr) unit = rl use "InitWindow";
+fn init_window(w i32, h i32, title str) unit = rl {
+    new here | #title + 18 {
+        let mut dup = new ! title @ here;
+        _init_window(w i32, h i32, dup cstr);
+    }!;
+};
+fn close_window() unit = rl use "CloseWindow";
+
+fn window_should_close() bool = rl use "WindowShouldClose";
+fn begin_drawing() unit = rl use "BeginDrawing";
+fn end_drawing() unit = rl use "EndDrawing";
+
+type rgba = record {
+    r u8; g u8; b u8; a u8;
+};
+
+fn clear_background(color rgba) unit = rl use "ClearBackground";
+
+fn _draw_text(mut text cstr, x i32, y i32, sz u32, color rgba) unit = rl use "DrawText";
+fn draw_text(text str, x i32, y i32, sz u32, color rgba) unit = rl {
+    new here | #text + 18 {
+        let mut dup_text = new ! text @ here;
+        _draw_text(dup_text cstr, x, y, sz, color);
+    }!;
+};
+
+fn _measure_text(mut text cstr, sz u32) u32 = rl use "MeasureText";
+fn measure_text(mut text str, sz u32) u32 = rl {
+    return _measure_text(text cstr, sz);
+};
+
+pub fn main() void = rl {
+    init_window(800, 450, "lichen raylib");
+    defer close_window();
+
+    let RAYWHITE = rgba {
+        r = 245, g = 245, b = 245, a = 255,
+    };
+    let LIGHTGRAY = rgba {
+        r = 200, g = 200, b = 200, a = 255,
+    };
+
+    while !window_should_close() {
+        begin_drawing();
+        defer end_drawing();
+
+        clear_background(RAYWHITE);
+        draw_text("mornin' from lichen!",
+            400 - measure_text("mornin' from lichen!", 20) / 2,
+            200, 20, LIGHTGRAY);
+    };
+};

@@ -1,6 +1,3 @@
-- preallocate variables of aggregated types at @start
-- generalize assignment for record fields and array index parsing
-- array index assignment
 - unions
 - optimize concatenation for in-place data appending and contiguous data override
 - tuples

@@ -548,11 +548,16 @@ fn gen_module(ctxt: *context, buff: *memio::stream) void = {
 
 // emits a list of namespaces
 // used for function parameters and function call arguments
-fn gen_list(ctxt: *context, buff: *memio::stream, names: []*var_meta) void = {
+fn gen_list(ctxt: *context, buff: *memio::stream, names: []*var_meta, ffi: bool = false) void = {
     fmt::fprint(buff, "(")!;
     for(let n .. names){
-        fmt::fprintf(buff, "{} {}, ",
-            qbe_t(ctxt, n.nm.tpe, mode::ASSIGN), n.nm.name)!;
+        if(ffi && is_aggregated(n.nm.tpe) && size_known(n.nm.tpe)){
+            fmt::fprintf(buff, "{} {}, ",
+                qbe_t(ctxt, n.nm.tpe, mode::RETURN), n.nm.name)!;
+        } else {
+            fmt::fprintf(buff, "{} {}, ",
+                qbe_t(ctxt, n.nm.tpe, mode::ASSIGN), n.nm.name)!;
+        };
     };
     fmt::fprint(buff, ")")!;
 };
@@ -1461,6 +1466,14 @@ fn gen_exp(
                         "\t{0} ={1} xor {0}, 18446744073709551615",
                         dest, qbe_t(ctxt, exp_t, mode::ASSIGN))!;
                 };
+            case operator::BANG =>
+                if(wrap != ""){
+                    fmt::fprintfln(buff, "\t{} ={} ceql {}, 0",
+                        dest, qbe_t(ctxt, exp_t, mode::ASSIGN), wrap)!;
+                } else {
+                    fmt::fprintfln(buff, "\t{0} ={1} ceql {0}, 0",
+                        dest, qbe_t(ctxt, exp_t, mode::ASSIGN))!;
+                };
             case operator::LENGTH =>
                 if(wrap != ""){
                     fmt::fprintfln(buff, "%len =l loadl {}", wrap)!;
@@ -1470,6 +1483,7 @@ fn gen_exp(
                     return fmt::asprintf("{}.len", dest)!;
                 };
             case =>
+                fmt::println(oper_value[memb.pre as operator])!;
                 fmt::fatal("emit_constant: unreachable");
             };
         } else {
@@ -3050,7 +3064,7 @@ fn gen_funcall(
         fmt::fprintf(buff, "\tcall {}", name)!;
     };
     if(!call.tailcall || keep_result){
-        gen_list(ctxt, buff, defs);
+        gen_list(ctxt, buff, defs, call.fun.fun.ffi is str);
         fmt::fprint(buff, "\n")!;
         if(old_dest != dest && keep_result){
             defer free(dest);

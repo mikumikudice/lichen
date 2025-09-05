@@ -1409,7 +1409,7 @@ fn eval_fun_def(ctxt: *context, at: size) ((*fun_meta, size) | ERROR) = {
             if(mut){
                 first_mut = end;
                 any_muts = true;
-            } else {
+            } else if(!size_known(param.var.nm.tpe)){
                 all_muts = false;
             };
         } else if(mut){

@@ -2,17 +2,18 @@ new features
 - none
 
 bugfixes
-- none
+- added missing bang operator on some emitting paths
+- fixed FFI call with aggregated parameters
 
 correct behavior assert
 - none
 
 others
-- make compiler load runtime stuff based on which os it's hosted
+- now aggregated types of known size are not required to be mutable on FFI functions
+- now, only mutable parameters are passed by reference, all others are passed by value
 
 breaking changes
 - none
 
 standard library changes
-- add readme and separated versioning
-- add std::rt and make all other modules use it instead of direct FFI
+- none
