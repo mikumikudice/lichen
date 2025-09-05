@@ -2,7 +2,7 @@
 
 io mod = use "std/io.lim";
 
-pub fn main() void = io & conv {
+pub fn main() void = io {
     let length = 128 u64;
     new arena | length + 16 {
         // allocate input buffer

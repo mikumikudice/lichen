@@ -905,7 +905,7 @@ pub fn main() void = {
 ```
 
 # effects
-effect is anything that can be observed by the user as a sub-product of the program execution. opening a file and writing to it, printing to the terminal, showing something at the screen, updating a memory address by reference, etc. all of these are considered either fallible or error prone. a file may not exist and hence not be able to be open, a memory address changed by another function may hide a bug because it was not supposed to change a given value, a terminal may be piped to a file and the disk have not enough space to store the output. that's why any impure functions, i.e. the ones that may produce side-effects, must be tagged with an effect. by this, it's semantically enforced that all code paths that may fail or cause a failure state are known to do so. for instance, the following code:
+effect is anything that can be observed by the user as a sub-product of the program execution. opening a file and writing to it, printing to the terminal, showing something on the screen, updating a memory address by reference, etc. all of these are considered either fallible or error prone. a file may not exist and hence not be able to be open, a memory address changed by another function may hide a bug because it was not supposed to change a given value, a terminal may be piped to a file and the disk have not enough space to store the output. that's why any impure functions, i.e. the ones that may produce side-effects, must be tagged with an effect. by this, it's semantically enforced that all code paths that may fail or cause a failure state are known to do so. for instance, take the following code as an example:
 ```rust
 io mod = use "io.lim";
 
@@ -944,7 +944,7 @@ pub fn main() void = fs & io {
     }!;
 };
 ```
-if we forgot to tag main with `fs` or `io`, this wouldn't compile because all `io::println`, `fs::exists` and `fs::open` interact with the outside world, produncing, side-effects.
+if we forgot to tag main with `fs` or `io`, this wouldn't compile because all `io::println`, `fs::exists` and `fs::open` interact with the outside world, produncing side-effects.
 
 as these chains can become uncomfortably large, you may reduce all effects and abstract them behind a single `do` tag, a keyword that means "any effect may occur". once tagging all functions as such would destroy all the meaning of this system, a function tagged with `do` cannot call another function also tagged with `do`.
 ```rust

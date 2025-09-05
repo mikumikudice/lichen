@@ -29,7 +29,7 @@ how to gather user input in lichen
 ```rust
 io mod = use "std/io.lim";
 
-pub fn main() void = io & conv {
+pub fn main() void = io {
     let length = 128 u64;
     new arena | length + 16 {
         // allocate input buffer
@@ -48,7 +48,6 @@ pub fn main() void = io & conv {
 
 usage of the string maker module
 ```rust
-
 io  mod = use "std/io.lim";
 mkr mod = use "str/mkr.lim";
 
