@@ -1,13 +1,11 @@
 // parser test for asserting for
 // correct behavior of borrowing
 
-io mod = use "std/io.lim";
-
 fn borrow(obj str) str @ obj = {
     return obj;
 };
 
-pub fn main() void = io {
+pub fn main() void = {
     new outer | 128 {
         let mut obj = new ! "test ok" @ outer;
         new inner | 128 {

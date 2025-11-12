@@ -1,0 +1,15 @@
+// parser test for asserting against
+// records outliving its fields
+
+type foo = record {
+    bar []u32;
+};
+
+pub fn main() void = {
+    new outer | 512 {
+        let mut f = new ! foo { bar = [] } @ outer;
+        new inner | 128 {
+            f.bar = new ! [8; 0...] u32 @ inner;
+        }!;
+    }!;
+};

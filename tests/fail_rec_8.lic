@@ -9,6 +9,6 @@ type bar = record {
     buzz foo;
 };
 
-pub fn main() void = io {
+pub fn main() void = {
     (bar { buzz = foo { fizz = "bob" } }).buzz.fizz = "ana";
 };

@@ -219,7 +219,7 @@ fn strtype(tpe: lichen_t, mode: strtype_mode = strtype_mode::NORMAL) str = {
         const efx_list = memio::dynamic();
         defer io::close(&efx_list)!;
         let first = true;
-        for(let e .. ptr.effect){
+        for(let e .. ptr.efxtags){
             if(first){
                 fmt::fprintf(&efx_list, " {}", e)!;
                 first = false;
@@ -316,6 +316,14 @@ fn check_shadowing(
         return error(ctxt,
             "a module defined at %b{}%r is already using the namespace %y{}",
             dup_pos, nm.name);
+    case let efx: *effect_t =>
+        move_ptr(efx.owner, efx.owner.tokens[efx.pos]);
+        const dup_pos = gen_pos(efx.owner);
+        defer free(dup_pos);
+        move_ptr(ctxt, pos);
+        return error(ctxt,
+            "an effect tag defined at %b{}%r is already using the namespace %y{}",
+            dup_pos, efx.name);
     case void => void;
     };
 };
@@ -326,7 +334,7 @@ fn push_def(
     ctxt: *context,
     pos: token,
     name: namespace,
-    meta: (*fun_meta | *decl_meta | *type_meta | *module_meta),
+    meta: (*fun_meta | *decl_meta | *type_meta | *module_meta | *effect_t),
 ) (void | ERROR) = {
     // disallow global empty assignments
     if(name.name == "_" && (name.kind != nm_kind::VAR || name.glob)){
@@ -346,7 +354,7 @@ fn get_def(
     ctxt: *context,
     nm: namespace,
     scp: *scope,
-) ((*fun_meta | *decl_meta | *type_meta| *module_meta) | void) = {
+) ((*fun_meta | *decl_meta | *type_meta| *module_meta | *effect_t) | void) = {
     for(let d = len(scp.defs); d > 0; d -= 1){
         const meta = scp.defs[d - 1];
         match(meta){
@@ -365,6 +373,10 @@ fn get_def(
         case let module: *module_meta =>
             if(module.name == nm.name){
                 return module;
+            };
+        case let efx: *effect_t =>
+            if(efx.name == nm.name){
+                return efx;
             };
         };
     };
@@ -1066,14 +1078,23 @@ fn eval_program(ctxt: *context) (void | ERROR) = {
                     };
                 case let nm: namespace =>
                     if(comp_tk(next.val, keyword::MOD)){
-                            const (mod, end) = eval_module(ctxt, n)?;
-                            mod.pub = pub;
-                            t = end;
-                        } else {
-                            const (decl, end) = eval_const_def(ctxt, n)?;
-                            decl.var.nm.pub = pub;
-                            t = end;
+                        const (mod, end) = eval_module(ctxt, n)?;
+                        mod.pub = pub;
+                        t = end;
+                    } else if(comp_tk(next.val, keyword::EFX)){
+                        if(pub){
+                            move_ptr(ctxt, ctxt.tokens[n]);
+                            return error(ctxt,
+                                "\n%beffects are tied to their local module",
+                                "cannot declare an effect as public");
                         };
+                        const (efx, end) = eval_effect(ctxt, n)?;
+                        t = end;
+                    } else {
+                        const (decl, end) = eval_const_def(ctxt, n)?;
+                        decl.var.nm.pub = pub;
+                        t = end;
+                    };
                 case =>
                     move_ptr(ctxt, next);
                     const arg = strtoken(next.val);
@@ -1085,6 +1106,9 @@ fn eval_program(ctxt: *context) (void | ERROR) = {
         case let nm: namespace =>
             if(t + 1 < max && comp_tk(ctxt.tokens[t + 1].val, keyword::MOD)){
                 const (mod, end) = eval_module(ctxt, t)?;
+                t = end;
+            } else if(comp_tk(ctxt.tokens[t + 1].val, keyword::EFX)){
+                const (efx, end) = eval_effect(ctxt, t)?;
                 t = end;
             } else {
                 const (decl, end) = eval_const_def(ctxt, t)?;
@@ -1317,6 +1341,122 @@ fn eval_module(ctxt: *context, at: size) ((*module_meta, size) | ERROR) = {
     return (module, end);
 };
 
+// evaluates an effect declaration expression
+// assumes `at` is pointing to `keyword::MOD`
+fn eval_effect(ctxt: *context, at: size) ((*effect_t, size) | ERROR) = {
+    const bind = ctxt.tokens[at].val as namespace;
+    assert(comp_tk(ctxt.tokens[at + 1].val, keyword::EFX));
+    const out = alloc(effect_t {
+        pos = at,
+        name = bind.name,
+        owner = ctxt,
+        modcalls = [],
+        muts = [],
+        ffis = [],
+        loop = false,
+        ffi = false,
+        recursive = false,
+        inherits = [],
+        polymorphic = false,
+    })!;
+    append(allocd_nodes, out)!;
+    push_def(ctxt, ctxt.tokens[at], bind, out)?;
+
+    let tk = next_tk(ctxt, at + 2,
+        "expected %beffect assignment%r or %bend of line%r, but got %y{}")?;
+    if(comp_tk(tk.val, symbol::EOL)){
+        out.ffi = true;
+        return (out, at + 2);
+    };
+    // pop assignment
+    let end = pop_assert(ctxt, at + 2, operator::ASG,
+        "expected %bmodule assignment%r, but got %y{}")?;
+    // TODO: effect union expressions
+    for(!comp_tk(tk.val, symbol::EOL)){
+        tk = next_tk(ctxt, end, "expected %beffect literal or alias%r, but got %y{}")?;
+        if(tk.val is keyword){
+            switch(tk.val as keyword){
+            case keyword::MUT =>
+                const (tpe, _end) = eval_type(ctxt, end + 1)?;
+                if(!is_aggregated(tpe)){
+                    move_ptr(ctxt, ctxt.tokens[end + 1]);
+                    return error_hint(ctxt,
+                        "\n%gonly %yarrays, records and strings%b can mutate its value",
+                        "mutability is %bnot applicable%r to %ynon-aggregated types");
+                };
+                end = _end;
+                append(out.muts, tpe)!;
+            case keyword::USE =>
+                end += 1;
+                tk = next_tk(ctxt, end,
+                    "expected %bFFI variable name%r, but got %y{}")?;
+                end += 1;
+                if(!(tk.val is namespace)){
+                    move_ptr(ctxt, tk);
+                    const arg = strtoken(tk.val);
+                    defer free(arg);
+                    return error(ctxt,
+                        "expected %bFFI variable name%r, but got %y{}", arg);
+                };
+                const nm = tk.val as namespace;
+                match(get_def(ctxt, nm, ctxt.scp)){
+                case let decl: *decl_meta =>
+                    if(decl.var.nm.ffi is void){
+                        return error(ctxt,
+                        "the variable %b{}%r is not a FFI symbol", nm.name);
+                    };
+                    append(out.ffis, decl)!;
+                case =>
+                    return error(ctxt,
+                        "no %bvariable named {}%r, is defined at this point", nm.name);
+                };
+            case keyword::WHILE =>
+                out.loop = true;
+                end += 1;
+            case =>
+                free(out);
+                move_ptr(ctxt, tk);
+                const arg = strtoken(tk.val);
+                defer free(arg);
+                return error(ctxt,
+                    "expected %bvalid effect notation%r, but got %y{}", arg);
+            };
+        } else if(tk.val is namespace){
+            const name = tk.val as namespace;
+            match(get_def(ctxt, name, ctxt.scp)){
+            case let efx: *effect_t =>
+                merge_effect(out, efx);
+                end += 1;
+            case let module: *module_meta =>
+                merge_effect(out, module);
+                end += 1;
+            case void =>
+                return error(ctxt,
+                    "effect %y{}%r is not declared at this point", name.name);
+            case =>
+                return error(ctxt,
+                    "namespace %y{}%r is not a valid effect tag", name.name);
+            };
+        } else {
+            free(out);
+            const arg = strtoken(tk.val);
+                defer free(arg);
+                return error(ctxt,
+                    "expected %bvalid effect notation%r, but got %y{}", arg);
+        };
+        tk = next_tk(ctxt, end,
+            "expected %beffect concatenation%r or %bend of effect declaration%r, but got %y{}")?;
+        if(comp_tk(tk.val, operator::BAND)){
+            end += 1;
+            tk = next_tk(ctxt, end,
+                "expected %beffect concatenation%r or %bend of effect declaration%r, but got %y{}")?;
+        } else if(!comp_tk(tk.val, symbol::EOL)){
+            break;
+        };
+    };
+    return (out, end);
+};
+
 // evaluates a type definition
 // assumes `at` is pointing to `keyword::TYPE`
 fn eval_type_def(ctxt: *context, at: size) ((*type_meta, size) | ERROR) = {
@@ -1374,12 +1514,36 @@ fn eval_fun_def(ctxt: *context, at: size) ((*fun_meta, size) | ERROR) = {
     tk = next_tk(ctxt, end,
         "expected %bparameter%r or %bend of parameter list%r, but got %y{}")?;
 
+    // local meta declarations
+    if(tk.val is namespace){
+        const sub = next_tk(ctxt, end + 1,
+            "expected %bfunction parameter%r or %blocal declaration%r, but got %y{}")?;
+        // polymorphic effect
+        if(comp_tk(sub.val, keyword::EFX)){
+            const name = tk.val as namespace;
+            const efx = alloc(effect_t {
+                pos = end,
+                name = name.name,
+                owner = ctxt,
+                modcalls = [],
+                muts = [],
+                ffis = [],
+                inherits = [],
+                polymorphic = true,
+                ...
+            })!;
+            append(allocd_nodes, efx)!;
+            push_def(ctxt, tk, name, efx)?;
+            end = pop_assert(ctxt, end + 2, symbol::EOL,
+                "expected end of local declarations, but got %y{}")?;
+            tk = next_tk(ctxt, end,
+                "expected %bparameter%r or %bend of parameter list%r, but got %y{}")?;
+        };
+    };
     let shared: []size = [];
-    let shares: []str = [];
-    defer free(shares);
-
     let all_muts = true;
-    let any_muts = false;
+    let muts_tpe: [](token, lichen_t) = [];
+    defer free(muts_tpe);
     let first_mut = 0z;
     const params: []*decl_meta = [];
     // evaluate parameter declarations
@@ -1396,27 +1560,31 @@ fn eval_fun_def(ctxt: *context, at: size) ((*fun_meta, size) | ERROR) = {
         const (param, _end) = eval_declaration(ctxt, end)?;
         param.var.nm.mut = mut;
         param.var.nm.kind = nm_kind::PARAM;
-        // a dynamically effected function pointer
-        if(param.var.nm.tpe.base is *fun_ptr){
-            const fnptr = param.var.nm.tpe.base as *fun_ptr;
-            if(fnptr.shares_efx){
-                append(shared, len(params))!;
-                append(shares, fnptr.effect[0])!;
-            };
+        // define generic lifetime
+        if(is_subtype(param.var.nm.tpe, quick_t(primitive::MEM, true))){
+            param.var.lifetime = 0;
         };
         // assert for FFI aggregated parameters' mutation
         if(is_aggregated(param.var.nm.tpe)){
             if(mut){
                 first_mut = end;
-                any_muts = true;
+                append(muts_tpe, (ctxt.tokens[end], param.var.nm.tpe))!;
             } else if(!size_known(param.var.nm.tpe)){
                 all_muts = false;
             };
+        // assert for mutable parameters
         } else if(mut){
             move_ptr(ctxt, ctxt.tokens[end - 1]);
             return error_hint(ctxt,
                 "\n%gonly %yarrays, records and strings%b can mutate its value",
                 "mutability is %bnot applicable%r to %ynon-aggregated types");
+        // add inheriting effect source
+        } else if(param.var.nm.tpe.base is *fun_ptr){
+            const fptr = param.var.nm.tpe.base as *fun_ptr;
+            if(fptr.effects is *effect_t &&
+                (fptr.effects as *effect_t).polymorphic){
+                append(shared, len(params))!;
+            };
         };
         end = _end;
 
@@ -1498,21 +1666,15 @@ fn eval_fun_def(ctxt: *context, at: size) ((*fun_meta, size) | ERROR) = {
         "expected %bfunction assignment%r, but got %y{}")?;
 
     // eval effect tags
-    const (efx, _end, _) = eval_efx(ctxt, end, shares)?;
+    const (tags, efx, _end) = eval_efx(ctxt, end)?;
+    if(len(shared) > 0){
+        append((efx as *effect_t).inherits, shared...)!;
+    };
     end = _end;
 
     // assert mutability
-    if(len(efx) == 0 && any_muts){
-        move_ptr(ctxt, ctxt.tokens[first_mut]);
-        return error_hint(ctxt,
-            "\n%ga mutable reference may mutate the data it carries, generating side-effects",
-            "this function %btakes mutable references%r of values, but it %ydeclares no effects");
-    } else if(len(shared) > 0 && any_muts){
-        move_ptr(ctxt, ctxt.tokens[first_mut]);
-        return error_hint(ctxt,
-            "\n%gshared effects may decay to none, which "
-            "require another concrete effect to be used",
-            "this function %btakes mutable references%r of values, but it %ydeclares no concrete effect");
+    for(let t .. muts_tpe){
+        require_efx(ctxt, t.0, efx, keyword::MUT, t.1)?;
     };
     const begins = end;
     tk = next_tk(ctxt, end,
@@ -1537,11 +1699,16 @@ fn eval_fun_def(ctxt: *context, at: size) ((*fun_meta, size) | ERROR) = {
                 "\n%gcompiler cannot guarantee this foreign function won't mutate aggregated parameters",
                 "this function is declared as foreign, but not all of its aggregated-typed parameters are declared as mutable");
         };
-        if(len(efx) == 0){
+        if(efx is void){
             move_ptr(ctxt, tk);
             return error_hint(ctxt,
                 "\n%gcompiler cannot guarantee this foreign function won't produce any side effect",
                 "this function is declared as foreign, but no effect tag is defined");
+        } else if(!(efx as *effect_t).ffi){
+            move_ptr(ctxt, tk);
+            return error_hint(ctxt,
+                "\n%gcompiler cannot guarantee this foreign function won't produce any side effect",
+                "this function is declared as foreign, but no such effect is declared");
         };
     } else if(comp_tk(tk.val, symbol::LFT_CURLY)){
         end = skip_scope(ctxt, end)?;
@@ -1560,11 +1727,11 @@ fn eval_fun_def(ctxt: *context, at: size) ((*fun_meta, size) | ERROR) = {
         origin = ctxt.file,
         body = null,
         params = params,
-        effect = efx,
+        efxtags = tags,
+        effects = efx,
         used = false,
         recursive = false,
         borrows = borrow,
-        shares_efx = shared,
     })!;
     append(allocd_nodes, out)!;
     // reserve namespace
@@ -1574,21 +1741,23 @@ fn eval_fun_def(ctxt: *context, at: size) ((*fun_meta, size) | ERROR) = {
 };
 
 // evaluates a list of effect tags
+// if ptr == false then parses a function tag list
+// if ptr == true then parses a function pointer tag list
+// returns a list of tag names, the final effect, the end parser pointer and if
+// the single effect tag is shared (only valid if ptr == true)
 fn eval_efx(
     ctxt: *context,
     at: size,
-    shares: []str = [],
-    ptr: bool = false,
-) (([]str, size, bool) | ERROR) = {
+) (([]str, effect_tag, size) | ERROR) = {
     let end = at;
-    let efx = []: []str;
+    let tags: []str = [];
+    let efx: effect_tag = void;
     let tk = next_tk(ctxt, end,
         "expected %beffect tag%r or %bscope definition%r, but got %y{}")?;
-    // tracks if any effect tag is generic/shared
-    let any_shared = false;
     // single do effect
     if(comp_tk(tk.val, keyword::DO)){
-        append(efx, "do")!;
+        append(tags, "do")!;
+        efx = do_effect;
         end += 1;
         tk = next_tk(ctxt, end,
             "expected %beffect tag list continuation%r, %bscope "
@@ -1604,34 +1773,58 @@ fn eval_efx(
         // loop until start of declaration
         for(!comp_tk(tk.val, symbol::LFT_CURLY) &&
             !comp_tk(tk.val, keyword::USE)){
-            const shared =
-                if(comp_tk(tk.val, operator::LENGTH)){
-                    tk = next_tk(ctxt, end,
-                        "expected %beffect tag%r or %bscope definition%r, but got %y{}")?;
-                    // halt on invalid state
-                    if(!(tk.val is namespace)) return (efx, end, any_shared);
-                    end += 1;
-                    yield true;
-                } else {
-                    yield false;
-                };
-            if(shared) any_shared = true;
-            if(shared && !ptr){
-                let found = false;
-                for(let e .. shares){
-                    if(e == (tk.val as namespace).name){
-                        found = true;
-                        break;
-                    };
-                };
-                if(!found){
-                    move_ptr(ctxt, tk);
-                    return error(ctxt, "shared effect %y{}%r not declared",
-                        (tk.val as namespace).name);
-                };
+            move_ptr(ctxt, tk);
+            if(!(tk.val is namespace)){
+                const arg = strtoken(tk.val);
+                defer free(arg);
+                return error(ctxt,
+                    "expected %beffect tag%r, but got %y{}", arg);
             };
-            // append to list
-            append(efx, (tk.val as namespace).name)!;
+            const tag = tk.val as namespace;
+            append(tags, tag.name)!;
+            match(get_def(ctxt, tag, ctxt.scp)){
+            case let e: *effect_t =>
+                if(efx is void){
+                    efx = alloc(effect_t { // TODO: save this for cleanup
+                        pos = end,
+                        name = "",
+                        owner = ctxt,
+                        modcalls = [],
+                        muts = [],
+                        ffis = [],
+                        ffi = false,
+                        loop = false,
+                        recursive = false,
+                        inherits = [],
+                        polymorphic = false,
+                    })!;
+                };
+                merge_effect(efx as *effect_t, e);
+            case let module: *module_meta =>
+                if(efx is void){
+                    efx = alloc(effect_t { // TODO: save this for cleanup
+                        pos = end,
+                        name = "",
+                        owner = ctxt,
+                        modcalls = [],
+                        muts = [],
+                        ffis = [],
+                        ffi = false,
+                        loop = false,
+                        recursive = false,
+                        inherits = [],
+                        polymorphic = false,
+                    })!;
+                };
+                merge_effect(efx as *effect_t, module);
+            case void =>
+                return error(ctxt, "effect %y{}%r is not declared at this point",
+                    tag.name);
+            case =>
+                return error(ctxt,
+                    "namespace %y{}%r is not a valid effect tag",
+                    tag.name);
+            };
             // address following code
             tk = next_tk(ctxt, end,
                 "expected %beffect tag list continuation%r, %bscope "
@@ -1655,7 +1848,6 @@ fn eval_efx(
                 "definition%r or %bFFI symbol%r, but got %y{}")?;
             end += 1;
             if(!(tk.val is namespace)){
-                move_ptr(ctxt, tk);
                 const arg = strtoken(tk.val);
                 defer free(arg);
                 return error(ctxt,
@@ -1664,7 +1856,152 @@ fn eval_efx(
             };
         };
     };
-    return (efx, end, any_shared);
+    return (tags, efx, end);
+};
+
+// merges two effects onto base
+fn merge_effect(base: *effect_t, incoming: (*effect_t | *module_meta)) void = {
+    if(incoming is *effect_t){
+        const incoming = incoming as *effect_t;
+        if(incoming.polymorphic) base.polymorphic = true;
+        if(incoming.recursive) base.recursive = true;
+        if(incoming.loop) base.loop = true;
+        if(incoming.ffi) base.ffi = true;
+        for(let i_mod .. incoming.modcalls){
+            if(len(base.modcalls) == 0){
+                append(base.modcalls, i_mod)!;
+            } else {
+                let dup = false;
+                for(let b_mod .. base.modcalls){
+                    if(i_mod == b_mod){
+                        dup = true;
+                        break;
+                    };
+                    if(!dup){
+                        append(base.modcalls, i_mod)!;
+                    };
+                };
+            };
+        };
+        for(let i_mut .. incoming.muts){
+            if(len(base.muts) == 0){
+                append(base.muts, i_mut)!;
+            } else {
+                let dup = false;
+                for(let b_mut .. base.muts){
+                    if(comp_type(i_mut, b_mut)){
+                        dup = true;
+                        break;
+                    };
+                    if(!dup){
+                        append(base.muts, i_mut)!;
+                    };
+                };
+            };
+        };
+        for(let i_ffi .. incoming.ffis){
+            if(len(base.ffis) == 0){
+                append(base.ffis, i_ffi)!;
+            } else {
+                let dup = false;
+                for(let b_ffi .. base.ffis){
+                    if(i_ffi == b_ffi){
+                        dup = true;
+                        break;
+                    };
+                    if(!dup){
+                        append(base.ffis, i_ffi)!;
+                    };
+                };
+            };
+        };
+    } else {
+        const module = incoming as *module_meta;
+        if(len(base.modcalls) == 0){
+            append(base.modcalls, module.name)!;
+        } else {
+            let dup = false;
+            for(let mod .. base.modcalls){
+                if(module.name == mod){
+                    dup = true;
+                    break;
+                };
+                if(!dup){
+                    append(base.modcalls, module.name)!;
+                };
+            };
+        };
+    };
+};
+
+fn require_efx(
+    ctxt: *context,
+    pos: token,
+    efx: effect_tag,
+    kind: keyword,
+    val: (*decl_meta | lichen_t | void) = void,
+) (void | ERROR) = {
+    move_ptr(ctxt, pos);
+    if(efx is do_effect) return;
+    switch(kind){
+    case keyword::MUT =>
+        if(efx is *effect_t){
+            const efx = efx as *effect_t;
+            for(let t .. efx.muts){
+                if(comp_type(t, val as lichen_t)) return;
+            };
+            const arg = strtype(val as lichen_t);
+            defer free(arg);
+            return error_hint(ctxt,
+                "\n%ga mutable reference may mutate the data it carries, generating side-effects",
+                "this function %bmutates {} references%r, but does not %yimplement this effect",
+                arg);
+        } else {
+            return error_hint(ctxt,
+                "\n%ga mutable reference may mutate the data it carries, generating side-effects",
+                "this function %btakes mutable references%r of values, but it %ydeclares no effects");
+        };
+    case keyword::USE =>
+        if(efx is *effect_t){
+            const efx = efx as *effect_t;
+            for(let d .. efx.ffis){
+                if(d == val as *decl_meta) return;
+            };
+            return error_hint(ctxt,
+                "\n%gthe iteraction of an external symbol is not guaranteed to be pure",
+                "this function interacts with the %bFFI variable {} ({})%r, but does not %yimplement an effect for it",
+                (val as *decl_meta).var.nm.name, (val as *decl_meta).var.nm.ffi as str);
+        } else {
+            return error_hint(ctxt,
+                "\n%ga mutable reference may mutate the data it carries, generating side-effects",
+                "this function interacts with the %bFFI variable {} ({})%r, but it %ydeclares no effects",
+                (val as *decl_meta).var.nm.name, (val as *decl_meta).var.nm.ffi as str);
+        };
+    case keyword::WHILE =>
+        if(efx is *effect_t && !(efx as *effect_t).loop){
+            return error_hint(ctxt,
+                "\n%gwhile loops may become infinite loops, "
+                "which keeps the program from halting",
+                "this function does not implement a %ywhile loop effect");
+        } else if(efx is void){
+            return error_hint(ctxt,
+                "\n%gwhile loops may become infinite loops, "
+                "which keeps the program from halting",
+                "%bpure functions%r may not use %ywhile loops");
+        };
+    case => assert(false, "unreachable");
+    };
+};
+
+fn is_efx_pure(efx: effect_tag) bool = {
+    if(efx is void) return true;
+    if(efx is do_effect) return false;
+    let this = efx as *effect_t;
+
+    if(len(this.modcalls) > 0) return false;
+    if(len(this.muts) > 0) return false;
+    if(len(this.ffis) > 0) return false;
+    return !this.ffi && !this.loop && !this.recursive;
 };
 
 // skips a scope definition
@@ -1706,11 +2043,11 @@ fn eval_scope(
                 origin = ctxt.file,
                 body = null,
                 params = [],
-                effect = as_fun.effect,
+                efxtags = alloc(as_fun.efxtags...)!,
+                effects = as_fun.effects,
                 used = true,
                 recursive = false,
                 borrows = void,
-                shares_efx = [],
             })!;
             append(allocd_nodes, ptr)!;
             for(let p_tpe .. as_fun.params){
@@ -1948,7 +2285,7 @@ fn assert_ret_state(
         if(root is *funcall_meta){
             const call = root as *funcall_meta;
             if(!is_terminal(call.fun.fun.tpe)){
-                if(is_pure(call.fun, false)){
+                if(call.fun.effects is void){
                     move_ptr(ctxt, tk);
                     if(call.fun.origin == ctxt.file){
                         return error_hint(ctxt,
@@ -1964,18 +2301,27 @@ fn assert_ret_state(
                             mod, call.fun.fun.name);
                     };
                 // effects shared
-                } else if(len(call.fun.shares_efx) > 0){
-                    let total_efx = 0z;
+                } else if(call.fun.effects is *effect_t &&
+                    len((call.fun.effects as *effect_t).inherits) > 0){
+                    let total_efx: *effect_t = &effect_t {
+                        owner = ctxt,
+                        ...
+                    };
                     for(let a = 0z; a < len(call.args); a += 1){
                         const arg = call.args[a];
-                        for(let shared .. call.fun.shares_efx){
+                        const efx = call.fun.effects as *effect_t;
+                        for(let shared .. efx.inherits){
                             if(a == shared){
                                 const ptr = extract_root(arg) as *fn_ptr_meta;
-                                total_efx += len(ptr.points_to.effect);
+                                // ignore pure inheritage
+                                if(ptr.points_to.effects is void) continue;
+                                // surely impure
+                                if(ptr.points_to.effects is do_effect) return (tpe, last_tpe, rets);
+                                merge_effect(total_efx, ptr.points_to.effects as *effect_t);
                             };
                         };
                     };
-                    if(total_efx == 0){
+                    if(is_efx_pure(total_efx)){
                         move_ptr(ctxt, tk);
                         if(call.fun.origin == ctxt.file){
                             return error_hint(ctxt,
@@ -2103,7 +2449,7 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
                     case *array_lit_meta => yield void;
                     case *record_lit_meta => yield void;
                     };
-                if(assign_lifetime is size){
+                if(assign_lifetime is size && assign_lifetime as size > 0){
                     move_ptr(ctxt, ctxt.tokens[end]);
                     return error(ctxt, "upper scope outlives variable lifetime");
                 } else if(root is *var_meta){
@@ -2328,7 +2674,6 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
     // expression
     case =>
         const (exp, _end) = eval_expression(ctxt, end, quick_t(primitive::ANY))?;
-        fmt::println(is_terminal(exp.tpe), ctxt.on_defer)!;
         if(is_terminal(exp.tpe) && ctxt.on_defer){
             move_ptr(ctxt, tk);
             return error(ctxt, "cannot %bhalt%r within %ydefer statement");
@@ -2971,13 +3316,7 @@ fn eval_while_loop(ctxt: *context, at: size) ((*while_meta, size) | ERROR) = {
     let end = at + 1;
     // assert for non-deterministic branching
     const host = ctxt.host_fun as *fun_meta;
-    if(is_pure(host)){
-        move_ptr(ctxt, ctxt.tokens[at]);
-        return error_hint(ctxt,
-            "\n%gwhile loops may become infinite loops, "
-            "which keeps the program from halting",
-            "%bpure functions%r may not use %ywhile loops");
-    };
+    require_efx(ctxt, ctxt.tokens[at], host.effects, keyword::WHILE)?;
     let tk = next_tk(ctxt, end,
         "expected %belse block%r or %bend of line%r, but got %y{}")!;
     const mut =
@@ -3009,7 +3348,13 @@ fn eval_while_loop(ctxt: *context, at: size) ((*while_meta, size) | ERROR) = {
     const (cond, _end) = eval_expression(ctxt, end,
         quick_t(primitive::BOOL))?;
     end = _end;
+    // save previous loop position state
+    const old_loop_pos = ctxt.loop_pos;
+    // update it
+    ctxt.loop_pos = at;
     const (body, _end) = eval_scope(ctxt, end)?;
+    // restore it
+    ctxt.loop_pos = old_loop_pos;
     // pop local variable off
     if(local_def is *decl_meta){
         for(let d = len(ctxt.scp.defs); d > 0; d -= 1){
@@ -3648,17 +3993,17 @@ fn eval_asg_or_exp(
                 };
             };
         } else if(base.val is *record_lit_meta){
-                return error_hint(ctxt,
-                    "\n%gcannot assign to a record literal",
-                    "unexpected %yassignment%r found here");
-            } else if(base.val is *array_lit_meta){
-                return error_hint(ctxt,
-                    "\n%gcannot assign to an array literal",
-                    "unexpected %yassignment%r found here");
-            } else {
-                return error(ctxt,
-                    "unexpected %yassignment%r found here");
-            };
+            return error_hint(ctxt,
+                "\n%gcannot assign to a record literal",
+                "unexpected %yassignment%r found here");
+        } else if(base.val is *array_lit_meta){
+            return error_hint(ctxt,
+                "\n%gcannot assign to an array literal",
+                "unexpected %yassignment%r found here");
+        } else {
+            return error(ctxt,
+                "unexpected %yassignment%r found here");
+        };
         // assert mutability
         move_ptr(ctxt, ctxt.tokens[begin]);
         match(obj){
@@ -3698,6 +4043,37 @@ fn eval_asg_or_exp(
             assert_mutability(ctxt, ctxt.tokens[begin],
                 field.field.var.nm.name,
                 field.field.var.nm.mut, val)?;
+            // assert underliving data
+            if(val.val is *member_meta){
+                const pass = base.val as *var_meta;
+                const memb = val.val as *member_meta;
+                const lifetime = match(memb.val){
+                    case let var: *var_meta => yield var.lifetime;
+                    case let all: *alloc_meta => yield all.arena.lifetime;
+                    case let cat: *concat_meta => yield cat.arena.lifetime;
+                    case => yield void;
+                    };
+                if(lifetime is size){
+                    if(!(pass.lifetime is size)){
+                        const hint =
+                            fmt::asprintf("\n%gthe variable %y{}%g was not"
+                            " dynamically allocated, it may outlive its"
+                            " allocated value", pass.nm.name)!;
+                        defer free(hint);
+                        return error_hint(ctxt, hint,
+                            "cannot assign %ballocated value%r to field of variable with %yno lifetime");
+                    } else if(lifetime as size > pass.lifetime as size){
+                        return error(ctxt,
+                            "assigned value underlives variable %b{}%r's lifetime",
+                            pass.nm.name);
+                    };
+                    if(pass.nm.kind == nm_kind::PARAM){
+                        return error_hint(ctxt,
+                            "the receiver is a parameter with no fixed lifetime",
+                            "cannot assign %ballocated value%r to field of variable with %yundefined lifetime");
+                    };
+                };
+            };
             const asg = alloc(assign_meta {
                 pos = at,
                 var = field.field.var,
@@ -3742,14 +4118,44 @@ fn eval_asg_or_exp(
                 };
             if(!pass.nm.mut){
                 return error(ctxt,
-                    "cannot reassign to field %b{}%r, an %yimmutable array",
+                    "cannot reassign %yimmutable array {}",
                     pass.nm.name);
             };
             assert_mutability(ctxt, ctxt.tokens[begin],
                 pass.nm.name, pass.nm.mut, val)?;
+            // assert underliving data
+            if(val.val is *member_meta){
+                const memb = val.val as *member_meta;
+                const lifetime = match(memb.val){
+                    case let var: *var_meta => yield var.lifetime;
+                    case let all: *alloc_meta => yield all.arena.lifetime;
+                    case let cat: *concat_meta => yield cat.arena.lifetime;
+                    case => yield void;
+                    };
+                if(lifetime is size){
+                    if(!(pass.lifetime is size)){
+                        const hint =
+                            fmt::asprintf("\n%gthe variable %y{}%g was not"
+                            " dynamically allocated, it may outlive its"
+                            " allocated value", pass.nm.name)!;
+                        defer free(hint);
+                        return error_hint(ctxt, hint,
+                            "cannot assign %ballocated value%r to array with %yno lifetime");
+                    } else if(lifetime as size > pass.lifetime as size){
+                        return error(ctxt,
+                            "assigned value underlives variable %b{}%r's lifetime",
+                            pass.nm.name);
+                    };
+                    if(pass.nm.kind == nm_kind::PARAM){
+                        return error_hint(ctxt,
+                            "the receiver is a parameter with no fixed lifetime",
+                            "cannot assign %ballocated value%r to array with %yundefined lifetime");
+                    };
+                };
+            };
             const asg = alloc(assign_meta {
                 pos = at,
-                var = base.val as *var_meta,
+                var = pass,
                 val = val,
                 host = obj,
             })!;
@@ -4069,8 +4475,8 @@ fn eval_member(
                 const fnptr = alloc(fun_ptr {  // TODO: store this for cleanup
                     params = [],
                     returns = fun_def.fun.tpe,
-                    effect = fun_def.effect,
-                    shares_efx = false,
+                    efxtags = fun_def.efxtags,
+                    effects = fun_def.effects,
                 })!;
                 for(let param .. fun_def.params){
                     append(fnptr.params,
@@ -4086,6 +4492,30 @@ fn eval_member(
                 append(allocd_nodes, memb.val as *fn_ptr_meta)!;
             };
         case let decl: *decl_meta =>
+            if(decl.var.nm.ffi is str){
+                const host = ctxt.host_fun as *fun_meta;
+                if(host.effects is void){
+                    return error_hint(ctxt,
+                        "\n%gFFI symbols are impure by definition",
+                        "pure functions cannot interact FFI variables");
+                };
+                if(host.effects is *effect_t){
+                    const efx = host.effects as *effect_t;
+                    let found = false;
+                    for(let ffi .. efx.ffis){
+                        if(ffi.var.nm.ffi as str == decl.var.nm.ffi as str){
+                            found = true;
+                            break;
+                        };
+                    };
+                    if(!found){
+                        return error_hint(ctxt,
+                            "\n%gFFI symbols are impure by definition",
+                            "the function %b{}%r is trying to interact with the FFI variable %y{}%r, but it has no effect tag describing it",
+                            host.fun.name, decl.var.nm.name);
+                    };
+                };
+            };
             memb.tpe = decl.var.nm.tpe;
             const dup = alloc(*decl.var)!;
             memb.val = dup;
@@ -4161,8 +4591,8 @@ fn eval_member(
                             const fnptr = alloc(fun_ptr {  // TODO: store this for cleanup
                                 params = [],
                                 returns = fun_def.fun.tpe,
-                                effect = fun_def.effect,
-                                shares_efx = false,
+                                efxtags = fun_def.efxtags,
+                                effects = fun_def.effects,
                             })!;
                             for(let param .. fun_def.params){
                                 append(fnptr.params,
@@ -4221,13 +4651,22 @@ fn eval_member(
                             const arg = strtype(tpe.self);
                             defer free(arg);
                             return error(ctxt,
-                                "type %b{}::{}%r cannot be used as a %yliteral", module.name, arg);
+                                "type %b{}::{}%r cannot be used as a %yliteral",
+                                module.name, arg);
                         };
                     case let submodule: *module_meta =>
                         if(submodule.name != field.name){
                             continue;
                         };
                         todo("recursive modules");
+                    case let effect: *effect_t =>
+                        if(effect.name != field.name){
+                            continue;
+                        };
+                        move_ptr(ctxt, tk);
+                        return error(ctxt,
+                            "effect %b{}::{}%r cannot be used as a %yliteral",
+                            module.name, effect.name);
                     };
                 };
                 if(!found){
@@ -4529,7 +4968,7 @@ fn eval_alloc(
     const val = _val as *member_meta;
     if(untyped(val.tpe)){
         return error(ctxt, "cannot allocate %yuntyped value");
-    } else if(val.tpe.partial){
+    } else if(val.tpe.partial && !(val.val is *array_lit_meta)){
         return error(ctxt, "cannot allocate %ypartial type");
     } else if(!is_aggregated(val.tpe)){
         return error(ctxt, "cannot allocate %ynon-aggregated types");
@@ -5300,8 +5739,6 @@ fn eval_funcall(
             yield (false, 0z);
         };
     const max = len(fun.params);
-    const shared_efx: [](str, []str) = [];
-    defer free(shared_efx);
     for(!comp_tk(tk.val, symbol::RGT_PAR)){
         if(arg_count >= max || max == 0){
             move_ptr(ctxt, tk);
@@ -5313,15 +5750,16 @@ fn eval_funcall(
         const (arg, _end) = eval_expression(ctxt, end,
             fun.params[arg_count].var.nm.tpe)?;
         // assert for shared effects
-        if(len(fun.shares_efx) > 0){
-            for(let shared .. fun.shares_efx){
+        if(fun.effects is *effect_t &&
+            len((fun.effects as *effect_t).inherits) > 0){
+            const host = ctxt.host_fun as *fun_meta;
+            const efx = fun.effects as *effect_t;
+            for(let shared .. efx.inherits){
                 if(shared == arg_count){
                     const ptr = (arg.val as *member_meta).val as *fn_ptr_meta;
-                    append(shared_efx,
-                        (ptr.points_to.fun.name, ptr.points_to.effect))!;
+                    require_impl_efx(ctxt, host, ptr.points_to.effects, _end)?;
                 };
             };
-            append(shared_efx, ("", []))!;
         };
         arg.tpe = fun.params[arg_count].var.nm.tpe;
         // borrow argument lifetime
@@ -5359,17 +5797,16 @@ fn eval_funcall(
         };
     };
     // validade function effect tags
-    validate_efx(ctxt, fun, at, shared_efx)?;
+    validate_efx(ctxt, fun, at)?;
     const recursive = fun == ctxt.host_fun as *fun_meta;
-    fun.recursive = recursive;
 
     // assert for tailcalls
-    if(recursive && is_pure(fun) && !ctxt.branching){
+    if(recursive && fun.effects is void && !ctxt.branching){
         move_ptr(ctxt, ctxt.tokens[at - 1]);
         return error_hint(ctxt,
-            "\n%gtry doing %d\"= %bloop%d {\""
-            "%g in the function scope definition",
-            "function does not tags itself for unconditional branching");
+            "\n%gthis function calls itself unconditionally, "
+            "becoming a never-halting function",
+            "function does not tags itself for recursion");
     };
     if(arg_count > max){
         move_ptr(ctxt, tk);
@@ -5394,7 +5831,7 @@ fn eval_funcall(
         pos = at,
         args = arg_list,
         lifetime = lifetime,
-        tailcall = recursive,
+        tailcall = recursive && !ctxt.branching,
     })!;
     append(allocd_nodes, out)!;
     return (out, end);
@@ -5453,108 +5890,259 @@ fn assert_argument_mutability(
     };
 };
 
-fn is_pure(fun: *fun_meta, ignore_shared: bool = false) bool = {
-    if(ignore_shared){
-        return len(fun.effect) == 0;
-    } else {
-        return (len(fun.effect) + len(fun.shares_efx)) == 0;
-    };
-};
-
 // validades effects for a given called function and a caller set of tags
 fn validate_efx(
     ctxt: *context,
     called: *fun_meta,
     pos: size,
-    shared_efx: [](str, []str) = [],
 ) (void | ERROR) = {
     assert(ctxt.host_fun != null);
     move_ptr(ctxt, ctxt.tokens[pos - 1]);
+    const host = ctxt.host_fun as *fun_meta;
+    // pure calls
+    if(called.effects is void) return;
 
     const caller = ctxt.host_fun: *fun_meta;
-    if(len(caller.effect) > 0 && caller.effect[0] == "do"){
-        if(len(called.effect) > 0 && called.effect[0] == "do"){
+    if(caller.effects is do_effect){
+        if(called.effects is do_effect){
             return error(ctxt,
                 "functions tagged with %bdo effect%r cannot call another function also tagged with %bdo");
         };
         return;
     };
     if(called.origin == ctxt.file){
-        for(let ld = 0z; ld < len(called.effect); ld += 1){
-            let shared_idx = 0z;
-            const (efx, shared): ([]str, bool) =
-                if(len(called.shares_efx) > 0){
-                    let found = false;
-                    for(let s .. called.shares_efx){
-                        shared_idx = s;
-                        const param = called.params[s].var.nm.tpe.base as *fun_ptr;
-                        if(called.effect[ld] == param.effect[0]) found = true;
-                    };
-                    yield (shared_efx[shared_idx].1, found);
-                } else {
-                    yield ([], false);
+        if(host.effects is void && called.effects is *effect_t &&
+            // polymorphic effects are handled at call site
+            !(called.effects as *effect_t).polymorphic){
+            return error_hint(ctxt,
+                "\n%gtry declaring using the same tags of the called function on the caller declaration",
+                "the called function %b{}%r is %yimpure%r, but the caller function {} has no %ydeclared effects",
+                called.fun.name, host.fun.name);
+        } else if((called.effects as *effect_t).polymorphic){
+            return;
+        };
+        const cefx = called.effects as *effect_t;
+        const hefx = host.effects as *effect_t;
+        if(cefx.loop && !hefx.loop){
+            return error_hint(ctxt,
+                "\n%gtry declaring an effect %dloop efx = while;%g"
+                " at global scope and using it with %d= loop { ... };%g"
+                " in the caller function definition",
+                "the called function %b{}%r uses %ywhile loops%r, but no such effect is declared on caller function %y{}",
+                called.fun.name, host.fun.name);
+        };
+        if(cefx.recursive && !hefx.recursive){
+            return error(ctxt,
+                "the called function %b{}%r is %yrecursive%r, but no such effect is declared on caller function %y{}",
+                called.fun.name, host.fun.name);
+        };
+        for(let call .. cefx.modcalls){
+            let found = false;
+            for(let decl .. hefx.modcalls){
+                if(decl == call){
+                    found = true;
+                    break;
                 };
-            if(shared){
-                if(len(efx) == 0) continue;
-                for(let ld_tag .. efx){
-                    let found = false;
-                    for(let lr_tag .. caller.effect){
-                        if(comp_tk(ld_tag, lr_tag)){
-                            found = true;
-                            break;
-                        };
-                    };
-                    if(!found){
-                        const help = fmt::asprintf(
-                            "\n%gtry doing %p\"%d= %b{} %y{{%p\"%g in the function scope definition",
-                            ld_tag)!;
-                        defer free(help);
-                        return error_hint(ctxt, help,
-                            "the function %b{}%r inherits the effect %g{}%r from its argument %g{}%r, but the caller function isn't tagged with this effect",
-                            called.fun.name, ld_tag, shared_efx[shared_idx].0);
-                    };
+            };
+            if(!found){
+                const hint = fmt::asprintf(
+                    "\n%gtry declaring an using the module binding name with "
+                    "%d= {} {{%g in the caller function definition",
+                    call)!;
+                defer free(hint);
+                return error_hint(ctxt, hint,
+                    "the called function %b{}%r uses %yimpure%r functions from the %b{}%r module, but no such effect is declared on caller function %y{}",
+                    called.fun.name, call, host.fun.name);
+            };
+        };
+        for(let muts .. cefx.muts){
+            let found = false;
+            for(let decl .. hefx.muts){
+                if(comp_type(decl, muts)){
+                    found = true;
+                    break;
                 };
-            } else {
-                let found = false;
-                const ld_tag = called.effect[ld];
-                for(let lr_tag .. caller.effect){
-                    if(comp_tk(ld_tag, lr_tag)){
-                        found = true;
-                        break;
-                    };
+            };
+            if(!found){
+                const tpe = strtype(muts, strtype_mode::SKIP);
+                defer free(tpe);
+                const hint = fmt::asprintf(
+                    "\n%gtry declaring an effect %dffi efx = mut {};%g"
+                    " at global scope and using it with %d= efx {{%g"
+                    " in the caller function definition",
+                    tpe)!;
+                defer free(hint);
+                const arg = strtype(muts);
+                defer free(arg);
+                return error_hint(ctxt, hint,
+                    "the called function %b{}%r mutates %y{} parameters%r, but no such effect is declared on caller function %y{}",
+                    called.fun.name, arg, host.fun.name);
+            };
+        };
+        for(let used .. cefx.ffis){
+            let found = false;
+            for(let decl .. hefx.ffis){
+                if(decl == used){
+                    found = true;
+                    break;
                 };
-                if(!found){
-                    const help = fmt::asprintf(
-                        "\n%gtry doing %p\"%d= %b{} %y{{%p\"%g in the function scope definition",
-                        ld_tag)!;
-                    defer free(help);
-                    return error_hint(ctxt, help,
-                        "the function %b{}%r implements the effect %g{}%r, but the caller function doesn't",
-                        called.fun.name, ld_tag);
+            };
+            if(!found){
+                const hint = fmt::asprintf(
+                    "\n%gtry declaring an effect %dffi efx = use {};%g"
+                    " at global scope and using it with %d= efx {{ ... }};%g"
+                    " in the caller function definition",
+                    used.var.nm.name)!;
+                defer free(hint);
+                return error_hint(ctxt, hint,
+                    "the called function %b{}%r interacts with the %yFFI variable {}%r, but no such effect is declared on caller function %y{}",
+                    called.fun.name, used.var.nm.name, host.fun.name);
+            };
+        };
+    } else {
+        const bind = "";
+        for(let defs .. ctxt.global.defs){
+            if(defs is *module_meta){
+                const mod = defs as *module_meta;
+                if(mod.ctxt.file == called.origin){
+                    bind = mod.name;
                 };
             };
         };
-    } else if(len(called.effect) > 0){
-        const default = strings::rcut(
-            strings::rcut(called.origin, "/").1, ".").0;
-        for(let lr_tag .. caller.effect){
-            const bind =
-                match(get_def(ctxt, dummy_nm(ctxt, lr_tag), ctxt.scp)){
-                case let mod: *module_meta => yield mod.ctxt.file;
-                case => yield lr_tag;
-                };
-            if(bind == called.origin) return;
+        assert(bind != "");
+        if(host.effects is void){
+            const help = fmt::asprintf(
+                "\n%gtry doing %d\"= %b{}%d {{\""
+                "%g in the function scope definition",
+                bind)!;
+            defer free(help);
+            return error_hint(ctxt, help,
+                "the function %b{}%r, from the module "
+                "%g{}%r, is %yimpure%r, but the caller function doesn't "
+                "implement its effect tag",
+                called.fun.name, bind);
         };
-        const help = fmt::asprintf(
-            "\n%gtry doing %d\"= %b{}%d {{\""
-            "%g in the function scope definition",
-            default)!;
-        defer free(help);
-        return error_hint(ctxt, help,
-            "the function %b{}%r, from the module "
-            "%g{}%r, is %yimpure%r, but the caller function doesn't "
-            "implement its effect tag",
-            called.fun.name, default);
+        if(host.effects is do_effect) return;
+        const hefx = host.effects as *effect_t;
+        let found = false;
+        for(let decl .. hefx.modcalls){
+            if(decl == bind){
+                found = true;
+                break;
+            };
+        };
+        if(!found){
+            const help = fmt::asprintf(
+                "\n%gtry doing %d\"= %b{}%d {{\""
+                "%g in the function scope definition",
+                bind)!;
+            defer free(help);
+            return error_hint(ctxt, help,
+                "the function %b{}%r, from the module "
+                "%g{}%r, is %yimpure%r, but the caller function doesn't "
+                "implement its effect tag",
+                called.fun.name, bind);
+        };
+    };
+};
+
+// requires a function to produce the given effects
+fn require_impl_efx(
+    ctxt: *context,
+    fun: *fun_meta,
+    req_efx: effect_tag,
+    pos: size,
+) (void | ERROR) = {
+    move_ptr(ctxt, ctxt.tokens[pos - 1]);
+    // pure calls
+    if(req_efx is void || fun.effects is do_effect) return;
+    if(fun.effects is void && req_efx is *effect_t){
+        return error(ctxt, // TODO: give some hints
+            "the called function %b{}%r implements none of the required effects",
+            fun.fun.name);
+    } else if(req_efx is do_effect){
+        return error_hint(ctxt,
+            "\n%gtry declaring the function with %d= do { ... }; %ginstead",
+            "the function %b{}%r is required to be tagged with the %ydo%r effect, but it does not",
+            fun.fun.name);
+    };
+    const efx = req_efx as *effect_t;
+    const fun_efx = fun.effects as *effect_t;
+    if(fun_efx.loop && !efx.loop){
+        return error_hint(ctxt,
+            "\n%gtry declaring an effect %dloop efx = while;%g"
+            " at global scope and using it with %d= loop { ... };%g"
+            " in the caller function definition",
+            "the function %b{}%r is required to implement a %ywhile loop%r effect, but it does not",
+            fun.fun.name);
+    };
+    if(fun_efx.recursive && !efx.recursive){
+        return error(ctxt,
+            "the function %b{}%r is required to implement a %yrecursive%r effect, but does not",
+            fun.fun.name);
+    };
+    for(let call .. efx.modcalls){
+        let found = false;
+        for(let decl .. fun_efx.modcalls){
+            if(decl == call){
+                found = true;
+                break;
+            };
+        };
+        if(!found){
+            const hint = fmt::asprintf(
+                "\n%gtry declaring an using the module binding name with "
+                "%d= {} {{%g in the caller function definition",
+                call)!;
+            defer free(hint);
+            return error_hint(ctxt, hint,
+                "the function %b{}%r is required to implement the %b{}%r module effect tag, but it does not",
+                fun.fun.name, call);
+        };
+    };
+    for(let muts .. efx.muts){
+        let found = false;
+        for(let decl .. fun_efx.muts){
+            if(comp_type(decl, muts)){
+                found = true;
+                break;
+            };
+        };
+        if(!found){
+            const tpe = strtype(muts, strtype_mode::SKIP);
+            defer free(tpe);
+            const hint = fmt::asprintf(
+                "\n%gtry declaring an effect %dffi efx = mut {};%g"
+                " at global scope and using it with %d= efx {{%g"
+                " in the caller function definition",
+                tpe)!;
+            defer free(hint);
+            const arg = strtype(muts);
+            defer free(arg);
+            return error_hint(ctxt, hint,
+                "the function %b{}%r is require to implement an effect for mutating %y{} parameters%r, but it does not",
+                fun.fun.name, arg);
+        };
+    };
+    for(let used .. efx.ffis){
+        let found = false;
+        for(let decl .. fun_efx.ffis){
+            if(decl == used){
+                found = true;
+                break;
+            };
+        };
+        if(!found){
+            const hint = fmt::asprintf(
+                "\n%gtry declaring an effect %dffi efx = use {};%g"
+                " at global scope and using it with %d= efx { ... };%g"
+                " in the caller function definition",
+                used)!;
+            defer free(hint);
+            return error_hint(ctxt, hint,
+                "the function {} is required to implement an effect for iteracting with the %yFFI variable {}%r, but it does not",
+                fun.fun.name, used);
+        };
     };
 };
 
@@ -6015,25 +6603,14 @@ fn eval_type(
             const (rets, _end) = eval_type(ctxt, end)?;
             end = _end;
             // effects
-            const (efx, _end, shared) = eval_efx(ctxt, end, [], true)?;
-            if(shared && len(efx) > 1){
-                move_ptr(ctxt, ctxt.tokens[end]);
-                return error(ctxt,
-                    "function pointers shall not %yshare multiple effects");
-            };
+            const (tags, efx, _end) = eval_efx(ctxt, end)?;
+            // TODO: validate effect
             end = _end;
-            // assert mutability
-            if(len(efx) == 0 && any_muts){
-                move_ptr(ctxt, ctxt.tokens[first_mut]);
-                return error_hint(ctxt,
-                    "\n%ga mutable reference may mutate the data it carries, generating side-effects",
-                    "this function %btakes mutable references%r of values, but it %ydeclares no effects");
-            };
             const fnptr = fun_ptr {
                 params = params,
                 returns = rets,
-                effect = efx,
-                shares_efx = shared,
+                efxtags = tags,
+                effects = efx,
             };
             const out = lichen_t {
                 partial = partial,
@@ -6280,17 +6857,51 @@ fn _is_subtype(_this: lichen_t, _that: lichen_t) bool = {
             if(!comp_type(this.params[p].1, that.params[p].1)) return false;
         };
         // compare effects
-        if(!this.shares_efx && !that.shares_efx){
-            for(let this_efx .. this.effect){
-                let found = this_efx == "do";
-                for(let that_efx .. that.effect){
-                    if(this_efx == that_efx || that_efx == "do"){
+        if(this.effects is void && that.effects is void) return true;
+        if(!(that.effects is do_effect)){
+            if(this.effects is do_effect) return false;
+
+            let that_efx = that.effects as *effect_t;
+            if(that_efx.polymorphic) return true;
+            let this_efx = this.effects as *effect_t;
+            // mod calls
+            if(len(this_efx.modcalls) != len(that_efx.modcalls)) return false;
+            for(let this_tag .. this_efx.modcalls){
+                let found = false;
+                for(let that_tag .. that_efx.modcalls){
+                    if(this_tag == that_tag){
                         found = true;
                         break;
                     };
                 };
                 if(!found) return false;
             };
+            // mutations
+            if(len(this_efx.muts) != len(that_efx.muts)) return false;
+            for(let this_tag .. this_efx.muts){
+                let found = false;
+                for(let that_tag .. that_efx.muts){
+                    if(comp_type(this_tag, that_tag)){
+                        found = true;
+                        break;
+                    };
+                };
+                if(!found) return false;
+            };
+            // FFIs
+            if(len(this_efx.ffis) != len(that_efx.ffis)) return false;
+            for(let this_tag .. this_efx.ffis){
+                let found = false;
+                for(let that_tag .. that_efx.ffis){
+                    if(this_tag == that_tag){
+                        found = true;
+                        break;
+                    };
+                };
+                if(!found) return false;
+            };
+            if(this_efx.loop != that_efx.loop) return false;
+            if(this_efx.recursive != that_efx.recursive) return false;
         };
         return true;
     } else {
@@ -6461,8 +7072,8 @@ fn untyped(tpe: lichen_t) bool = {
 };
 
 fn is_terminal(tpe: lichen_t) bool = {
-    return is_subtype(tpe, quick_t(primitive::VOID, true)) &&
-        !is_subtype(tpe, quick_t(primitive::UNIT, true));
+    return comp_type(tpe, primitive::VOID) ||
+        comp_type(tpe, quick_t(primitive::VOID, true));
 };
 
 // checks if given type is aggregated

@@ -6,13 +6,15 @@ type foo = record {
     bar []u32;
 };
 
-fn new_foo(mut a mem) foo = alloc {
+allocs efx = mut mem;
+
+fn new_foo(mut a mem) foo = allocs {
     return foo {
         bar = new ! [4; 0...] @ a,
     };
 };
 
-pub fn main() void = alloc {
+pub fn main() void = allocs {
     new a | 128 {
         let f = new_foo(a);
     }!;

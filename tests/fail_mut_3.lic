@@ -2,7 +2,7 @@
 // invalid mutability for function
 // parameters
 
-fn take_ref(mut x u32) unit = m {};
+fn take_ref(mut x u32) unit = {};
 
 pub fn main() void = m {
     let y u32 = 4;

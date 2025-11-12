@@ -3,22 +3,24 @@ type foo = record {
     len u64;
 };
 
-fn init(len u64, mut a mem) !foo = init {
+foo_init efx = mut foo & mut mem;
+
+fn init(len u64, arr []u64)foo = foo_init {
     let mut f = foo {
         arr = [],
         len = len,
     };
-    f.arr = new ? [f.len; 0...] @ a;
+    f.arr = arr;
     for mut itm, idx .. f.arr {
         itm = f.len - idx;
     };
     return f;
 };
 
-pub fn main() void = init {
+pub fn main() void = foo_init {
     let len = 4 u64;
     new buff | len * 8 + 24 {
-        let f = init(len, buff)!;
+        let f = init(len, new ! [len; 0...] @ buff);
         for itm, idx .. f.arr {
             test itm == #f.arr - idx;
         };

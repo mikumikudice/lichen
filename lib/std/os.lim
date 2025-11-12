@@ -6,11 +6,13 @@ rt mod = use "std/rt.lim";
 
 pub errno i32 = use "rt.errno";
 
-pub fn args(i u64) !cstr = rt & os_env {
+pub fn args(i u64) !cstr = rt {
     return rt::idx_argv(i);
 };
 
-pub fn alloc_argv(max u64, mut a mem) ![]cstr @ a = rt & os_env & alloc {
+alloc efx = mut mem;
+
+pub fn alloc_argv(max u64, mut a mem) ![]cstr @ a = rt & alloc {
     let mut argv = new ? [max; "" cstr ...] @ a;
     for mut arg, idx .. argv {
         arg = args(idx)! or break;

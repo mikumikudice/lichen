@@ -8,6 +8,8 @@ type person = record {
     age u8;
 };
 
+aging efx = mut person;
+
 fn age(mut p person, time u8) unit = aging {
     p.age = p.age + time;
 };

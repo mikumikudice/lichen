@@ -6,7 +6,7 @@ type foo = record {
     mut bar u64;
 };
 
-pub fn main() void = m {
+pub fn main() void = {
     let f = foo { bar = 0 };
     f.bar = 4;
 };

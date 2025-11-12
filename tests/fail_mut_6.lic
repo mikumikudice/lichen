@@ -2,7 +2,7 @@
 // invalid mutable value passing of
 // slices of immutable arrays
 
-pub fn main() void = m {
+pub fn main() void = {
     let arr = [4; 0...] u8;
     let mut ref = arr[0..1];
 };

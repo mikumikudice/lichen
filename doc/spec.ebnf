@@ -41,17 +41,25 @@ array       ::= "[" number? "]" type;
 tuple       ::= "(" type ("," type)+ ","? ")";
 // a function type definition is a generic notation for any possible function
 function    ::= "fn" "(" ( type ("," type)* ","? )* ")" type effect?;
-// a constant definition is a namespace with a type or a module `mod` notation
-// assigned with a constant optionally starting with an unary operator or an
-// import statement
-const_def   ::= namespace (type | "mod") "=" (unary_oper? constant) | import;
+// a constant definition is either a constant value definition, a module import
+// or an effect declaration
+const_def   ::= const_val | mod_import | effect_def;
+// const value definition is a namespace with a type notation
+// assigned with a constant optionally starting with an unary operator
+const_val   ::= namespace type "=" (unary_oper? constant);
+// an import statement is a namespace followed by the keyword "mod" assigned
+// with the keyword `use` followed by a string containing the file path for a
+// source file to be loaded
+mod_import  ::= namespace "mod" "=" "use" string;
+// an effect definition is a namespace followed by the keyword "efx" assigned
+// by a mutable type, the keyword "use" followed by a namespace or the keyword
+// "while"
+effect_def  ::= namespace "efx" "="
+            (("mut" type) | ("use" namespace) | "while");
 // a constant is either a number, decimal number, string, rune, boolean, error
 // state singleton or a constant array literal
 constant    ::= number | decimal | string | rune | boolean | error_state 
             | const_array;
-// an import statement is the keyword `use` followed by a string containing the
-// file path for a source file to be loaded
-import      ::= "use" string;
 // a module field access is a namespace followed by a field access operator and
 // another namespace one or more times
 mod_field   ::= namespace ("::" namespace)+;

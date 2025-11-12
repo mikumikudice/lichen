@@ -1,7 +1,7 @@
 use memio;
 
 type nm_kind = enum {
-    UNKNOWN, FUNC, PARAM, VAR, TYPE
+    UNKNOWN, FUNC, PARAM, VAR, TYPE, EFFECT
 };
 type namespace = struct {
     pub: bool,
@@ -15,7 +15,7 @@ type namespace = struct {
 };
 
 type keyword = enum u8 {
-    USE, MOD, PUB, MUT, LET, FN, TYPE,
+    USE, MOD, EFX, PUB, MUT, LET, FN, TYPE,
     FOR, WHILE, BREAK, NEXT, DEFER,
     SWITCH, IF, ELSE,
     RETURN, UNREACHABLE, DO, TEST,
@@ -24,13 +24,15 @@ type keyword = enum u8 {
 };
 
 const kwd_value = [
-    "use", "mod", "pub", "mut", "let", "fn", "type",
+    "use", "mod", "efx", "pub", "mut", "let", "fn", "type",
     "for", "while", "break", "next", "defer",
     "switch", "if", "else",
     "return", "unreachable", "do", "test",
     "record", "enum", "union", "new", "cat", "or",
     "is", "true", "false", "error", "nil",
 ];
+
+static assert(len(kwd_value) == keyword::NIL + 1);
 
 type primitive = enum u8 {
     U8, U16, U32, U64,
@@ -50,6 +52,8 @@ const prim_value = [
     "numeric literal", "ratio literal",
     "untyped",
 ];
+
+static assert(len(prim_value) == primitive::ANY + 1);
 
 type base_type = (primitive | *enum_t | *record | *tuple | *array | *fun_ptr); 
 type lichen_t = struct {
@@ -80,11 +84,27 @@ type array = struct {
     base: lichen_t,
 };
 
+type do_effect = void;
+type effect_t = struct {
+    pos: size,
+    name: str,
+    owner: *context,
+    modcalls: []str,
+    muts: []lichen_t,
+    ffis: []*decl_meta,
+    ffi: bool,
+    loop: bool,
+    recursive: bool,
+    inherits: []size,
+    polymorphic: bool,
+};
+type effect_tag = (void | *effect_t | do_effect);
+
 type fun_ptr = struct {
     params: [](bool, lichen_t),
     returns: lichen_t,
-    effect: []str,
-    shares_efx: bool,
+    efxtags: []str,
+    effects: effect_tag,
 };
 
 const oper_value = [
@@ -104,8 +124,10 @@ type operator = enum u8 {
     LST, GTT, BOR, BAND, SHL, SHR,
     NOT, PLS, MIN, MUL, DIV, MOD,
     BUBBLE, BANG, RANGE, SPREAD,
-    LENGTH, ASG,
+    LENGTH, ASG, OPER_END = ASG,
 };
+
+static assert(len(oper_value) == operator::OPER_END + 1);
 
 const sym_value = [
     "end of line", "allocate at",
@@ -120,8 +142,10 @@ type symbol = enum u8 {
     EOL, AT, COMMA, DOT, FIELD,
     LFT_PAR, RGT_PAR,
     LFT_CURLY, RGT_CURLY,
-    LFT_SQUARE, RGT_SQUARE,
+    LFT_SQUARE, RGT_SQUARE, SYMB_END = RGT_SQUARE
 };
+
+static assert(len(sym_value) == symbol::SYMB_END + 1);
 
 type eof = void;
 type tk_val =
@@ -159,7 +183,7 @@ type context = struct {
 };
 
 type scope = struct {
-    defs: [](*fun_meta | *decl_meta | *type_meta | *module_meta),
+    defs: [](*fun_meta | *decl_meta | *type_meta | *module_meta | *effect_t),
     upper: nullable *scope,
 };
 
@@ -177,7 +201,8 @@ type path_meta = (*hand_meta | *member_meta | *ternary_meta | *expr_meta |
     *alloc_meta | *concat_meta | *decl_meta | *assign_meta | *arena_meta |
     *fun_meta | *scope_meta | *expr_meta | *branch_meta | *return_meta |
     *test_meta | *for_meta | *while_meta | *switch_meta | *type_meta |
-    *module_meta | loop_break | loop_next | *defer_meta | unreachable);
+    *module_meta | * effect_t | loop_break | loop_next | *defer_meta |
+    unreachable);
 
 type const_meta = struct {
     pre: (void | operator),
@@ -287,11 +312,11 @@ type fun_meta = struct {
     origin: str,
     body: nullable *scope_meta,
     params: []*decl_meta,
-    effect: []str,
+    efxtags: []str,
+    effects: effect_tag,
     used: bool,
     recursive: bool,
     borrows: (void | size),
-    shares_efx: []size,
 };
 
 type funcall_meta = struct {

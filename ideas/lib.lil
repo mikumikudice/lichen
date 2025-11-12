@@ -1,0 +1,11 @@
+pub std lib = {
+    fs  mod "std/fs.lim";
+    io  mod "std/io.lim";
+    os  mod "std/os.lim";
+    rt  mod "std/rt.lim";
+    vec mod "std/vec.lim";
+};
+
+pub raylib lib = {
+    core mod "raylib/core.lim";
+} use "-lc -lraylib -lGL -lm -lpthread -ldl -lrt -lX11";

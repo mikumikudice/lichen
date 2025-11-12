@@ -1,0 +1,20 @@
+// parser test for asserting for
+// complex allocation lifetimes
+
+type foo = record {
+   bar []u8;
+};
+
+allocs efx = mut mem;
+assign efx = mut foo;
+
+fn init(mut f foo, len u64, mut a mem) !unit = allocs & assign {
+    f.bar = new ? [len; 0...] @ a;
+};
+
+pub fn main() void = allocs & assign {
+    let mut f = foo { bar = [] };
+    new here | 128 {
+        init(f, 8, here)!;
+    }!;
+};

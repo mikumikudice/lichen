@@ -58,8 +58,7 @@ fn free_nodes() void = {
             free(meta);
         case let meta: *fun_meta =>
             free(meta.params);
-            //free(meta.effect);
-            free(meta.shares_efx);
+            free(meta.efxtags);
             free(meta);
         case let meta: *fn_ptr_meta =>
             free(meta);
@@ -101,6 +100,12 @@ fn free_nodes() void = {
             };
             free(meta);
         case let meta: *defer_meta =>
+            free(meta);
+        case let meta: *effect_t =>
+            free(meta.modcalls);
+            free(meta.muts);
+            free(meta.ffis);
+            free(meta.inherits);
             free(meta);
         case => assert(false);
         };

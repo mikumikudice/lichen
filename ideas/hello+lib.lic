@@ -1,0 +1,5 @@
+io mod = use std::io;
+
+pub fn main() void = io {
+    io::println("mornin' sailor!")!;
+};

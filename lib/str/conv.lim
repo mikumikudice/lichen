@@ -2,6 +2,8 @@
 // types to and from strings, such as integer parsing and
 // printing
 
+alloc efx = mut mem;
+
 fn digit_count(x u64, c u64) u64 = {
     if x == 0 {
         return c;

@@ -9,7 +9,7 @@ fn foo(bar u32) !u32 = {
     };
 };
 
-pub fn main() void = io {
+pub fn main() void = {
     let res = foo(0);
     let res' = res!;
 };

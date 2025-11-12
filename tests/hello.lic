@@ -3,7 +3,9 @@
 
 stdout u32 = use "rt.stdout";
 
-fn puts(handle u32, mut data str) u32 = rt use "rt.write";
+rt efx;
+print efx = rt & mut str;
+fn puts(handle u32, mut data str) u32 = print use "rt.write";
 
 pub fn main() void = do {
     let mut msg = "mornin' sailor!\n";

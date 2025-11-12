@@ -1,11 +1,9 @@
 // parser test for asserting for
-// correct behavior of borrowing
-
-io mod = use "std/io.lim";
+// correct behavior of borrowin
 
 fn borrow(obj str) unit @ obj = {};
 
-pub fn main() void = io {
+pub fn main() void = {
     let foo = "bar";
     let egg = borrow(foo);
 };

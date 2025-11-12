@@ -7,6 +7,6 @@ fn alloc(data str) str = {
     }!;
 };
 
-pub fn main() void = rt {
+pub fn main() void = {
     let mut foo = alloc("foo\n");
 };

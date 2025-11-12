@@ -1,11 +1,13 @@
 // parser and compiler test for memory
 // arena semantics and implementation
 
-fn alloc(data str, mut a mem) str @ a = alloc {
+allocs efx = mut mem;
+
+fn alloc(data str, mut a mem) str @ a = allocs {
     return new ! data @ a;
 };
 
-pub fn main() void = alloc {
+pub fn main() void = allocs {
     new arena | 256 {
         let mut foo = alloc("foo\n", arena);
         test foo == "foo\n";

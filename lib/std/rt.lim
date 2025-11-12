@@ -2,13 +2,23 @@
 // compiler runtime. the actual code for each of these
 // functions is found in the lib/rt.s file
 
-pub fn read(handle u32, mut buff []u8) i32 = io_read & buff_write use "rt.read";
-pub fn write(handle u32, mut data []u8) i32 = io_write use "rt.write";
+io_write efx = mut []u8;
+io_read  efx = mut []u8;
+str_ref  efx = mut cstr;
+rt_io    efx;
+rt_fs    efx;
+rt_env   efx;
 
-pub fn idx_argv(addr u64) !cstr = os_env use "rt.idx_argv";
-pub fn exit(code i32) void = rt use "rt.exit";
+pub fn read(handle u32,  mut buff []u8) i32 = rt_io & io_write use "rt.read";
+pub fn write(handle u32, mut data []u8) i32 = rt_io & io_read  use "rt.write";
 
-pub fn open(mut filename cstr, flags u32, mode u32) i32 = fs_read use "rt.open";
-pub fn close(handle u32) i32 = fs use "rt.close";
-pub fn unlink(mut filename cstr) i32 = fs use "rt.unlink";
-pub fn rename(mut oldname cstr, mut newname cstr) i32 = fs use "rt.rename";
+pub fn idx_argv(addr u64) !cstr = rt_env use "rt.idx_argv";
+pub fn     exit(code i32)  void = rt_env use "rt.exit";
+
+pub fn open(mut filename cstr, flags u32, mode u32,
+    ) i32 = rt_fs & str_ref use "rt.open";
+pub fn close(handle u32) i32 = rt_fs use "rt.close";
+
+pub fn unlink(mut filename cstr) i32 = rt_fs & str_ref use "rt.unlink";
+pub fn rename(mut oldname cstr, mut newname cstr,
+    ) i32 = rt_fs & str_ref use "rt.rename";

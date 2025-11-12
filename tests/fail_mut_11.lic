@@ -2,6 +2,8 @@
 // invalid mutable value passing of
 // record field
 
+m efx = mut []u8;
+
 fn take_ref(mut x []u8) unit = m { };
 
 type foo = record {

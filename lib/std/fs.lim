@@ -12,30 +12,53 @@ pub EXEC      u32 = 0o0200;
 pub TRUNCATE  u32 = 0o1000;
 pub APPEND    u32 = 0o2000;
 
+fs efx;
+fs_read efx;
+
 // opens a file and returns a file handle
-pub fn open(mut filename str, flags u32) !u32 = rt & fs_read {
-    let handle = rt::open(filename cstr, flags, 0o7000);
-    if handle > 0 {
-        return handle u32;
-    } else {
-        return error;
-    };
+// returns error any error occurs and sets errno to the
+// failure reason exit code
+pub fn open(filename str, flags u32) !u32 = rt & fs_read {
+    new local | #filename + 16 {
+        let mut dup = new ? filename @ local;
+        let handle = rt::open(dup cstr, flags, 0o7000);
+        if handle > 0 {
+            return handle u32;
+        } else {
+            return error;
+        };
+    }?;
 };
 
+// closes a file handle
+// returns error if handle is invalid
 pub fn close(handle u32) !unit = rt & fs {
     if rt::close(handle) < 0 {
         return error;
     };
 };
 
-pub fn remove(mut filename str) !unit = rt & fs {
-    if rt::unlink(filename cstr) < 0 {
-        return error;
-    };
+// removes a file, unlinking the node from the file system
+// returns error any error occurs and sets errno to the
+// failure reason exit code
+pub fn remove(filename str) !unit = rt & fs {
+    new local | #filename + 16 {
+        let mut dup = new ? filename @ local;
+        if rt::unlink(dup cstr) < 0 {
+            return error;
+        };
+    }?;
 };
 
-pub fn rename(mut oldname str, mut newname str) !unit = rt & fs {
-    if rt::rename(oldname cstr, newname cstr) < 0 {
-        return error;
-    };
+// removes a file named `oldname` to `newname`
+// returns error any error occurs and sets errno to the
+// failure reason exit code
+pub fn rename(oldname str, newname str) !unit = rt & fs {
+    new local | #oldname + #newname + 32 {
+        let mut dup_old = new ? oldname @ local;
+        let mut dup_new = new ? newname @ local;
+        if rt::rename(dup_old cstr, dup_new cstr) < 0 {
+            return error;
+        };
+    }?;
 };

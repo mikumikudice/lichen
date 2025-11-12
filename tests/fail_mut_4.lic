@@ -2,7 +2,7 @@
 // assignments of immutable
 // data to mutable variables
 
-pub fn main() void = m {
+pub fn main() void = {
     let x = "foo";
     let mut y = "bar";
     y = x;

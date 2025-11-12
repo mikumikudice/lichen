@@ -2,6 +2,7 @@
 // expression casting within for-loop
 // iterators is fixed
 
+rt efx;
 fn debug(x u8) unit = rt use "rt.debug";
 
 pub fn main() void = rt {

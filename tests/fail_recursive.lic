@@ -1,1 +1,4 @@
+// parser test for asserting against
+// recursive module import
+
 foo mod = use "recursive_mod.lim";

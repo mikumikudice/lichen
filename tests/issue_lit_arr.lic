@@ -2,6 +2,8 @@
 // with literal arrays passed as slices
 // is fixed
 
+rev efx = mut []u8;
+
 fn foo(mut arr []u8) []u8 = rev {
 	for mut itm, idx .. arr {
 		itm = idx u8;

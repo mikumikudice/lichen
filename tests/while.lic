@@ -2,6 +2,8 @@
 // `while loop` statement semantics and
 // implementation
 
+loop efx = while;
+
 pub fn main() void = loop {
     let mut x = 6742 u32;
     let mut c = 0 u64;

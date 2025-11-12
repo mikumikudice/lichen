@@ -1,0 +1,10 @@
+alloc efx;
+free  efx;
+
+fn rt_alloc(t type; size u64) !t = alloc use "rt.alloc";
+
+pub fn malloc(t type; data t) !t = alloc {
+    return rt_alloc(data, #t);
+};
+
+pub fn free(t type; data t) unit = free use "rt.free";

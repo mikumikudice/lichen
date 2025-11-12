@@ -2,6 +2,8 @@
 // dynamically allocated data nested
 // within aggregated types
 
+alloc efx = mut mem;
+
 fn new_foo(mut a mem) [4]str = alloc {
     return [new ! "foo" @ a...];
 };

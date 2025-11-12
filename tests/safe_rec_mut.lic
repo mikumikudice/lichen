@@ -12,7 +12,7 @@ type bar = record {
     x u64;
 };
 
-pub fn main() void = m {
+pub fn main() void = {
     let f = foo { bar = [8; 0...], x = 0 };
     let mut ref = f;
 

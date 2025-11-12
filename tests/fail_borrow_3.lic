@@ -1,13 +1,11 @@
 // parser test for asserting for
 // correct behavior of borrowing
 
-io mod = use "std/io.lim";
-
 fn borrow(obj u32) str @ obj = {
     return "foo";
 };
 
-pub fn main() void = io {
+pub fn main() void = {
     let foo = 4 u32;
     let egg = borrow(foo);
 };

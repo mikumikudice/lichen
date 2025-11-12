@@ -1,6 +1,6 @@
 io mod = use "std/io.lim";
 
-fn map(data [8]str, predicate fn(str) str #any) [8]str = #any {
+fn map(eff efx; data [8]str, predicate fn(str) str eff) [8]str = eff {
     let mut data' = data;
     for mut itm, idx .. data' {
         itm = predicate(itm);

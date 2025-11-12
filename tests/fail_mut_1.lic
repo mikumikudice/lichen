@@ -2,6 +2,7 @@
 // mutability for function
 // parameters
 
+m efx = mut str;
 fn take_ref(mut x str) unit = m { };
 
 pub fn main() void = m {

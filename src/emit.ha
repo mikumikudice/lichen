@@ -447,9 +447,8 @@ fn emit_type_lit(ctxt: *context, buff: *memio::stream, tpe: lichen_t) void = {
         if(arr.length is void){
             fmt::fprintf(buff, "l, ")!;
         } else if(arr.length is size){
-            for(let t = 0z; t < arr.length as size; t += 1){
-                emit_type_lit(ctxt, buff, arr.base);
-            };
+            fmt::fprintf(buff, "{} {}, ",
+                qbe_t(ctxt, tpe), arr.length as size)!;
         };
     case => todo("enums emitting");
     };
@@ -542,6 +541,7 @@ fn gen_module(ctxt: *context, buff: *memio::stream) void = {
                 gen_module(module.ctxt, buff);
                 module.emitted = true;
             };
+        case *effect_t => void;
         };
     };
 };
@@ -1236,7 +1236,6 @@ fn gen_stt(
             } else if(comp_type(ret.tpe, quick_t(primitive::VOID, true))){
                 fmt::fprintln(buff, "\tcall $rt.exit(w 1)\n\thlt")!;
             } else {
-                assert(is_subtype(ret.tpe, quick_t(primitive::UNIT, true)));
                 if(!ret.tpe.partial){
                     fmt::fprintln(buff, "\tret")!;
                 } else {

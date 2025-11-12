@@ -10,6 +10,11 @@ pub stdin  u32 = use "rt.stdin";
 pub stdout u32 = use "rt.stdout";
 pub stderr u32 = use "rt.stderr";
 
+io_read      efx = use stdin;
+io_write_out efx = use stdout;
+io_write_err efx = use stderr;
+io_write     efx = io_write_out & io_write_err;
+
 // prints `data` to stdout
 // if data has length of zero, no printing occurs
 // returns `error` if any error occurs during printing
@@ -48,14 +53,14 @@ pub fn reportln(data str) !unit = rt & io_write {
 // handle
 // if data has length of zero, no printing occurs
 // returns `error` if any error occurs during printing
-pub fn fprintln(handle u32, data str) !unit = rt & io_write {
+pub fn fprintln(handle u32, data str) !unit = rt {
     fprint(handle, data)?; fprint(handle, "\n")?;
 };
 
 // prints `data` to the given file handle
 // if data has length of zero, no printing occurs
 // returns `error` if any error occurs during printing
-pub fn fprint(handle u32, data str) !unit = rt & io_write {
+pub fn fprint(handle u32, data str) !unit = rt {
     // empty data
     if #data == 0 { return; };
     // allocate mutable copy of data
@@ -75,6 +80,10 @@ type stream = record {
     mut buffer []u8;
 };
 
+init efx = mut mem;
+io_stream efx = mut stream;
+buff_write efx = mut []u8;
+
 // instantiates a new stream of internal buffer of size
 // `buff_sz` that prints to `handle`
 // returns `nil` if the buffer allocation at the given
@@ -93,7 +102,7 @@ pub fn new_stream(handle u32, buff_sz u64, mut a mem) !stream @ a = init {
 // data does not fit within the current buffer, the stream
 // is automatically flushed and the data imediatly printed
 // if data is empty, no writing or flushing occurs
-pub fn stprint(mut st stream, data str) !unit = rt & mkr & io_write {
+pub fn stprint(mut st stream, data str) !unit = rt & mkr & io_stream {
     // data fits within buffer
     if #data > 0 && #data + st.bufptr < #st.buffer {
         // write to buffer
@@ -113,7 +122,7 @@ pub fn stprint(mut st stream, data str) !unit = rt & mkr & io_write {
 // empties out the given stream's buffer and resets it to
 // zero
 // if the buffer is empty, no flushing occurs
-pub fn stflush(mut st stream) !unit = rt & io_write {
+pub fn stflush(mut st stream) !unit = rt & io_stream {
     // empty buffer
     if st.bufptr == 0 { return; };
     // write to handle
@@ -134,7 +143,7 @@ pub fn read_to(mut buffer []u8) !u64 = rt & io_read & buff_write {
 };
 
 // reads from a given handle and places in the given buffer
-pub fn fread_to(handle u32, mut buffer []u8) !u64 = rt & io_read & buff_write {
+pub fn fread_to(handle u32, mut buffer []u8) !u64 = rt & buff_write {
     if code = rt::read(handle, buffer); code < 0 {
         return error;
     } else {

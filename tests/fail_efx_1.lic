@@ -1,6 +1,9 @@
 // parser test for missing effect tag
 // on function call
 
+foo efx = while;
+bar efx = mut str;
+
 pub fn main() void = foo {
     foo'();
 };

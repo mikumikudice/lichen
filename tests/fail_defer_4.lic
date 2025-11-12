@@ -3,7 +3,7 @@
 
 fn halt() void = {};
 
-pub fn main() void = io {
+pub fn main() void = {
     defer if true {
         defer unreachable;
         if true {

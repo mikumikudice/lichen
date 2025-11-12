@@ -1,0 +1,22 @@
+alloc efx = mut mem;
+write efx = mut []u8;
+
+fn new_buff(sz u64, mut a mem) ![]u8 @ a = alloc {
+    return new ? [sz; 0...] @ a;
+};
+
+fn write_buff(mut buff []u8) unit = write {
+    for mut itm, idx .. buff {
+        itm = idx u8;
+    };
+};
+
+pub fn main() void = alloc & write {
+    new here | 512 {
+        let mut buff = new_buff(64, here)!;
+        write_buff(buff);
+        for itm, idx .. buff {
+            test itm u64 == idx;
+        };
+    }!;
+};

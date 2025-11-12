@@ -1,7 +1,7 @@
 // parser and compiler test for
 // concatenation machinery
 
-pub fn main() void = io {
+pub fn main() void = {
     new here | 512 {
         let foo = new ! "mornin' " @ here;
         let bar = new ! "sailor!"  @ here;

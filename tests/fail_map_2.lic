@@ -1,9 +1,12 @@
+// parser test for asserting for
+// inherited and polymorphic effects
+
 io mod = use "std/io.lim";
 
-fn map(data [8]str, predicate fn(str) u64 #any) [8]u64 = #any {
+fn map(any efx; data [8]str, predicate fn(str) u64 any) [8]u64 = any {
     let mut data' = [8; 0...] u64;
     for mut itm, idx .. data' {
-        itm = predicate(data[idx]);
+        itm = predicate(data[idx]!);
     };
     return data';
 };
@@ -12,6 +15,6 @@ fn pre(src str) u64 = {
     return #src;
 };
 
-pub fn main() void = io {
+pub fn main() void = {
     map(["mia", "leo", "lue"], pre);
 };

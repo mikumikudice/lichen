@@ -6,7 +6,7 @@ type person = record {
     age u8;
 };
 
-pub fn main() void = io {
+pub fn main() void = {
     let bob = person { name = "bob", age = 24 };
     let age = bob.id;
 };

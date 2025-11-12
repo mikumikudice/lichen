@@ -2,8 +2,11 @@
 // tagging mismatch on function
 // pointers
 
-pub fn main() void = a & b {
+a efx = while;
+b efx = mut str;
+
+pub fn main() void = a {
     take_fun(main);
 };
 
-fn take_fun(fun fn() void a) unit = {};
+fn take_fun(fun fn() void a & b) unit = a {};

@@ -1,0 +1,9 @@
+// parser test for invalid usage of FFI
+// variables
+
+foo u32 = use "rt.stdout";
+ffi efx = use foo;
+
+pub fn main() void = {
+    let x = foo;
+};

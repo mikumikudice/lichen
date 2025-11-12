@@ -3,17 +3,19 @@ type foo = record {
     len u64;
 };
 
-fn init(mut f foo, mut a mem) !unit = init {
-    f.arr = new ? [f.len; 4, 3, 2, 1, 0...] @ a;
+foo_init efx = mut foo & mut mem;
+
+fn init(mut f foo, arr []u8) unit = foo_init {
+    f.arr = arr;
 };
 
-pub fn main() void = init {
+pub fn main() void = foo_init {
     new buff | 20 {
         let mut f = foo {
             arr = [],
             len = 4,
         };
-        init(f, buff)!;
+        init(f, new ! [f.len; 4, 3, 2, 1, 0...] @ buff);
         test f.arr[0]! == 4 && f.arr[4]! == 0;
     }!;
 };

@@ -1,8 +1,12 @@
+- update DOCS
+- assert for use of FFI variables
+- assert for multiple bindings to the same module
 - unions
+- optimize single return functions to be inlined
+- optimize arenas to reset rather deallocate when created within loops
 - optimize concatenation for in-place data appending and contiguous data override
 - tuples
 - enumerators
-- enforce use of tags for other effects when only implementing module tags
 - submodules
 - do statement for if-else and for-loop blocks
 - hex literal characters for strings

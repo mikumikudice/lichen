@@ -2,8 +2,6 @@
 // meaningless declarations within
 // defers
 
-fn halt() void = {};
-
-pub fn main() void = io {
+pub fn main() void = {
     defer let x = 4 u32;
 };

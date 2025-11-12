@@ -1,19 +1,20 @@
 new features
-- none
+- user-defined named effects
 
 bugfixes
-- added missing bang operator on some emitting paths
-- fixed FFI call with aggregated parameters
+- make break and next work within while loops
 
 correct behavior assert
-- none
+- asserts for underliving data within aggregated types
 
 others
-- now aggregated types of known size are not required to be mutable on FFI functions
-- now, only mutable parameters are passed by reference, all others are passed by value
+- make tailcalls only evaluate as terminals when not in branches
+- improve array IR emitting to avoid long compilation times on large arrays
 
 breaking changes
-- none
+- now all effect tags must be declared beforehand
+- update on syntax for polymorphic effects using named local declarations (aplies only to function declaration)
+- now you cannot assign allocated data to records or arrays that are not lifetimed as well
 
 standard library changes
 - none
