@@ -42,7 +42,7 @@ pub type person = record {
 pub fn empty() unit = {};
 ```
 
-local variables, on the other hand, can have an expression as a value and even be reassigned when tagged as mutable:
+local variables, on the other hand, can have an expression as a value, are not required to specify their types if it can be deduced and even may be reassigned when tagged as mutable:
 ```rust
 let x = 4 u32;
 let y = x;
@@ -50,46 +50,6 @@ let mut z = x + y;
 z = z * 2;
 ```
 see more about mutability in [this section](#mutability).
-
-functions are a bit similar but not quite. as expected, all global declarations are immutable, and this includes functions.
-```rust
-fn foo() u32 = {
-    return 4;
-};
-
-fn bar(x u32) u32 = {
-    return x + y;
-};
-```
-a function may perform observable effects: opening files, writing to terminal, or mutating taken arguments. all of this are considered effects, and any function that produces effects must be given a tag that indicates this effect. in this case, we marked arguments as mutable in order to change its _underlying data_ during execution.
-```rust
-type foo = {
-    bar u32;
-};
-
-fn change(mut x foo, y u32) unit = muts_foo {
-    x.bar = y;
-};
-
-fn take_and_change(mut x foo, y u32) u32 = also_muts_foo {
-    let old = foo.bar;
-    foo.bar = y;
-    return old;
-};
-
-// calling an impure function requires
-// the function that calls it to also
-// declare the same effect tags
-pub fn main() void = muts_foo & also_muts_foo {
-    let mut z = foo { bar = 4 };
-    change(z, 5);
-    let old = take_and_change(z, 4);
-    test z.bar == old + 1;
-};
-```
-you can use any given valid namespace as a tag and it has no semantical meaning other than tagging it with a named effect.
-
-see more about the effect system in [this section](#effects).
 
 all identifiers (variables, functions, types) may use prime notation (ending with one or more single quotes). in mathematics, a prime of something means "another one of these, but not the same". these are useful for related values but not the same type. in lichen, variables cannot be shadowed; each identifier must be unique within its scope. this is to avoid accidental context overwrite or confusion when reading the source code:
 ```rust
@@ -100,7 +60,7 @@ let number'' = 40 + 2 i32;
 number of primes has no semantic meaning: foo' and foo'' are simply separate identifiers.
 
 # functions
-functions may or may not take arguments, but always return something (except for the `void` type). even if it's nothing i.e. the `unit` type. they can be called or passed by value. lichen doesn't have currying.
+functions may or may not take arguments, but always return something (except for the `void` type), even if the value cannot be used. they can be called or passed by value. lichen doesn't have currying.
 ```rust
 fn foo(x u32, y u32) u32 = { return x + y; };
 
@@ -117,13 +77,6 @@ functions returning `unit` or `void` can be called, but since unit has no meanin
 
 see more about types in [this section](#types).
 
-functions are also required to end their scope in a semicolon, as most code paths in lichen. you may also assign a function with a FFI symbol or a function alias:
-```rust
-fn x(a u32, b u32) u32 = { return a * b; };
-fn x'(a u32) u32 = x(a, 2);
-```
-on these alias, only constant values are allowed to be used, just like global variables' values.
-
 functions may also give optional values for its parameters, that can be overriden at call site with a new value:
 ```rust
 fn div(x u32, y u32 = 2) u32 = { return x * y; };
@@ -133,6 +86,38 @@ pub fn main() void = {
     let b = div(4);
 };
 ```
+all optional parameters when reassigned must be done so by name and may be assigned out of order. it does not have to be exhaustive.
+
+a function may perform observable effects: opening files, writing to terminal, or mutating taken arguments. all of this are considered effects, and any function that produces effects must be given a tag that indicates this effect. in this case, we marked arguments as mutable in order to change its _underlying data_ during execution.
+```rust
+type foo = {
+    bar u32;
+};
+
+muts_foo efx = mut foo;
+
+fn change(mut x foo, y u32) unit = muts_foo {
+    x.bar = y;
+};
+
+fn take_and_change(mut x foo, y u32) u32 = muts_foo {
+    let old = foo.bar;
+    foo.bar = y;
+    return old;
+};
+
+// calling an impure function requires
+// the function that calls it to also
+// declare the same effect tags
+pub fn main() void = muts_foo {
+    let mut z = foo { bar = 4 };
+    change(z, 5);
+    let old = take_and_change(z, 4);
+    test z.bar == old + 1;
+};
+```
+
+see more about the effect system in [this section](#effects).
 
 # variables
 local variables have a special behavior, especially considering mutability. for instance, scope declarations, function parameters and statement declarations are considered local variables, which means they can be mutable and have considerably more complex expressions assigned to:
@@ -155,7 +140,7 @@ pub fn main() void = {
 ```
 see more about mutability in [this section](#mutability).
 
-variables may omit their type at declaration when the type of the assignment can be deduced. numeric literals have no intrinsic type, but can be casted freely to any numeric (and even boolean) types. they also assume to other numeric types when used on a typed expression i.e. they _decay_ to the type of the expression.
+variables may omit their type at declaration when the type of the assignment can be deduced. numeric literals have no intrinsic type, but can be casted freely to any numeric (and even boolean) types. numeric literals also assume other numeric types when used on a typed expression i.e. they _decay_ to the type of the expression.
 ```rust
 let unknown = 4; // invalid
 let known = 5 u32;
@@ -187,7 +172,7 @@ i8, i16, i32, i64;
 // floating point
 f32, f64;
 ```
-lichen has no default `int` or `size` types. all expressions must have explicit type and type length.
+lichen has no default `int` or `size` types. making it always explicit what the type length is.
 
 numeric literals may have digit separators and can be encoded as decimal, octal, hexadecimal and binary:
 ```rust
@@ -203,7 +188,7 @@ let avogadro = 6.022e23;
 ```
 
 ## strings
-lichen supports total C ffi at primitive levels, which means we support strings with fat pointers (`str`) and null-terminated strings (`cstr`), nicknamed C-strings. you can freely cast a string to a C-string, but not the other way around. a string with a fat pointer is a pointer with a length and a pointer to the actual data, casting it to a C-string means assigning only the data, but a C-string has no underlying length attached to the type. strings are also the only primitive value that doesn't require an explicit casting.
+lichen supports total C FFI at primitive levels, which means we support strings with fat pointers (`str`) and null-terminated strings (`cstr`), nicknamed C-strings. you can freely cast a string to a C-string, but not the other way around. a string with a fat pointer is a pointer with a length and a pointer to the actual data, casting it to a C-string means assigning only the data, but a C-string has no underlying length attached to the type, making it impossible to cast otherwise. strings are also the only primitive value that doesn't require an explicit casting.
 ```rust
 let text = "lichen string";  // does not require casting
 let other = "c string" cstr; // requires casting
@@ -272,7 +257,7 @@ both bubble and assertion operators can be applied to any value of a partial typ
 ## empty types
 some types are merely semantic and do not represent actual data. these are called empty types, such as `unit` and `void`. usually, these are found in function declarations as return types.
 
-`unit` is like "nothing, but successfully finished". it can be assigned to any variable and marked as a partial type (`!unit`), but cannot be compared nor operated on.
+when a function returns `unit`, it means it returned "nothing", but successfully finished. it cannot be assigned to a variable unless marked as a partial type (`!unit`), and cannot be compared nor operated on.
 ```rust
 fn foo() unit = {}; // all scopes default to returning unit type without an explicit return
 
@@ -294,7 +279,7 @@ fn buzz() !unit = {
 };
 ```
 
-the `void` type means "no return" in the sense a function marked as void cannot be assigned to a variable because it never returns i.e. its a terminal function, halting the code execution, as "never returns at all" (like exit, panic, or fatal error). the main function is marked as void once it's the entry point i.e. it never returns anything.
+the `void` type means "no return" in the sense a function marked as void cannot be assigned to a variable because it never returns i.e. its a terminal function, halting the code execution and never returning at all (like exit, panic, or fatal error). the main function is marked as void once it's the entry point i.e. it never returns anything.
 ```rust
 pub fn main() void = {
     exit_on_error();
@@ -308,7 +293,7 @@ once nothing can return, marking the type as partial makes the program halt in a
 ```rust
 // prints `data` followed by a line feed to stderr and
 // halts the program execution with exit code of 1
-pub fn panic(data str) !void = io_write {
+pub fn panic(data str) !void = rt & io_write {
     ...
 };
 ```
@@ -599,8 +584,8 @@ executes the subsequent code on a fail, assigning the zeroed value to the variab
 you may also chain handlers depending on the error variant:
 ```rust
 let foo str = may_also_fail("hi")?
-    or nil | "allocation failed";
-    or err | "something went wrong";
+    or nil   | "allocation failed";
+    or error | "something went wrong";
 ```
 these chains are not required to be exhaustive i.e. cover all errors. in this case, the resulting type is still partial.
 ```rust
@@ -760,7 +745,9 @@ while true {
 ```
 while this may be of some use, it is non-deterministic, which means a pure function could keep a program from terminating and hang execution, potentially causing stack overflows. that's why it is required for functions that use while loops to implement some effect tagging for it:
 ```rust
-pub fn main() void = loop { // tags main with `loop` as a way to tell it uses while loops
+loop efx = while;
+
+pub fn main() void = loop {
     let mut x = 4 u32;
     while x > 0 {
         x = some_logic(x);
@@ -987,6 +974,21 @@ pub fn main() void = {
 ```
 this does not apply to void functions, once they never return i.e. no value exists to be used.
 
+## effect kinds
+there are five kinds of effects: module effect, mutation, non-deterministic halt, FFI interaction and FFI effect.
+```rust
+io mod = use "std/io.lim"; // defines both a module binding to the file "io.lim" but also a module effect of the same name
+
+write efx = mut str; // defines an effect for functions to take a mutable reference to the `str` type
+loop  efx = while;   // defines an effect for functions that use while loops or are recursive
+
+errno i32 = use "errno"; // FFI variable that can be mutated by an unknown, external state
+use_errno efx = use errno; // defines an effect for functions to interact with the FFI variable "errno"
+
+C_FFI efx; // defines an opaque effect for FFI functions
+fn puts(data str) i32 = C_FFI use "puts";
+```
+
 # modules
 modules are a simple and practical way to both encapsulate reusable code and effects behind a single tag. for instance, any module that implements an impure function (i.e. one that produce effects) requires that the caller function only declare the module binding as an effect tag:
 ```rust
@@ -1183,13 +1185,15 @@ type person = record {
     name str,
 };
 
+aging efx = mut person;
+
 // x is marked as mutable, then the
 // function is marked with a given tag
-fn age(mut p person, years u8 = 1) unit = chn {
+fn age(mut p person, years u8 = 1) unit = aging {
     p.age = p.age + years;
 };
 
-pub fn main() void = chn {
+pub fn main() void = aging {
     let mut mary = person { age = 12, name = "mary" };
     age(mary);
     test mary.age == 13;
@@ -1225,6 +1229,8 @@ when dealing with records which not all fields are mutable, these constrains do 
 type foo = record {
     mut bar u64;
 };
+
+m efx = mut foo;
 
 pub fn main() void = m {
     let f = foo { bar = 0 };
@@ -1290,12 +1296,24 @@ fn no_partials_needed() u32 = {
 # FFI declarations
 sometimes it's useful to use functions and values from programs written in another language, such as C, so lichens provide a simple FFI (foreign function interface) for interacting with external symbols. obviously, once the language used by other programs cannot guarantee their functions are pure, it's mandatory to always tag these FFI symbols:
 ```rust
-let external_variable u32 = use "my_external_variable";
-// `does_something` is an arbitrary effect tag, so the caller must also tag itself to call this FFI symbol
+external_variable u32 = use "my_external_variable";
+
+does_something efx; // an opaque effect once we cannot know what an FFI function does
 fn external_function(x i32, y i32) i32 = does_something use "my_external_function";
 ```
 as mentioned by [this section](#mutability), some values cannot be guaranteed to not change when passed by reference unless made immutable. again, the external symbol can't prove it wont mutate the value of the taken variable, so it's mandatory for FFI functions to define any string, record and other aggregated types as mutable parameters:
 ```rust
 fn takes_a_buffer(mut buff []u8) unit = may_change_buff use "another_external_function"; 
 ```
+
+FFI variables are also not guaranteeded to not mutate, so interacting with them also requires an effect:
+```rust
+errno i32 = use "errno";
+use_errno efx = use errno;
+
+pub fn main() void = use_errno {
+    let state = errno if errno > 0 else -errno;
+};
+```
+
 you can see more about effects in [this section](#effects).

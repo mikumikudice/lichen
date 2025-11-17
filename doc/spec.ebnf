@@ -54,8 +54,8 @@ mod_import  ::= namespace "mod" "=" "use" string;
 // an effect definition is a namespace followed by the keyword "efx" assigned
 // by a mutable type, the keyword "use" followed by a namespace or the keyword
 // "while"
-effect_def  ::= namespace "efx" "="
-            (("mut" type) | ("use" namespace) | "while");
+effect_def  ::= namespace "efx"
+            ("=" (("mut" type) | ("use" namespace) | "while"))?;
 // a constant is either a number, decimal number, string, rune, boolean, error
 // state singleton or a constant array literal
 constant    ::= number | decimal | string | rune | boolean | error_state 

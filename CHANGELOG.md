@@ -1,20 +1,17 @@
 new features
-- user-defined named effects
+- none
 
 bugfixes
-- make break and next work within while loops
+- none
 
 correct behavior assert
-- asserts for underliving data within aggregated types
+- none
 
 others
-- make tailcalls only evaluate as terminals when not in branches
-- improve array IR emitting to avoid long compilation times on large arrays
+- merged while-loop and recursive calls as one effect (`while`)
 
 breaking changes
-- now all effect tags must be declared beforehand
-- update on syntax for polymorphic effects using named local declarations (aplies only to function declaration)
-- now you cannot assign allocated data to records or arrays that are not lifetimed as well
+- none
 
 standard library changes
-- none
+- temporarly deprecated the vec module

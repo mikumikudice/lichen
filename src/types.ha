@@ -94,7 +94,6 @@ type effect_t = struct {
     ffis: []*decl_meta,
     ffi: bool,
     loop: bool,
-    recursive: bool,
     inherits: []size,
     polymorphic: bool,
 };

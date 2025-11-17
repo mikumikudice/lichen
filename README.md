@@ -13,7 +13,7 @@ lichen is a simple, small, procedural programming language with functional featu
 - singletons for logic failure (`error`) and invalid memory (`nil`)
 
 ## inspirations
-lichen is directly inspired by [hare](https://harelang.org), [Flix](https://flix.dev/), [Odin](https://odin-lang.org), [go](https://go.dev/), jai, [elm](https://elm-lang.org) and [Rust](https://rust-lang.org).
+lichen is directly inspired by [hare](https://harelang.org), [zig](https://ziglang.org/), [Flix](https://flix.dev/), [Odin](https://odin-lang.org), [go](https://go.dev/), jai, [elm](https://elm-lang.org) and [Rust](https://rust-lang.org).
 
 ## code examples
 a hello world

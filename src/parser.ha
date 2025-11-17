@@ -1355,7 +1355,6 @@ fn eval_effect(ctxt: *context, at: size) ((*effect_t, size) | ERROR) = {
         ffis = [],
         loop = false,
         ffi = false,
-        recursive = false,
         inherits = [],
         polymorphic = false,
     })!;
@@ -1794,7 +1793,6 @@ fn eval_efx(
                         ffis = [],
                         ffi = false,
                         loop = false,
-                        recursive = false,
                         inherits = [],
                         polymorphic = false,
                     })!;
@@ -1811,7 +1809,6 @@ fn eval_efx(
                         ffis = [],
                         ffi = false,
                         loop = false,
-                        recursive = false,
                         inherits = [],
                         polymorphic = false,
                     })!;
@@ -1864,7 +1861,6 @@ fn merge_effect(base: *effect_t, incoming: (*effect_t | *module_meta)) void = {
     if(incoming is *effect_t){
         const incoming = incoming as *effect_t;
         if(incoming.polymorphic) base.polymorphic = true;
-        if(incoming.recursive) base.recursive = true;
         if(incoming.loop) base.loop = true;
         if(incoming.ffi) base.ffi = true;
         for(let i_mod .. incoming.modcalls){
@@ -2001,7 +1997,7 @@ fn is_efx_pure(efx: effect_tag) bool = {
     if(len(this.modcalls) > 0) return false;
     if(len(this.muts) > 0) return false;
     if(len(this.ffis) > 0) return false;
-    return !this.ffi && !this.loop && !this.recursive;
+    return !this.ffi && !this.loop;
 };
 
 // skips a scope definition
@@ -5801,7 +5797,9 @@ fn eval_funcall(
     const recursive = fun == ctxt.host_fun as *fun_meta;
 
     // assert for tailcalls
-    if(recursive && fun.effects is void && !ctxt.branching){
+    if(recursive && (fun.effects is void ||
+        (fun.effects is *effect_t && !(fun.effects as *effect_t).loop)) &&
+        !ctxt.branching){
         move_ptr(ctxt, ctxt.tokens[at - 1]);
         return error_hint(ctxt,
             "\n%gthis function calls itself unconditionally, "
@@ -5928,12 +5926,7 @@ fn validate_efx(
                 "\n%gtry declaring an effect %dloop efx = while;%g"
                 " at global scope and using it with %d= loop { ... };%g"
                 " in the caller function definition",
-                "the called function %b{}%r uses %ywhile loops%r, but no such effect is declared on caller function %y{}",
-                called.fun.name, host.fun.name);
-        };
-        if(cefx.recursive && !hefx.recursive){
-            return error(ctxt,
-                "the called function %b{}%r is %yrecursive%r, but no such effect is declared on caller function %y{}",
+                "the called function %b{}%r is %ynon-deterministic%r, but no such effect is declared on caller function %y{}",
                 called.fun.name, host.fun.name);
         };
         for(let call .. cefx.modcalls){
@@ -6073,12 +6066,7 @@ fn require_impl_efx(
             "\n%gtry declaring an effect %dloop efx = while;%g"
             " at global scope and using it with %d= loop { ... };%g"
             " in the caller function definition",
-            "the function %b{}%r is required to implement a %ywhile loop%r effect, but it does not",
-            fun.fun.name);
-    };
-    if(fun_efx.recursive && !efx.recursive){
-        return error(ctxt,
-            "the function %b{}%r is required to implement a %yrecursive%r effect, but does not",
+            "the function %b{}%r is required to implement a %ynon-deterministic%r effect, but it does not",
             fun.fun.name);
     };
     for(let call .. efx.modcalls){
@@ -6901,7 +6889,6 @@ fn _is_subtype(_this: lichen_t, _that: lichen_t) bool = {
                 if(!found) return false;
             };
             if(this_efx.loop != that_efx.loop) return false;
-            if(this_efx.recursive != that_efx.recursive) return false;
         };
         return true;
     } else {
