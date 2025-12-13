@@ -1,5 +1,3 @@
-- update DOCS
-- assert for use of FFI variables
 - assert for multiple bindings to the same module
 - unions
 - optimize single return functions to be inlined

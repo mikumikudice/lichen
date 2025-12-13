@@ -8,10 +8,10 @@ correct behavior assert
 - none
 
 others
-- merged while-loop and recursive calls as one effect (`while`)
+- fixed issue with new hare lang tagged union behaviour
 
 breaking changes
 - none
 
 standard library changes
-- temporarly deprecated the vec module
+- none

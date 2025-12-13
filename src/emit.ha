@@ -976,10 +976,10 @@ fn gen_stt(
             };
         } else {
             const load_stack: []chain_exp_t = [];
-            let next: (void | ...chain_exp_t) = asg.host;
-            let root: chain_exp_t = asg.host as chain_exp_t;
+            let next: (void | chain_exp_t) = asg.host;
+            let root: chain_exp_t = asg.host: chain_exp_t;
             for(next is chain_exp_t){
-                const valid = next as chain_exp_t;
+                const valid = next: chain_exp_t;
                 root = valid;
                 append(load_stack, valid)!;
                 match(valid){
@@ -2465,10 +2465,10 @@ fn unwrap_fields_and_indexes(
     defer_id: (void | size),
 ) (str, lichen_t, bool) = {
     const load_stack: []chain_exp_t = [];
-    let next: (void | ...chain_exp_t) = access;
+    let next: (void | chain_exp_t) = access;
     let root: chain_exp_t = access;
     for(next is chain_exp_t){
-        const valid = next as chain_exp_t;
+        const valid = next: chain_exp_t;
         root = valid;
         append(load_stack, valid)!;
         match(valid){

@@ -218,7 +218,7 @@ type array_lit_meta = struct {
 };
 
 type indexing_meta = struct {
-    before: (void | *field_meta | *indexing_meta | *slicing_meta),
+    before: (void | chain_exp_t),
     index: (*const_meta | *expr_meta),
     base: nullable *member_meta,
     pos: size,
@@ -228,7 +228,7 @@ type indexing_meta = struct {
 };
 
 type slicing_meta = struct {
-    before: (void | *field_meta | *indexing_meta | *slicing_meta),
+    before: (void | chain_exp_t),
     begin: (*const_meta | *expr_meta),
     end: (*const_meta | *expr_meta),
     base: nullable *member_meta,
@@ -245,7 +245,7 @@ type record_lit_meta = struct {
 };
 
 type field_meta = struct {
-    before: (void | ...chain_exp_t),
+    before: (void | chain_exp_t),
     field: *decl_meta,
     base: nullable *member_meta,
     mut: bool,
@@ -257,14 +257,14 @@ type field_meta = struct {
 
 type decl_meta = struct {
     var: *var_meta,
-    val: (void | *const_meta | ...hand_t),
+    val: (void | *const_meta | hand_t),
 };
 
 type assign_meta = struct {
     pos: size,
     var: *var_meta,
     val: *expr_meta,
-    host: (void | ...chain_exp_t),
+    host: (void | chain_exp_t),
 };
 
 type arena_meta = struct {
@@ -361,7 +361,7 @@ type member_meta = struct {
     pos: size,
     tpe: lichen_t,
     pre: (void | operator),
-    val: (void | keyword | ...member_t),
+    val: (void | keyword | member_t),
     prop: (void | propagation),
 };
 

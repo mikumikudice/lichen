@@ -3964,7 +3964,7 @@ fn eval_asg_or_exp(
         };
         const (val, finish) = eval_expression(ctxt, _end + 1, dest.tpe)?;
         end = finish;
-        const obj = dest.val as chain_exp_t;
+        const obj = dest.val: chain_exp_t;
         let root = extract_base_from_chain(ctxt, obj, true)?;
         const base =
             match(root){
@@ -4730,18 +4730,18 @@ fn extract_base_from_chain(
     obj: chain_exp_t,
     assignment: bool = false,
 ) (chain_exp_t | ERROR) = {
-    let root = match(obj){
-        case let idx: *indexing_meta =>
-            yield if(idx.before is void){
-                yield idx;
-            } else {
-                yield idx.before;
-            };
+    let root: chain_exp_t = match(obj){
         case let fld: *field_meta =>
             yield if(fld.before is void){
                 yield fld;
             } else {
-                yield fld.before;
+                yield fld.before as chain_exp_t;
+            };
+        case let idx: *indexing_meta =>
+            yield if(idx.before is void){
+                yield idx;
+            } else {
+                yield idx.before as chain_exp_t;
             };
         case let slc: *slicing_meta =>
             if(assignment){
@@ -4750,23 +4750,23 @@ fn extract_base_from_chain(
             yield if(slc.before is void){
                 yield slc;
             } else {
-                yield slc.before;
+                yield slc.before as chain_exp_t;
             };
         };
     for(true){
         match(root){
         case let idx: *indexing_meta =>
             if(idx.before is void) break;
-            root = idx.before;
+            root = idx.before as chain_exp_t;
         case let fld: *field_meta =>
             if(fld.before is void) break;
-            root = fld.before;
+            root = fld.before as chain_exp_t;
         case let slc: *slicing_meta =>
             if(slc.before is void) break;
-            root = slc.before;
+            root = slc.before as chain_exp_t;
         };
     };
-    return root as chain_exp_t;
+    return root;
 };
 
 fn extract_previous_base(obj: chain_exp_t) *member_meta = {
@@ -4775,7 +4775,7 @@ fn extract_previous_base(obj: chain_exp_t) *member_meta = {
         const base = field.base;
         const before = field.before;
         for(base is null){
-            match(before as chain_exp_t){
+            match(before: chain_exp_t){
             case let fld: *field_meta =>
                 base = fld.base;
                 before = fld.before;
@@ -4792,7 +4792,7 @@ fn extract_previous_base(obj: chain_exp_t) *member_meta = {
         const base = index.base;
         const before = index.before;
         for(base is null){
-            match(before as chain_exp_t){
+            match(before: chain_exp_t){
             case let fld: *field_meta =>
                 base = fld.base;
                 before = fld.before;
@@ -4809,7 +4809,7 @@ fn extract_previous_base(obj: chain_exp_t) *member_meta = {
         const base = slice.base;
         const before = slice.before;
         for(base is null){
-            match(before as chain_exp_t){
+            match(before: chain_exp_t){
             case let fld: *field_meta =>
                 base = fld.base;
                 before = fld.before;
@@ -4841,8 +4841,8 @@ fn eval_fields_and_indexes(
         if(!memb.tpe.partial &&
             (memb.tpe.base is *record ||
             memb.tpe.base is *array)){
-            let before: (void | ...chain_exp_t) = void;
-            let access: (void | ...chain_exp_t) = void;
+            let before: (void | chain_exp_t) = void;
+            let access: (void | chain_exp_t) = void;
             let last_tpe = memb.tpe;
             let last_prop = memb.prop;
             for(comp_tk(tk.val, symbol::DOT) || comp_tk(tk.val, symbol::LFT_SQUARE)){
@@ -5371,7 +5371,7 @@ fn eval_indexing(
     ctxt: *context,
     at: size,
     base_tpe: lichen_t,
-    base: (void | ...chain_exp_t),
+    base: (void | chain_exp_t),
 ) (((*indexing_meta | *slicing_meta), size) | ERROR) = {
     assert(comp_tk(ctxt.tokens[at].val, symbol::LFT_SQUARE));
     // assert for partials
@@ -5617,7 +5617,7 @@ fn eval_record_field(
     ctxt: *context,
     at: size,
     base_tpe: lichen_t,
-    base: (void | ...chain_exp_t),
+    base: (void | chain_exp_t),
 ) ((*field_meta, size) | ERROR) = {
     assert(comp_tk(ctxt.tokens[at].val, symbol::DOT));
     // assert for partials
