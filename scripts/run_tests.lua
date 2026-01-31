@@ -100,7 +100,7 @@ local tests = {
     -- issue fixing --
     { src = "fail_outlive_1", code = 1, nocomp = true },
     { src = "fail_outlive_2", code = 1, nocomp = true },
-    { src = "fail_synax_1", code = 1, nocomp = true },
+    { src = "fail_syntax_1", code = 1, nocomp = true },
     { src = "issue_mut_loop", code = 0 },
     { src = "issue_for_slice", code = 0 },
     { src = "issue_lit_arr", code = 0 },
