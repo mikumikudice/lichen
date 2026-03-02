@@ -1,0 +1,11 @@
+fn this() u32 = {
+	return 4;
+};
+
+fn get() fn() u32 = {
+	return this;
+};
+
+fn main() void = {
+	test get()() == 4;
+};

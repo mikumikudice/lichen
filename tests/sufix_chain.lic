@@ -1,0 +1,18 @@
+type rec = record {
+    arr [1]fn() u32;
+};
+
+fn grab_num() u32 = {
+    return 4;
+};
+
+fn grab_rec() rec = {
+    return rec {
+        arr = [grab_num]
+    };
+};
+
+pub fn main() void = {
+    let foo = grab_rec().arr[0]();
+    test foo == 4;
+};

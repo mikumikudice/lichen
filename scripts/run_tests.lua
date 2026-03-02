@@ -146,6 +146,7 @@ local tests = {
     { src = "arr_rec", output = "test ok\n", code = 0 },
     { src = "str_fun", output = "test 1 ok\ntest 2 ok\ntest 3 ok\n", code = 0 },
     { src = "empty_assign", code = 0 },
+    { src = "sufix_chain", code = 0 },
     -- branching --
     { src = "if-else",
         output = "test 0 ok\ntest 1 ok\ntest 2 ok\ntest 3 ok\ntest 4 ok\ntest 5 ok\ntest 6 ok\n",
@@ -184,6 +185,7 @@ local tests = {
         output = "../tests/fail_slice_2.lic:7:30: assertion failed\n", code = 1 },
     { src = "map", output = "mia\nleo\nlue\n", code = 0 },
     { src = "safe_rec_mut", code = 0 },
+    { src = "fnptr", code = 0 },
     -- io --
     { src = "hello", output = "mornin' sailor!\n", code = 0 },
     -- mem --

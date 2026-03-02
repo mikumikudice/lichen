@@ -186,7 +186,7 @@ type scope = struct {
     upper: nullable *scope,
 };
 
-type chain_exp_t = (*field_meta | *indexing_meta | *slicing_meta);
+type chain_exp_t = (*field_meta | *indexing_meta | *slicing_meta | *funcall_meta);
 
 type member_t = (*const_meta | *array_lit_meta | *record_lit_meta |
     *field_meta | *indexing_meta | *slicing_meta | *var_meta | *funcall_meta |
@@ -319,6 +319,8 @@ type fun_meta = struct {
 };
 
 type funcall_meta = struct {
+    before: (void | chain_exp_t),
+    base: nullable *member_meta,
     fun: *fun_meta,
     tpe: lichen_t,
     pos: size,

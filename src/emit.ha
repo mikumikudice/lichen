@@ -144,6 +144,8 @@ fn type_size(tpe: lichen_t, ignore_err: bool = false) size = {
         } else {
             return arr.length as size * item_size + 8;
         };
+    } else if(tpe.base is *fun_ptr){
+        return 8;
     } else {
         assert(false, "unreachable");
         return 0;
@@ -173,6 +175,8 @@ fn type_alignment(tpe: lichen_t) size = {
         } else {
             return 8;
         };
+    case *fun_ptr =>
+        return 8;
     };
 };
 
@@ -1331,19 +1335,19 @@ fn fetch_iterator(
     case let access: *indexing_meta =>
         const anon = fmt::asprintf("%indx.arr.{}", pos)!;
         const (val, tpe, _) =
-            unwrap_fields_and_indexes(ctxt, buff, access, defer_id);
+            unwrap_sufixes(ctxt, buff, access, defer_id);
         fmt::fprintfln(buff, "\t{} =l copy {}", anon, val)!;
         return anon;
     case let access: *slicing_meta =>
         const anon = fmt::asprintf("%indx.arr.{}", pos)!;
         const (val, tpe, _) =
-            unwrap_fields_and_indexes(ctxt, buff, access, defer_id);
+            unwrap_sufixes(ctxt, buff, access, defer_id);
         fmt::fprintfln(buff, "\t{} =l copy {}", anon, val)!;
         return anon;
     case let access: *field_meta =>
         const anon = fmt::asprintf("%field.arr.{}", pos)!;
         const (val, tpe, _) =
-            unwrap_fields_and_indexes(ctxt, buff, access, defer_id);
+            unwrap_sufixes(ctxt, buff, access, defer_id);
         fmt::fprintfln(buff, "\t{} =l copy {}", anon, val)!;
         return anon;
     case let all: *alloc_meta =>
@@ -1768,9 +1772,9 @@ fn assign_memb(
             gen_arr_lit(ctxt, buff, dest, exp_t, arr_lit, defer_id);
             yield (strings::dup(dest)!, arr_lit.tpe, true);
         case let access: *indexing_meta =>
-            yield unwrap_fields_and_indexes(ctxt, buff, access, defer_id);
+            yield unwrap_sufixes(ctxt, buff, access, defer_id);
         case let access: *slicing_meta =>
-            yield unwrap_fields_and_indexes(ctxt, buff, access, defer_id);
+            yield unwrap_sufixes(ctxt, buff, access, defer_id);
         case let rec_lit: *record_lit_meta =>
             const as_rec = rec_lit.tpe.base as *record;
             fmt::fprintfln(buff, "\t{} =l alloc8 {}", dest, type_size(exp_t))!;
@@ -1823,7 +1827,7 @@ fn assign_memb(
             };
             yield ("", rec_lit.tpe, true);
         case let access: *field_meta =>
-            yield unwrap_fields_and_indexes(ctxt, buff, access, defer_id);
+            yield unwrap_sufixes(ctxt, buff, access, defer_id);
         case let var: *var_meta =>
             yield (fix_nm(ctxt, buff, var.nm), var.nm.tpe, false);
         case let call: *funcall_meta =>
@@ -1835,8 +1839,12 @@ fn assign_memb(
                 } else {
                     yield dest;
                 };
-            yield(gen_funcall(ctxt, buff, call, nm, defer_id),
-                call.fun.fun.tpe, nm == dest);
+            yield if(call.before is void && call.base is null){
+                yield (gen_funcall(ctxt, buff, call, nm, defer_id),
+                    call.fun.fun.tpe, nm == dest);
+            } else {
+                yield unwrap_sufixes(ctxt, buff, call, defer_id);
+            };
         case let all: *alloc_meta =>
             gen_alloc(ctxt, buff, dest, all, defer_id);
             yield (dest, all.tpe, true);
@@ -2458,7 +2466,7 @@ fn gen_arr_lit(
 };
 
 // unwraps the IR for a chain of field accesses and array indexing
-fn unwrap_fields_and_indexes(
+fn unwrap_sufixes(
     ctxt: *context,
     buff: *memio::stream, 
     access: chain_exp_t,
@@ -2478,6 +2486,8 @@ fn unwrap_fields_and_indexes(
             next = slc.before;
         case let fld: *field_meta =>
             next = fld.before;
+        case let cll: *funcall_meta =>
+            next = cll.before;
         };
     };
     const base =
@@ -2488,6 +2498,8 @@ fn unwrap_fields_and_indexes(
             yield slc.base as *member_meta;
         case let fld: *field_meta =>
             yield fld.base as *member_meta;
+        case let cll: *funcall_meta =>
+            yield cll.base as *member_meta;
         };
     let last =
         if(root is *field_meta){
@@ -2496,9 +2508,12 @@ fn unwrap_fields_and_indexes(
         } else if(root is *indexing_meta){
             yield fmt::asprintf("%arr.{}",
                 (root as *indexing_meta).pos)!;
-        } else {
+        } else if(root is *slicing_meta){
             yield fmt::asprintf("%slc.{}",
                 (root as *slicing_meta).pos)!;
+        } else {
+            yield fmt::asprintf("%cll.{}",
+                (root as *funcall_meta).pos)!;
         };
     assign_memb(ctxt, buff, last, base.tpe, base, defer_id);
 
@@ -2514,15 +2529,25 @@ fn unwrap_fields_and_indexes(
         } else if(this is *indexing_meta){
             const lastest = last;
             last = gen_index(ctxt, buff, last, last_t,
-                f, this as *indexing_meta,defer_id);
+                f, this as *indexing_meta, defer_id);
             free(lastest);
             last_t = (this as *indexing_meta).tpe;
-        } else {
+        } else if(this is *slicing_meta){
             const lastest = last;
             last = gen_slice(ctxt, buff, last, last_t,
                 f, this as *slicing_meta, defer_id);
             free(lastest);
             last_t = (this as *slicing_meta).tpe;
+        } else {
+            const lastest = last;
+            const call = this as *funcall_meta;
+            call.fun.fun.ffi = last;
+            const wrap = fmt::asprintf("{}.val", last)!;
+            last = gen_funcall(ctxt, buff, call, wrap, defer_id);
+
+            if(wrap != last) free(wrap);
+            free(lastest);
+            last_t = (this as *funcall_meta).tpe;
         };
     };
     return (last, last_t, false);

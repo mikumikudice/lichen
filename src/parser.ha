@@ -122,6 +122,7 @@ fn strtype(tpe: lichen_t, mode: strtype_mode = strtype_mode::NORMAL) str = {
         } else {
             return strtoken(prim, mode != strtype_mode::NORMAL);
         };
+    case let enu: *enum_t => todo("enumerators");
     case let rec: *record =>
         if(tpe.partial){
             if(mode == strtype_mode::DEF){
@@ -4466,8 +4467,10 @@ fn eval_member(
                 memb.val = call;
             // function pointer
             } else {
-                end += 1;
+                // mark context for a re_emitting round
+                if(!fun_def.used) ctxt.re_emit = true;
                 fun_def.used = true;
+                end += 1;
                 const fnptr = alloc(fun_ptr {  // TODO: store this for cleanup
                     params = [],
                     returns = fun_def.fun.tpe,
@@ -4719,7 +4722,7 @@ fn eval_member(
     const out = alloc(memb)!;
     append(allocd_nodes, out)!;
 
-    end = eval_fields_and_indexes(ctxt, out, _end)?;
+    end = eval_sufixes(ctxt, out, _end)?;
     assert_hint(ctxt, tk, out.tpe, hint)?;
 
     return (out, end, false);
@@ -4825,7 +4828,7 @@ fn extract_previous_base(obj: chain_exp_t) *member_meta = {
     };
 };
 
-fn eval_fields_and_indexes(
+fn eval_sufixes(
     ctxt: *context,
     memb: *member_meta,
     at: size,
@@ -4835,19 +4838,24 @@ fn eval_fields_and_indexes(
         "expected %bexpression continuation%r or %bend of line%r, but got %y{}")?;
 
     // assert for record field access and array indexing
-    if(comp_tk(tk.val, symbol::DOT) || comp_tk(tk.val, symbol::LFT_SQUARE)){
+    if(comp_tk(tk.val, symbol::DOT) || comp_tk(tk.val, symbol::LFT_SQUARE) ||
+        comp_tk(tk.val, symbol::LFT_PAR)){
         tk = next_tk(ctxt, end,
             "expected %bfield access%r or %bexpression continuation%r, but got %y{}")!;
         if(!memb.tpe.partial &&
             (memb.tpe.base is *record ||
-            memb.tpe.base is *array)){
+            memb.tpe.base is *array ||
+            memb.tpe.base is *fun_ptr)){
             let before: (void | chain_exp_t) = void;
             let access: (void | chain_exp_t) = void;
             let last_tpe = memb.tpe;
             let last_prop = memb.prop;
-            for(comp_tk(tk.val, symbol::DOT) || comp_tk(tk.val, symbol::LFT_SQUARE)){
+            for(comp_tk(tk.val, symbol::DOT) ||
+                comp_tk(tk.val, symbol::LFT_SQUARE) ||
+                comp_tk(tk.val, symbol::LFT_PAR)){
                 if(comp_tk(tk.val, symbol::DOT)){
-                    const (meta, _end) = eval_record_field(ctxt, end, last_tpe, before)?;
+                    const (meta, _end) =
+                        eval_record_field(ctxt, end, last_tpe, before)?;
                     end = _end;
                     memb.pos = end;
                     last_tpe = meta.tpe;
@@ -4859,8 +4867,9 @@ fn eval_fields_and_indexes(
                         append(allocd_nodes, dup)!;
                     };
                     access = meta;
-                } else {
-                    const (meta, _end) = eval_indexing(ctxt, end, last_tpe, before)?;
+                } else if(comp_tk(tk.val, symbol::LFT_SQUARE)){
+                    const (meta, _end) =
+                            eval_indexing(ctxt, end, last_tpe, before)?;
                     end = _end;
                     memb.pos = end;
                     match(meta){
@@ -4882,6 +4891,29 @@ fn eval_fields_and_indexes(
                             slice.base = dup;
                             append(allocd_nodes, dup)!;
                         };
+                    };
+                    access = meta;
+                } else {
+                    const fun_wrap =
+                        if(before is void && memb.val is *funcall_meta)
+                            fun_meta_from(ctxt, memb.val as *funcall_meta)?
+                        else fun_meta_from(ctxt, before as chain_exp_t)?;
+                    const (meta, _end) = eval_funcall(ctxt, fun_wrap, end)?;
+                    meta.before = before;
+                    end = _end;
+                    memb.pos = end;
+                    last_tpe = fun_wrap.fun.tpe;
+                    match(eval_cast(ctxt, fun_wrap.fun.tpe, end)){
+                    case let res: (lichen_t, (void | propagation), size) =>
+                        last_prop = res.1;
+                        end = res.2;
+                    case => void;
+                    };
+                    // assign base of chain
+                    if(before is void){
+                        const dup = alloc(*memb)!;
+                        meta.base = dup;
+                        append(allocd_nodes, dup)!;
                     };
                     access = meta;
                 };
@@ -4911,10 +4943,99 @@ fn eval_fields_and_indexes(
             move_ptr(ctxt, tk);
             const name = strtype(memb.tpe);
             defer free(name);
-            return error(ctxt, "object of %b{}%r has %yno fields", name);
+            return error(ctxt, "object of %b{}%r has %yno fields nor is callable", name);
         };
     };
     return end;
+};
+
+fn fun_meta_from(ctxt: *context, src: chain_exp_t) (*fun_meta | ERROR) = {
+    let unamed_field = namespace {
+        pub = false,
+        mut = false,
+        glob = false,
+        kind = nm_kind::FUNC,
+        name = "unamed",
+        ffi = void,
+        owner = ctxt,
+        tpe = @undefined,
+    };
+    match(src){
+    case let field: *field_meta =>
+        if(field.tpe.partial){
+            move_ptr(ctxt, ctxt.tokens[field.pos]);
+            return error(ctxt, "cannot call partial typed function");
+        };
+        const src_tpe = field.tpe.base as *fun_ptr;
+        return type_to_fun_meta(ctxt, field.field.var.nm, field.pos, src_tpe);
+    case let index: *indexing_meta =>
+        if(index.tpe.partial){
+            move_ptr(ctxt, ctxt.tokens[index.pos]);
+            return error(ctxt, "cannot call partial typed function");
+        };
+        unamed_field.tpe = index.tpe;
+        const src_tpe = index.tpe.base as *fun_ptr;
+        return type_to_fun_meta(ctxt, unamed_field, index.pos, src_tpe);
+    case let slice: *slicing_meta =>
+        if(slice.tpe.partial){
+            move_ptr(ctxt, ctxt.tokens[slice.pos]);
+            return error(ctxt, "cannot call partial typed function");
+        };
+        unamed_field.tpe = slice.tpe;
+        const src_tpe = slice.tpe.base as *fun_ptr;
+        return type_to_fun_meta(ctxt, unamed_field, slice.pos, src_tpe);
+    case let fcall: *funcall_meta =>
+        if(fcall.tpe.partial){
+            move_ptr(ctxt, ctxt.tokens[fcall.pos]);
+            return error(ctxt, "cannot call partial typed function");
+        };
+        unamed_field.tpe = fcall.tpe;
+        const src_tpe = fcall.tpe.base as *fun_ptr;
+        return type_to_fun_meta(ctxt, unamed_field, fcall.pos, src_tpe);
+    };
+};
+
+fn type_to_fun_meta(
+    ctxt: *context,
+    name: namespace,
+    pos: size,
+    tpe: *fun_ptr,
+) *fun_meta = {
+    const out = fun_meta {
+        fun = name,
+        pos = pos,
+        begins = 0,
+        origin = ctxt.file,
+        body = null,
+        params = [],
+        efxtags = tpe.efxtags,
+        effects = tpe.effects,
+        used = false,
+        recursive = false,
+        borrows = void,
+    };
+    out.fun.tpe = tpe.returns;
+    for(let param .. tpe.params){
+        append(out.params, alloc(decl_meta {
+            var = alloc(var_meta {
+                nm = namespace {
+                    pub = false,
+                    mut = param.0,
+                    glob = false,
+                    kind = nm_kind::PARAM,
+                    name = "unamed",
+                    ffi = void,
+                    owner = ctxt,
+                    tpe = param.1,
+                },
+                lifetime = void,
+                allocated = false,
+                pos = 0,
+            })!,
+            val = void,
+        })!)!; // TODO: save this for cleanup
+    };
+    return alloc(out)!;
 };
 
 // evaluates an allocation expression
@@ -5824,6 +5945,8 @@ fn eval_funcall(
         "expected %bclosing parenthesis%r, but got %y{}")?;
 
     const out = alloc(funcall_meta {
+        before = void,
+        base = null,
         fun = fun,
         tpe = fun.fun.tpe,
         pos = at,
@@ -6643,6 +6766,10 @@ fn eval_type(
         case symbol::LFT_PAR =>
             tk = next_tk(ctxt, end,
                 "expected %btuple variant%r, but got %y{}")?;
+            if(comp_tk(tk.val, symbol::RGT_PAR)){
+                move_ptr(ctxt, ctxt.tokens[at]);
+                return error(ctxt, "tuple type has %binvalid size%r of %yzero members");
+            };
             let memb: []lichen_t = [];
             for(!comp_tk(tk.val, symbol::RGT_PAR)){
                 const (m, _end) = eval_type(ctxt, end)?;
@@ -6657,7 +6784,7 @@ fn eval_type(
                 };
             };
             if(!comp_tk(tk.val, symbol::RGT_PAR)){
-                move_ptr(ctxt, tk);
+                move_ptr(ctxt, ctxt.tokens[end]);
                 const arg = strtoken(tk.val);
                 defer free(arg);
                 return error_hint(ctxt,
@@ -6665,11 +6792,11 @@ fn eval_type(
                     "expected %bclosing parenthesis%r, but got %y{}",
                     arg);
             };
-            end += 1;
-            if(len(memb) < 0){
-                move_ptr(ctxt, tk);
+            if(len(memb) <= 0){
+                move_ptr(ctxt, ctxt.tokens[end]);
                 return error(ctxt, "tuple type has %binvalid size%r of %yzero members");
             };
+            end += 1;
             const tpe = lichen_t {
                 partial = partial,
                 base = alloc(tuple { // TODO: save this for cleanup
@@ -6746,6 +6873,8 @@ fn comp_type(
             that_arr.base) && size_ok;
     } else if(this.base is *enum_t && that.base is *enum_t){
         return this.base as *enum_t == that.base as *enum_t;
+    } else if(this.base is *fun_ptr && that.base is *fun_ptr){
+            return is_subtype(this, that);
     } else {
         return false;
     };
