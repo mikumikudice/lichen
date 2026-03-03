@@ -619,10 +619,10 @@ fn gen_scope(
     };
     if(has_fail){
         fmt::fprintln(buff, "@fail\n"
+            "\tcall $rt.write(w 2, l $rt.errmsg)\n"
             "\t%has.lasterr =w loadw $rt.errmsgset\n"
             "\tjnz %has.lasterr, @show.lasterr, @skip.lasterr\n@show.lasterr\n"
             "\tcall $rt.write(w 2, l $rt.last_errmsg)\n@skip.lasterr\n"
-            "\tcall $rt.write(w 2, l $rt.errmsg)\n"
             "\tcall $rt.exit(w 1)\n""\thlt\n}")!;
     };
 };
@@ -2921,7 +2921,9 @@ fn gen_prop(
     defer free(lbl);
 
     // store last error message to memory
-    fmt::fprintfln(buff, "\tblit $rt.errmsg, $rt.last_errmsg, 16")!;
+    if(prop.0 == operator::BUBBLE){
+        fmt::fprintfln(buff, "\tblit $rt.errmsg, $rt.last_errmsg, 16")!;
+    };
     // check for error code
     fmt::fprintfln(buff, "\t%fail.code =l loadl {}", val)!;
     fmt::fprintfln(buff, "\tblit $str.{}, $rt.errmsg, 16", prop.2)!;
@@ -3031,6 +3033,8 @@ fn gen_funcall(
                 strings::rcut(call.fun.origin, "/").1, ".").0;
             yield fmt::asprintf("${}.{}", mod,
                 base_name)!;
+        } else if(call.binding){
+            yield fmt::asprintf("%{}", base_name)!;
         } else {
             yield fmt::asprintf("${}", base_name)!;
         };

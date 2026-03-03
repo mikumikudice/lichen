@@ -1,5 +1,4 @@
 - assert for multiple bindings to the same module
-- allow call on local variables that hold funcion pointers
 - unions
 - optimize single return functions to be inlined
 - optimize arenas to reset rather deallocate when created within loops
@@ -9,8 +8,6 @@
 - submodules
 - do statement for if-else and for-loop blocks
 - hex literal characters for strings
-- implement behavior: bubbled tests messages are assigned to global error message
-- implement behavior: asserts set global error message to be shown at @fail 
 - assert for division by zero
 - global test block
 - optimize out private global variables

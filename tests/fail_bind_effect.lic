@@ -1,0 +1,14 @@
+// parser test for asserting if type
+// checking for effects apply to
+// function bindings
+
+io mod = use "std/io.lim";
+
+fn foo() unit = io {
+    io::println("")!;
+};
+
+fn main() void = {
+    let x = foo;
+    x();
+};

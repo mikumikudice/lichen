@@ -25,6 +25,7 @@ local tests = {
     { src = "fail_while", code = 1, nocomp = true },
     { src = "fail_tailcall_1", code = 1, nocomp = true },
     { src = "fail_tailcall_2", code = 1, nocomp = true },
+    { src = "fail_bind_effect", code = 1, nocomp = true },
     -- propagation error --
     { src = "fail_prop_1", code = 1, nocomp = true },
     { src = "fail_prop_2", code = 1, nocomp = true },
@@ -106,7 +107,9 @@ local tests = {
     { src = "issue_lit_arr", code = 0 },
     -- fail assertion --
     { src = "fail_io_bad_handle",
-        output = "../tests/fail_io_bad_handle.lic:7:33: assertion failed\n",
+        output =
+            "../tests/fail_io_bad_handle.lic:7:33: assertion failed\n" ..
+            "/home/minhasmin/.local/lib/lcc/std/io.lim:69:14: could not write to this handle\n",
         code = 1 },
     { src = "fail_io_from_result",
         output = "../tests/fail_io_from_result.lic:14:19: assertion failed\n",
@@ -117,7 +120,7 @@ local tests = {
     { src = "fail_test", output = "../tests/fail_test.lic:5:10: test ok\n", code = 1 },
     { src = "ret", code = 0 },
     { src = "inherit_errmsg",
-        output = "../tests/inherit_errmsg.lic:2:10: inner test message\n",
+        output = "../tests/inherit_errmsg.lic:5:10: inner test message\n",
         code = 1 },
     -- others --
     { src = "fail_empty", code = 1, nocomp = true },
@@ -190,6 +193,7 @@ local tests = {
     { src = "map", output = "mia\nleo\nlue\n", code = 0 },
     { src = "safe_rec_mut", code = 0 },
     { src = "fnptr", code = 0 },
+    { src = "var_call", code = 0 },
     -- io --
     { src = "hello", output = "mornin' sailor!\n", code = 0 },
     -- mem --

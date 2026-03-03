@@ -66,7 +66,7 @@ pub fn fprint(handle u32, data str) !unit = rt {
     // allocate mutable copy of data
     new dup | #data + 16 {
         let mut dummy = new ? data @ dup;
-        test ? rt::write(handle, dummy []u8) == 0,
+        test ? rt::write(handle, dummy []u8) >= 0,
             "could not write to this handle";
     }?;
 };
@@ -144,6 +144,6 @@ pub fn read_to(mut buffer []u8) !u64 = rt & io_read & buff_write {
 // reads from a given handle and places in the given buffer
 pub fn fread_to(handle u32, mut buffer []u8) !u64 = rt & buff_write {
     let code = rt::read(handle, buffer);
-    test ? code == 0, "could not read from this handle";
+    test ? code >= 0, "could not read from this handle";
     return code u32;
 };

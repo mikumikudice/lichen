@@ -4525,10 +4525,23 @@ fn eval_member(
             end = at + 1;
             tk = next_tk(ctxt, end,
                 "expected %bexpression continuation%r or %bend of line%r, but got %y{}")?;
-            if(comp_tk(tk.val, symbol::LFT_PAR)){
+            // assert if type is callable
+            if(comp_tk(tk.val, symbol::LFT_PAR) && !(memb.tpe.base is *fun_ptr)){
                 move_ptr(ctxt, tk);
+                const tpe = strtype(memb.tpe);
+                defer free(tpe);
+                const hint = fmt::asprintf("\n%g{}'s type is %y{}", decl.var.nm.name, tpe)!;
+                defer free(hint);
                 return error(ctxt, "attempt to call on non-function namespace %b{}",
-                    decl.var.nm.name);
+                    decl.var.nm.name, hint);
+            // it's callable
+            } else if(comp_tk(tk.val, symbol::LFT_PAR)){
+                const fun_wrap = fun_meta_from(ctxt, decl.var)?;
+                const (meta, _end) = eval_funcall(ctxt, fun_wrap, end)?;
+                meta.binding = true;
+                memb.val = meta;
+                memb.tpe = meta.tpe;
+                end = _end;
             };
         case let tpe: *type_meta =>
             memb.tpe = tpe.self;
@@ -4625,10 +4638,22 @@ fn eval_member(
                         found = true;
                         tk = next_tk(ctxt, end,
                             "expected %bexpression continuation%r or %bend of line%r, but got %y{}")?;
-                        if(comp_tk(tk.val, symbol::LFT_PAR)){
+                        // assert if type is callable
+                        if(comp_tk(tk.val, symbol::LFT_PAR) && !(memb.tpe.base is *fun_ptr)){
                             move_ptr(ctxt, tk);
+                            const tpe = strtype(memb.tpe);
+                            defer free(tpe);
+                            const hint = fmt::asprintf("\n%g{}'s type is %y{}", decl.var.nm.name, tpe)!;
+                            defer free(hint);
                             return error(ctxt, "attempt to call on non-function namespace %b{}",
-                                decl.var.nm.name);
+                                decl.var.nm.name, hint);
+                        // it's callable
+                        } else if(comp_tk(tk.val, symbol::LFT_PAR)){
+                            const fun_wrap = fun_meta_from(ctxt, decl.var)?;
+                            const (meta, _end) = eval_funcall(ctxt, fun_wrap, end)?;
+                            memb.val = meta;
+                            memb.tpe = meta.tpe;
+                            end = _end;
                         };
                     case let tpe: *type_meta =>
                         if(tpe.name.name != field.name){
@@ -4952,7 +4977,10 @@ fn eval_sufixes(
     return end;
 };
 
-fn fun_meta_from(ctxt: *context, src: chain_exp_t) (*fun_meta | ERROR) = {
+fn fun_meta_from(
+    ctxt: *context,
+    src: (chain_exp_t | *var_meta),
+) (*fun_meta | ERROR) = {
     let unamed_field = namespace {
         pub = false,
         mut = false,
@@ -4995,6 +5023,13 @@ fn fun_meta_from(ctxt: *context, src: chain_exp_t) (*fun_meta | ERROR) = {
         unamed_field.tpe = fcall.tpe;
         const src_tpe = fcall.tpe.base as *fun_ptr;
         return type_to_fun_meta(ctxt, unamed_field, fcall.pos, src_tpe);
+    case let var: *var_meta =>
+        if(var.nm.tpe.partial){
+            move_ptr(ctxt, ctxt.tokens[var.pos]);
+            return error(ctxt, "cannot call partial typed function");
+        };
+        const src_tpe = var.nm.tpe.base as *fun_ptr;
+        return type_to_fun_meta(ctxt, var.nm, var.pos, src_tpe);
     };
 };
 
@@ -5956,6 +5991,7 @@ fn eval_funcall(
         args = arg_list,
         lifetime = lifetime,
         tailcall = recursive && !ctxt.branching,
+        binding = false,
     })!;
     append(allocd_nodes, out)!;
     return (out, end);

@@ -327,6 +327,7 @@ type funcall_meta = struct {
     args: []*expr_meta,
     lifetime: (void | size),
     tailcall: bool,
+    binding: bool,
 };
 
 type fn_ptr_meta = struct {

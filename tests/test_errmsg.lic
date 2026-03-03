@@ -1,0 +1,23 @@
+// compiler test for more complex
+// cases regarding error reporting
+// and custom error messages through
+// test blocks
+
+fn base() !u32 = {
+    test ? false, "base";
+    return 0;
+};
+
+fn depth1() !u32 = {
+    return base()?;
+};
+
+fn depth2() !u32 = {
+    return depth1()?;
+};
+
+fn main() void = {
+    // let _ = base()!;
+    // let _ = depth1()!;
+    let _ = depth2()!;
+};

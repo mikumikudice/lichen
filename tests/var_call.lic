@@ -1,0 +1,16 @@
+// parser test for variable binding
+// to a function pointer
+
+fn fun() u32 = {
+    return 4;
+};
+
+fn grab_fun() fn() u32 = {
+    return fun;
+};
+
+fn main() void = {
+    let x = grab_fun();
+    let y = x();
+    test y == 4;
+};

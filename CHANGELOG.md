@@ -3,15 +3,16 @@ new features
 
 bugfixes
 - fixed backend not emitting unwrap fallback for assertions within parenthesis
+- fixed misimplementation of test blocks in the stdlib from last patch
 
 correct behavior assert
-- none
+- now it's possible to call on variables binded to function pointers
 
 others
-- none
+- improved behaviour of inheritable test block's error messages
 
 breaking changes
 - none
 
 standard library changes
-- addapted to use new test message bubbling system
+- none
