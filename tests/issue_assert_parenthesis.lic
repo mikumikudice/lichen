@@ -1,0 +1,4 @@
+fn main() void = {
+    let x !u32 = nil;
+    test (x? or 1) == 1;
+};

@@ -1,4 +1,5 @@
 - assert for multiple bindings to the same module
+- allow call on local variables that hold funcion pointers
 - unions
 - optimize single return functions to be inlined
 - optimize arenas to reset rather deallocate when created within loops

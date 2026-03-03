@@ -35,8 +35,16 @@ rt.stderr:
 .data
 .balign 16
 .globl rt.errmsg
-// internal runtime handle for the last error message
+// internal runtime handle for the current error message
 rt.errmsg:
+    .quad 0
+    .quad 0
+
+.data
+.balign 16
+.globl rt.last_errmsg
+// internal runtime handle for the last error message
+rt.last_errmsg:
     .quad 0
     .quad 0
 

@@ -1,17 +1,17 @@
 new features
-- none
+- implemented suberror system with propagated test statements
 
 bugfixes
-- errors regarding function pointers and type mismatches
+- fixed backend not emitting unwrap fallback for assertions within parenthesis
 
 correct behavior assert
 - none
 
 others
-- fixed nested function calls and other function pointer-related bugs
+- none
 
 breaking changes
 - none
 
 standard library changes
-- none
+- addapted to use new test message bubbling system

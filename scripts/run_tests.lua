@@ -116,6 +116,9 @@ local tests = {
     { src = "test", output = "test ok\n", code = 0 },
     { src = "fail_test", output = "../tests/fail_test.lic:5:10: test ok\n", code = 1 },
     { src = "ret", code = 0 },
+    { src = "inherit_errmsg",
+        output = "../tests/inherit_errmsg.lic:2:10: inner test message\n",
+        code = 1 },
     -- others --
     { src = "fail_empty", code = 1, nocomp = true },
     { src = "fail_empty_assign", code = 1, nocomp = true },
@@ -147,6 +150,7 @@ local tests = {
     { src = "str_fun", output = "test 1 ok\ntest 2 ok\ntest 3 ok\n", code = 0 },
     { src = "empty_assign", code = 0 },
     { src = "sufix_chain", code = 0 },
+    { src = "issue_assert_parenthesis", code = 0 },
     -- branching --
     { src = "if-else",
         output = "test 0 ok\ntest 1 ok\ntest 2 ok\ntest 3 ok\ntest 4 ok\ntest 5 ok\ntest 6 ok\n",

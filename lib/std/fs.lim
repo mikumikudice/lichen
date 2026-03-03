@@ -22,20 +22,15 @@ pub fn open(filename str, flags u32) !u32 = rt & fs_read {
     new local | #filename + 16 {
         let mut dup = new ? filename @ local;
         let handle = rt::open(dup cstr, flags, 0o7000);
-        if handle > 0 {
-            return handle u32;
-        } else {
-            return error;
-        };
+        test ? handle > 0, "failed to open file";
+        return handle u32;
     }?;
 };
 
 // closes a file handle
 // returns error if handle is invalid
 pub fn close(handle u32) !unit = rt & fs {
-    if rt::close(handle) < 0 {
-        return error;
-    };
+    test ? rt::close(handle) == 0, "failed to close file";
 };
 
 // removes a file, unlinking the node from the file system
@@ -44,9 +39,7 @@ pub fn close(handle u32) !unit = rt & fs {
 pub fn remove(filename str) !unit = rt & fs {
     new local | #filename + 16 {
         let mut dup = new ? filename @ local;
-        if rt::unlink(dup cstr) < 0 {
-            return error;
-        };
+        test ? rt::unlink(dup cstr) == 0, "failed to remove file";
     }?;
 };
 
@@ -57,8 +50,7 @@ pub fn rename(oldname str, newname str) !unit = rt & fs {
     new local | #oldname + #newname + 32 {
         let mut dup_old = new ? oldname @ local;
         let mut dup_new = new ? newname @ local;
-        if rt::rename(dup_old cstr, dup_new cstr) < 0 {
-            return error;
-        };
+        test ? rt::rename(dup_old cstr, dup_new cstr) == 0,
+            "failed to rename file";
     }?;
 };

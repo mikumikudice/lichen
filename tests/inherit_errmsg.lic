@@ -1,0 +1,8 @@
+fn fail() !u32 = {
+    test false, "inner test message";
+    return 0;
+};
+
+fn main() void = {
+    let _ = fail()!;
+};

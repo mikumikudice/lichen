@@ -619,6 +619,9 @@ fn gen_scope(
     };
     if(has_fail){
         fmt::fprintln(buff, "@fail\n"
+            "\t%has.lasterr =w loadw $rt.errmsgset\n"
+            "\tjnz %has.lasterr, @show.lasterr, @skip.lasterr\n@show.lasterr\n"
+            "\tcall $rt.write(w 2, l $rt.last_errmsg)\n@skip.lasterr\n"
             "\tcall $rt.write(w 2, l $rt.errmsg)\n"
             "\tcall $rt.exit(w 1)\n""\thlt\n}")!;
     };
@@ -655,21 +658,26 @@ fn gen_stt(
                 "\tjnz {0}, @test.ok.{1}, @fail.{1}", wrap, lbl)!;
         };
         fmt::fprintfln(buff, "@fail.{}", lbl)!;
-        fmt::fprintfln(buff, "\tblit $str.{}, $rt.errmsg, 16", test.str_id)!;
         if(test.props){
             if(len(ctxt.free_on_ret) > 0){
                 for(let f .. ctxt.free_on_ret){
                     fmt::fprintln(buff, f)!;
                 };
             };
-            fmt::fprintfln(buff, "\tstorel 1, $rt.errmsgset")!;
+            // store last error message to memory
+            fmt::fprintfln(buff, "\tblit $rt.errmsg, $rt.last_errmsg, 16")!;
+            fmt::fprintfln(buff, "\tstorew 1, $rt.errmsgset")!;
+            fmt::fprintfln(buff,
+                "\tblit $str.{}, $rt.errmsg, 16", test.str_id)!;
             fmt::fprintfln(buff, "\t%opt.{} =l alloc8 {}",
                 lbl, type_size(test.host_tpe as lichen_t))!;
             fmt::fprintfln(buff, "\tstorel 0, %opt.{}", lbl)!;
             fmt::fprintfln(buff, "\tret %opt.{}", lbl)!;
             fmt::fprintfln(buff, "@test.ok.{}", lbl)!;
         } else {
-            fmt::fprintfln(buff, "\tstorel 1, $rt.errmsgset\n\tjmp @fail")!;
+            fmt::fprintfln(buff,
+                "\tblit $str.{}, $rt.errmsg, 16", test.str_id)!;
+            fmt::fprintfln(buff, "\tstorew 0, $rt.errmsgset\n\tjmp @fail")!;
             fmt::fprintfln(buff, "@test.ok.{}", lbl)!;
         };
     case let loop: *for_meta =>
@@ -1405,6 +1413,7 @@ fn gen_decl(
             fmt::fprintfln(buff, "\t{} ={} copy {}", name,
                 qbe_t(ctxt, decl.var.nm.tpe, mode::ASSIGN), val)!;
         };
+    // type is a defined-size data structure
     } else if(is_aggregated(decl.var.nm.tpe) && size_known(decl.var.nm.tpe) &&
         !(root is *alloc_meta) && !(root is *record_lit_meta) &&
         !(root is *array_lit_meta)){
@@ -1418,6 +1427,7 @@ fn gen_decl(
         } else {
             fmt::fprintfln(buff, "\tblit %stack.dup, {}, {}", name, mem_size)!;
         };
+    // is a mutable pointer to something
     } else {
         const val = gen_exp(ctxt, buff, name,
             decl.var.nm.tpe, val_exp, defer_id);
@@ -1757,7 +1767,7 @@ fn assign_memb(
     move_ptr(ctxt, ctxt.tokens[memb.pos]);
     const (l, c) = get_pos(ctxt);
     fmt::fprintfln(buff, "\tdbgloc {}, {}", l, c)!;
-    const (val, tpe, skip) = 
+    const (val, tpe, skip) =
         match(memb.val){
         case let const_val: *const_meta =>
             if(comp_type(memb.tpe, primitive::CSTR) && const_val.val is str){
@@ -2910,6 +2920,9 @@ fn gen_prop(
     const lbl = fmt::asprintf("{}{}", pos, lbl_append)!;
     defer free(lbl);
 
+    // store last error message to memory
+    fmt::fprintfln(buff, "\tblit $rt.errmsg, $rt.last_errmsg, 16")!;
+    // check for error code
     fmt::fprintfln(buff, "\t%fail.code =l loadl {}", val)!;
     fmt::fprintfln(buff, "\tblit $str.{}, $rt.errmsg, 16", prop.2)!;
     fmt::fprintln(buff, "\t%assert.fail =l csltl %fail.code, 1")!;

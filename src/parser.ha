@@ -4358,9 +4358,12 @@ fn eval_member(
 
             end = pop_assert(ctxt, _end, symbol::RGT_PAR,
                 "expected %bclosing parenthesis%r, but got %y{}")?;
+            // unwrap member if inner value is what we expect already
             if(exp.val is *member_meta){
-                memb.tpe = exp.tpe;
-                memb.val = (exp.val as *member_meta).val;
+                const val = exp.val as *member_meta;
+                memb.tpe = val.tpe;
+                memb.val = val.val;
+                memb.prop = val.prop;
             } else {
                 // assert for a potential casting
                 const (tpe, prop, _end) = eval_cast(ctxt, exp.tpe, end)?;
@@ -4717,7 +4720,7 @@ fn eval_member(
         return error(ctxt, "cannot assert on literals");
     };
     memb.tpe = tpe;
-    memb.prop = prop;
+    if(memb.prop is void) memb.prop = prop;
     assert(!comp_type(memb.tpe, primitive::ANY));
     const out = alloc(memb)!;
     append(allocd_nodes, out)!;
