@@ -6,7 +6,7 @@ use os;
 use strings;
 
 const temp_folder = ".lcc_temp/";
-const version = "0.25.1";
+const version = "0.25.2";
 const help =
     "\n%gflags usage:%d\n"
     "\n %g-h\t\t"
@@ -33,7 +33,7 @@ const help =
     "%y-- only checks for compilation errors and generates no output files"
 
     "\n %g-verbose\t"
-    "%y-- logs each compilation step. if %g-c%y is also set, dumps qbe IR instead"
+    "%y-- logs each compilation step. if %g-E%y is also set, dumps qbe IR instead"
 
     "\n %g-clean\t\t"
     "%y-- prompts error messages without escape characters for coloring"
