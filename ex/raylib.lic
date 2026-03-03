@@ -1,8 +1,11 @@
 // compile this with the following flags:
 // -lc -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
 
-fn _init_window(w i32, h i32, mut title cstr) unit = rl use "InitWindow";
-fn init_window(w i32, h i32, title str) unit = rl {
+rl efx;
+ctext efx = mut cstr;
+
+fn _init_window(w i32, h i32, mut title cstr) unit = rl & ctext use "InitWindow";
+fn init_window(w i32, h i32, title str) unit = rl & ctext {
     new here | #title + 18 {
         let mut dup = new ! title @ here;
         _init_window(w i32, h i32, dup cstr);
@@ -20,20 +23,22 @@ type rgba = record {
 
 fn clear_background(color rgba) unit = rl use "ClearBackground";
 
-fn _draw_text(mut text cstr, x i32, y i32, sz u32, color rgba) unit = rl use "DrawText";
-fn draw_text(text str, x i32, y i32, sz u32, color rgba) unit = rl {
+fn _draw_text(mut text cstr, x i32, y i32, sz u32, color rgba) unit = rl & ctext use "DrawText";
+fn draw_text(text str, x i32, y i32, sz u32, color rgba) unit = rl & ctext {
     new here | #text + 18 {
         let mut dup_text = new ! text @ here;
         _draw_text(dup_text cstr, x, y, sz, color);
     }!;
 };
 
-fn _measure_text(mut text cstr, sz u32) u32 = rl use "MeasureText";
-fn measure_text(mut text str, sz u32) u32 = rl {
+write efx = mut str;
+
+fn _measure_text(mut text cstr, sz u32) u32 = rl & ctext use "MeasureText";
+fn measure_text(mut text str, sz u32) u32 = rl & write & ctext {
     return _measure_text(text cstr, sz);
 };
 
-pub fn main() void = rl {
+pub fn main() void = do {
     init_window(800, 450, "lichen raylib");
     defer close_window();
 
