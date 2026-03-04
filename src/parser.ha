@@ -7145,20 +7145,8 @@ fn _is_subtype(_this: lichen_t, _that: lichen_t) bool = {
         return (comp_type(this.base, that.base) ||
             comp_type(this.base, primitive::ANY)) && size_ok;
     // enum comparison
-    } else if(_this.base is *enum_t || _that.base is *enum_t){
-        if(_this.base is *enum_t && _that.base is *enum_t){
-            return _this.base as *enum_t == _that.base as *enum_t;
-        } else if(_this.base is *enum_t && _that.base is primitive){
-            const ref = _this.base as *enum_t;
-            const var = _that.base as primitive;
-            return is_subtype(var, ref.base);
-        } else if(_this.base is primitive && _that.base is *enum_t){
-            const ref = _that.base as *enum_t;
-            const var = _this.base as primitive;
-            return is_subtype(var, ref.base);
-        } else {
-            return false;
-        };
+    } else if(_this.base is *enum_t && _that.base is *enum_t){
+        return _this.base as *enum_t == _that.base as *enum_t;
     // record comparison
     } else if(_this.base is *record && _that.base is *record){
         const this = _this.base as *record;
@@ -7268,6 +7256,9 @@ fn _castable(_this: lichen_t, _that: lichen_t) bool = {
         case =>
             return this == that;
         };
+    // enum casting
+    } else if(_this.base is *enum_t && !(_that.base is *enum_t)){
+        return is_subtype((_this.base as *enum_t).base, _that);
     // TODO: record subtyping
     // anything else
     } else {

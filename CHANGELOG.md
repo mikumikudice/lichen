@@ -1,17 +1,17 @@
 new features
-- enumerators
+- none
 
 bugfixes
-- order of reporting for type mismatch of constants
+- fixed validation of enums subtyping and casting
 
 correct behavior assert
 - none
 
 others
-- small typos in error messages fixed
+- updated tests accordingly
 
 breaking changes
 - none
 
 standard library changes
-- updated fs module for the use of enums for flags
+- none

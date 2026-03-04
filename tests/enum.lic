@@ -5,7 +5,7 @@ type foo = enum u32 {
 };
 
 fn main() void = {
-    let x = foo.FIZZ;
-    test x == 0;
-    test foo.BUZZ == 1;
+    let mut x = foo.FIZZ;
+    test x u32 == 0;
+    test foo.BUZZ u32 == 1;
 };
