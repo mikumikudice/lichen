@@ -2805,7 +2805,10 @@ fn eval_arena(ctxt: *context, at: size) ((*arena_meta, size) | ERROR) = {
     end = _end;
     
     const skip = skip_scope(ctxt, end)?;
+    const old_alloc = ctxt.allocating;
+    ctxt.allocating = true;
     const (tpe, prop, final) = eval_cast(ctxt, name.tpe, skip)?;
+    ctxt.allocating = old_alloc;
     name.tpe = tpe;
     const old_lifetime = ctxt.lifetime;
     if(old_lifetime is size){
@@ -6459,8 +6462,6 @@ fn eval_cast(
 
     const buffer = memio::dynamic();
     move_ptr(ctxt, ctxt.tokens[at]);
-    const pos = gen_pos(ctxt);
-    defer free(pos);
     const prop: (void | propagation) =
         if(comp_tk(tk.val, operator::BANG) ||
             comp_tk(tk.val, operator::BUBBLE)){
@@ -6478,12 +6479,6 @@ fn eval_cast(
                     "\n%gno value is returned from a (partial) primitive void type",
                     "cannot bubble or assert a void type's error state");
             };
-            if(op == operator::BUBBLE){
-                fmt::fprintf(&buffer, "{}: an error occured\\n", pos)!;
-            } else {
-                fmt::fprintf(&buffer, "{}: assertion failed\\n", pos)!;
-            };
-            const err_msg_id = push_lit(ctxt, memio::string(&buffer)!);
             const caller = ctxt.host_fun as *fun_meta;
             // host function's type is not partial
             if(!caller.fun.tpe.partial &&
@@ -6518,7 +6513,19 @@ fn eval_cast(
                         yield stt;
                     };
                 };
-            yield (op, exp, err_msg_id, alloc(buffer)!);
+            const pos = gen_pos(ctxt);
+            defer free(pos);
+            yield if(ctxt.allocating){
+                fmt::fprintf(&buffer, "{}: allocation failed\\n", pos)!;
+                const err_msg_id = push_lit(ctxt, memio::string(&buffer)!);
+                yield (op, exp, err_msg_id, alloc(buffer)!);
+            } else if(op == operator::BANG){
+                fmt::fprintf(&buffer, "{}: assertion failed\\n", pos)!;
+                const err_msg_id = push_lit(ctxt, memio::string(&buffer)!);
+                yield (op, exp, err_msg_id, alloc(buffer)!);
+            } else {
+                yield (op, exp, void, alloc(buffer)!);
+            };
         };
     if(!comp_tk(ctxt.tokens[end].val, symbol::EOL) &&
         !comp_tk(ctxt.tokens[end].val, symbol::COMMA) &&

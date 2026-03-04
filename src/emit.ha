@@ -1110,7 +1110,7 @@ fn gen_stt(
         // validate allocation if needed
         if(arena.prop is propagation){
             const prop = arena.prop as propagation;
-            fmt::fprintfln(buff, "\tblit $str.{}, $rt.errmsg, 16", prop.2)!;
+            fmt::fprintfln(buff, "\tblit $str.{}, $rt.errmsg, 16", prop.2 as size)!;
             if(prop.1 is void && prop.0 == operator::BANG){
                 fmt::fprintfln(buff,
                     "\tjnz {0}.chunk, @arena.ok.{1}, @fail",
@@ -2921,12 +2921,13 @@ fn gen_prop(
     defer free(lbl);
 
     // store last error message to memory
-    if(prop.0 == operator::BUBBLE){
-        fmt::fprintfln(buff, "\tblit $rt.errmsg, $rt.last_errmsg, 16")!;
-    };
+    fmt::fprintfln(buff, "\tblit $rt.errmsg, $rt.last_errmsg, 16")!;
     // check for error code
     fmt::fprintfln(buff, "\t%fail.code =l loadl {}", val)!;
-    fmt::fprintfln(buff, "\tblit $str.{}, $rt.errmsg, 16", prop.2)!;
+    // only panic assertions have messages
+    if(prop.0 == operator::BANG){
+        fmt::fprintfln(buff, "\tblit $str.{}, $rt.errmsg, 16", prop.2 as size)!;
+    };
     fmt::fprintln(buff, "\t%assert.fail =l csltl %fail.code, 1")!;
     // no assertion expression
     if(prop.1 is void){

@@ -1,15 +1,16 @@
 new features
-- implemented suberror system with propagated test statements
+- none
 
 bugfixes
-- fixed backend not emitting unwrap fallback for assertions within parenthesis
-- fixed misimplementation of test blocks in the stdlib from last patch
+- none
 
 correct behavior assert
-- now it's possible to call on variables binded to function pointers
+- none
 
 others
-- improved behaviour of inheritable test block's error messages
+- improvements in the assertion messaging and test block message bubbling systems
+- fixed mistaken test case "inherit_errmsg" where test block was not propagating the error
+- updated all allocation error reporting messages to be "allocation failed" instead of "assertion failed"
 
 breaking changes
 - none

@@ -120,7 +120,7 @@ local tests = {
     { src = "fail_test", output = "../tests/fail_test.lic:5:10: test ok\n", code = 1 },
     { src = "ret", code = 0 },
     { src = "inherit_errmsg",
-        output = "../tests/inherit_errmsg.lic:5:10: inner test message\n",
+        output = "../tests/inherit_errmsg.lic:10:19: assertion failed\n../tests/inherit_errmsg.lic:5:10: inner test message\n",
         code = 1 },
     -- others --
     { src = "fail_empty", code = 1, nocomp = true },
@@ -199,7 +199,7 @@ local tests = {
     -- mem --
     { src = "arena", code = 0 },
     { src = "arena_error_1",
-        output = "../tests/arena_error_1.lic:10:6: assertion failed\n",
+        output = "../tests/arena_error_1.lic:10:6: allocation failed\n",
         code = 1 },
     { src = "arena_error_2", output = "test ok\n", code = 0 },
     { src = "borrow", output = "test ok\n", code = 0 },

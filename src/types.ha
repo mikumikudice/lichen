@@ -342,7 +342,7 @@ type scope_meta = struct {
     rets: bool,
 };
 
-type propagation = (operator, (void | path_meta), size, *memio::stream);
+type propagation = (operator, (void | path_meta), (size | void), *memio::stream);
 
 type expr_meta = struct {
     pos: size,

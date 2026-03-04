@@ -6,7 +6,7 @@ use os;
 use strings;
 
 const temp_folder = ".lcc_temp/";
-const version = "0.25.2";
+const version = "0.25.3";
 const help =
     "\n%gflags usage:%d\n"
     "\n %g-h\t\t"
