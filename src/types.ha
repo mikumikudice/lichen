@@ -62,8 +62,10 @@ type lichen_t = struct {
 };
 
 type enum_t = struct {
-    base: primitive,
-    variant: []namespace,
+    name: (namespace | void),
+    base: lichen_t,
+    origin: str,
+    variants: [](namespace, *const_meta),
 };
 
 type record = struct {

@@ -194,6 +194,8 @@ local tests = {
     { src = "safe_rec_mut", code = 0 },
     { src = "fnptr", code = 0 },
     { src = "var_call", code = 0 },
+    { src = "enum", code = 0 },
+    { src = "enum_str", code = 0 },
     -- io --
     { src = "hello", output = "mornin' sailor!\n", code = 0 },
     -- mem --

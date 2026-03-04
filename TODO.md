@@ -4,7 +4,6 @@
 - optimize arenas to reset rather deallocate when created within loops
 - optimize concatenation for in-place data appending and contiguous data override
 - tuples
-- enumerators
 - submodules
 - do statement for if-else and for-loop blocks
 - hex literal characters for strings

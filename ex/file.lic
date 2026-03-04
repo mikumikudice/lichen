@@ -6,7 +6,8 @@ io mod = use "std/io.lim";
 
 pub fn main() void = fs & io {
     // create and open file
-    let file = fs::open("foo.txt", fs::READWRITE | fs::CREATE)!;
+    let file = fs::open("foo.txt",
+        fs::flags.READWRITE | fs::flags.CREATE)!;
     defer fs::close(file)!;
     // write to it
     io::fprintln(file, "mornin' sailor!")!;

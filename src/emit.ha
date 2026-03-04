@@ -111,7 +111,7 @@ fn type_size(tpe: lichen_t, ignore_err: bool = false) size = {
         };
     } else if(tpe.base is *enum_t){
         const enu = tpe.base as *enum_t;
-        return type_size(quick_t(enu.base));
+        return type_size(enu.base);
     } else if(tpe.base is *record){
         const rec = tpe.base as *record;
         let length = 0z;
@@ -157,7 +157,7 @@ fn type_alignment(tpe: lichen_t) size = {
     case primitive =>
         return type_size(tpe);
     case let enu: *enum_t =>
-        return type_alignment(quick_t(enu.base));
+        return type_alignment(enu.base);
     case let rec: *record =>
         let max_size = 0z;
         for(let field .. rec.fields){
@@ -415,7 +415,28 @@ fn gen_qbe_ir(ctxt: *context) memio::stream = {
             emit_type_lit(ctxt, &ir, t.self);
             fmt::fprintln(&ir, "}")!;
         case let enu: *enum_t =>
-            todo("enum types");
+            // do not emmit private enums
+            if(!t.pub) continue;
+
+            static let unamed_cound: size = 0;
+            const mod = strings::rcut(
+                strings::rcut(enu.origin, "/").1, ".").0;
+            const name =
+                if(enu.name is namespace){
+                    yield fmt::asprintf("${}.{}",
+                        mod, (enu.name as namespace).name)!;
+                } else {
+                    defer unamed_cound += 1;
+                    yield fmt::asprintf("${}.unamed.{}",
+                        mod, unamed_cound)!;
+                };
+            for(let variant .. enu.variants){
+                fmt::fprintfln(&ir, "section \".rodata\"")!;
+                fmt::fprintfln(&ir,
+                    "data {}.{} = align 8 {{ {} {} }}", name,
+                    variant.0.name, qbe_t(ctxt, enu.base),
+                    emit_constant(ctxt, variant.1, enu.base))!;
+            };
         };
     };
     gen_module(ctxt, &ir);
@@ -454,7 +475,7 @@ fn emit_type_lit(ctxt: *context, buff: *memio::stream, tpe: lichen_t) void = {
             fmt::fprintf(buff, "{} {}, ",
                 qbe_t(ctxt, tpe), arr.length as size)!;
         };
-    case => todo("enums emitting");
+    case => assert(false, "unreachable");
     };
 };
 
@@ -479,7 +500,7 @@ fn gen_module(ctxt: *context, buff: *memio::stream) void = {
             // gen value
             const val_meta = meta.val as *const_meta;
             const val = fmt::asprintf("{} {}", qbe_t(ctxt, meta.var.nm.tpe),
-                emit_constant(ctxt, buff, val_meta, meta.var.nm.tpe))!;
+                emit_constant(ctxt, val_meta, meta.var.nm.tpe))!;
             defer free(val);
             // emit constant
             fmt::fprintfln(buff, "data {} = align 16 {{ {} }}", name, val)!;
@@ -827,7 +848,7 @@ fn gen_stt(
                 for(let c = 0z; c < len(vals); c += 1){
                     const const_val = vals[c];
                     // emit current constant
-                    const val = emit_constant(ctxt, buff,
+                    const val = emit_constant(ctxt,
                         const_val, swtch.check.tpe);
                     defer free(val);
                     if(!comp_type(swtch.check.tpe, primitive::STR)){
@@ -878,10 +899,10 @@ fn gen_stt(
             } else {
                 // emit ranges
                 const start_range = emit_constant(ctxt,
-                    buff, vals[0], swtch.check.tpe);
+                    vals[0], swtch.check.tpe);
                 defer free(start_range);
                 const end_range = emit_constant(ctxt,
-                    buff, vals[1], swtch.check.tpe);
+                    vals[1], swtch.check.tpe);
                 defer free(end_range);
                 // fetch qbe instructions
                 const (start_inst, free_start) =
@@ -1363,7 +1384,7 @@ fn fetch_iterator(
         gen_alloc(ctxt, buff, anon, all, defer_id);
         return anon;
     case let lit: *const_meta =>
-        const val = emit_constant(ctxt, buff, lit, iter_t);
+        const val = emit_constant(ctxt, lit, iter_t);
         const anon = fmt::asprintf("%anon.arr.{}", pos)!;
         fmt::fprintfln(buff, "\t{} =l copy {}", anon, val)!;
         return anon;
@@ -1401,7 +1422,7 @@ fn gen_decl(
         // extract const
         const const_val = root as *const_meta;
         // emit
-        const val = emit_constant(ctxt, buff, const_val, decl.var.nm.tpe);
+        const val = emit_constant(ctxt, const_val, decl.var.nm.tpe);
         defer free(val);
         // assert if a copy is needed
         if(decl.var.nm.mut && strings::hasprefix(val, "$str.")){
@@ -1776,7 +1797,7 @@ fn assign_memb(
                 fmt::fprintfln(buff, "\t{0} =l loadl {0}", dest)!;
                 return "";
             } else {
-                return emit_constant(ctxt, buff, const_val, memb.tpe);
+                return emit_constant(ctxt, const_val, memb.tpe);
             };
         case let arr_lit: *array_lit_meta =>
             gen_arr_lit(ctxt, buff, dest, exp_t, arr_lit, defer_id);
@@ -2671,7 +2692,7 @@ fn gen_index(
         match(this.index){
         case let c: *const_meta =>
             // constant index
-            const val = emit_constant(ctxt, buff, c, quick_t(primitive::U64));
+            const val = emit_constant(ctxt, c, quick_t(primitive::U64));
             yield (val, true, val == "0");
         case let exp: *expr_meta =>
             // dynamic index
@@ -3332,7 +3353,6 @@ fn fix_nm(ctxt: *context, buff: *memio::stream, nm: namespace) str = {
 // returns the emitted code for a constant value
 fn emit_constant(
     ctxt: *context, 
-    buff: *memio::stream, 
     c: *const_meta,
     hint: lichen_t,
 ) str = {
@@ -3376,9 +3396,7 @@ fn emit_constant(
     case let txt: str =>
         if(c.pre is operator){
             assert(c.pre as operator == operator::LENGTH);
-            const idx = push_lit(ctxt, txt);
-            fmt::fprintfln(buff, "\t%str.{0}.len =l loadl $str.{0}", idx)!;
-            return fmt::asprintf("%str.{}.len", idx)!;
+            return fmt::asprint(true_size(txt))!;
         } else {
             return fmt::asprintf("$str.{}", push_lit(ctxt, txt))!;
         };
@@ -3425,7 +3443,7 @@ fn zeroed_value(ctxt: *context, buff: *memio::stream, tpe: lichen_t) str = {
         return name;
     } else if(tpe.base is *enum_t){
         const e = tpe.base as *enum_t;
-        return fix_nm(ctxt, buff, e.variant[0]);
+        return fix_nm(ctxt, buff, e.variants[0].0);
     } else {
         const rec = tpe.base as *record;
         const tpe_sz = type_size(tpe);

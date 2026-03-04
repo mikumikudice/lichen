@@ -1,0 +1,11 @@
+// parser and compiler test for enums
+
+type foo = enum u32 {
+    FIZZ, BUZZ, BLAZZ,
+};
+
+fn main() void = {
+    let x = foo.FIZZ;
+    test x == 0;
+    test foo.BUZZ == 1;
+};

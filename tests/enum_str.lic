@@ -1,0 +1,17 @@
+// parser and compiler test for enums
+// with non-numerical variants
+
+type weekday = enum str {
+    MON = "monday",
+    TUE = "tuesday",
+    WED = "wednesday",
+    THU = "thursday",
+    FRI = "friday",
+    SAT = "saturday",
+    SUN = "sunday",
+};
+
+fn main() void = {
+    let today = weekday.TUE;
+    test today str == "tuesday";
+};

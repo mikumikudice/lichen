@@ -4,13 +4,15 @@
 rt mod = use "std/rt.lim";
 
 // [fs::open] file flags
-pub READONLY  u32 = 0o0000;
-pub WRITEONLY u32 = 0o0001;
-pub READWRITE u32 = 0o0002;
-pub CREATE    u32 = 0o0100;
-pub EXEC      u32 = 0o0200;
-pub TRUNCATE  u32 = 0o1000;
-pub APPEND    u32 = 0o2000;
+pub type flags = enum u32 {
+    READONLY  = 0o0000,
+    WRITEONLY = 0o0001,
+    READWRITE = 0o0002,
+    CREATE    = 0o0100,
+    EXEC      = 0o0200,
+    TRUNCATE  = 0o1000,
+    APPEND    = 0o2000,
+};
 
 fs efx;
 fs_read efx;

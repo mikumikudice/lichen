@@ -122,7 +122,18 @@ fn strtype(tpe: lichen_t, mode: strtype_mode = strtype_mode::NORMAL) str = {
         } else {
             return strtoken(prim, mode != strtype_mode::NORMAL);
         };
-    case let enu: *enum_t => todo("enumerators");
+    case let enu: *enum_t =>
+        const name =
+            if(enu.name is namespace){
+                yield (enu.name as namespace).name;
+            } else {
+                yield "{unamed enumerator}";
+            };
+        if(tpe.partial){
+            return fmt::asprintf("partial enumerator !{}", name)!;
+        } else {
+            return fmt::asprintf("enumerator {}", name)!;
+        };
     case let rec: *record =>
         if(tpe.partial){
             if(mode == strtype_mode::DEF){
@@ -1224,19 +1235,19 @@ fn validate_const(
 ) (void | ERROR) = {
     match(val.val){
     case size =>
-        assert_hint(ctxt, val, hint, primitive::NUMBER)?;
+        assert_hint(ctxt, val, primitive::NUMBER, hint)?;
     case str =>
-        assert_hint(ctxt, val, hint, primitive::STR)?;
+        assert_hint(ctxt, val, primitive::STR, hint)?;
     case f64 =>
-        assert_hint(ctxt, val, hint, primitive::RATIO)?;
+        assert_hint(ctxt, val, primitive::RATIO, hint)?;
     case let kwd: keyword =>
         switch(kwd){
         case keyword::TRUE, keyword::FALSE =>
-            assert_hint(ctxt, val, hint, primitive::BOOL)?;
+            assert_hint(ctxt, val, primitive::BOOL, hint)?;
         case keyword::ERROR, keyword::NIL =>
             let as_err = hint;
             as_err.partial = true;
-            assert_hint(ctxt, val, hint, as_err)?;
+            assert_hint(ctxt, val, as_err, hint)?;
         case =>
             move_ptr(ctxt, val);
             const arg = strtoken(kwd);
@@ -4554,7 +4565,9 @@ fn eval_member(
                 end = _end;
                 memb.val = lit;
             case let enu: *enum_t =>
-                todo("enum field access");
+                const (val, _end) = eval_enum_var(ctxt, end, enu)?;
+                end = _end;
+                memb.val = val;
             case =>
                 move_ptr(ctxt, tk);
                 const arg = strtype(tpe.self);
@@ -4675,7 +4688,9 @@ fn eval_member(
                             end = _end;
                             memb.val = lit;
                         case let enu: *enum_t =>
-                            todo("enum field access");
+                            const (val, _end) = eval_enum_var(ctxt, end - 1, enu)?;
+                            end = _end;
+                            memb.val = val;
                         case =>
                             move_ptr(ctxt, tk);
                             const arg = strtype(tpe.self);
@@ -5526,6 +5541,42 @@ fn eval_array_lit(
     })!;
     append(allocd_nodes, out)!;
     return (out, end);
+};
+
+fn eval_enum_var(
+    ctxt: *context,
+    at: size,
+    self: *enum_t,
+) ((member_t, size) | ERROR) = {
+    let end = pop_assert(ctxt, at + 1, symbol::DOT,
+        "expected %benumerator variant access%r, but got %y{}")?;
+    let tk = next_tk(ctxt, end,
+        "expected %benum variant name%r, but got %y{}")?;
+    if(tk.val is namespace){
+        const name = tk.val as namespace;
+        let found = false;
+        for(let variant .. self.variants){
+            if(comp_tk(name, variant.0)){
+                return (variant.1, end + 1);
+            };
+        };
+        move_ptr(ctxt, ctxt.tokens[end]);
+        const enum_name =
+            if(self.name is namespace){
+                yield (self.name as namespace).name;
+            } else {
+                yield "unamed enumerator";
+            };
+        return error(ctxt,
+            "no variant named %y{}%r was defined on %y{}",
+            name.name, enum_name);
+    } else {
+        move_ptr(ctxt, ctxt.tokens[end]);
+        const arg = strtoken(tk.val);
+        defer free(arg);
+        return error(ctxt,
+            "expected %benum variant name%r, but got %y{}", arg);
+    };
 };
 
 // evaluates an array indexing or slicing expression
@@ -6686,10 +6737,116 @@ fn eval_type(
                 base = alloc(rec)!, // TODO: save this for cleanup
             };
             return (out, end);
-        case keyword::ENUM => todo("enums");
+        case keyword::ENUM =>
+            tk = next_tk(ctxt, end,
+                "expected %benumerator base type%r, but got %y{}")?;
+            if(!(tk.val is primitive)){
+                move_ptr(ctxt, ctxt.tokens[end]);
+                const arg = strtoken(tk.val);
+                defer free(arg);
+                return error(ctxt,
+                    "expected %benumerator base type%r, but got %y{}", arg);
+            };
+            // enum base type
+            const tpe = wrap_primitive(tk.val as primitive);
+            // pop variant list openning curly braces
+            end = pop_assert(ctxt, end + 1, symbol::LFT_CURLY,
+                "expected %benumerator variants%r, but got %y{}")?;
+            // enumerator variants list
+            let variants: [](namespace, *const_meta) = [];
+            tk = next_tk(ctxt, end,
+                "expected %bnext enumerator variant%r, but got %y{}")?;
+            // grab all variants
+            for(!comp_tk(tk.val, symbol::RGT_CURLY)){
+                if(!(tk.val is namespace)){
+                    move_ptr(ctxt, ctxt.tokens[end]);
+                    const arg = strtoken(tk.val);
+                    defer free(arg);
+                    return error(ctxt,
+                        "expected %bnext enumerator variant%r, but got %y{}", arg);
+                };
+                end += 1;
+                const var_name = tk.val as namespace;
+                tk = next_tk(ctxt, end,
+                    "expected %bvariant value assignment%r, %bcomma%r or %bend of variants%r but got %y{}")?;
+                // direct assignment
+                if(comp_tk(tk.val, operator::ASG)){
+                    const (val, _end) = eval_constant(ctxt, end + 1, tpe)?;
+                    end = _end;
+                    append(variants, (var_name, val))!;
+                // implicit progression
+                } else if(comp_tk(tk.val, symbol::COMMA) ||
+                    comp_tk(tk.val, symbol::RGT_CURLY)){
+                    if(is_subtype(tpe, primitive::NUMBER) &&
+                        !is_subtype(tpe, primitive::RATIO)){
+                        if(len(variants) == 0){
+                            const val = alloc(const_meta {
+                                pre = void,
+                                val = 0: size,
+                            })!;
+                            append(variants, (var_name, val))!;
+                        } else {
+                            const last = variants[len(variants) - 1].1;
+                            const new = alloc(*last)!;
+                            if(last.pre is void ||
+                                (last.pre as operator) == operator::PLS){
+                                new.val = new.val as size + 1;
+                                yield new;
+                            } else {
+                                switch(last.pre as operator){
+                                case operator::MIN =>
+                                    // do not underflow the unsigned value
+                                    if(last.val as size == 0){
+                                        new.val = 1: size;
+                                    } else {
+                                        new.val = last.val as size - 1;
+                                    };
+                                case operator::NOT =>
+                                    new.val = ~(last.val as size) + 1;
+                                case => assert(false, "unreachable");
+                                };
+                            };
+                            append(variants, (var_name, new))!;
+                        };
+                    } else {
+                        move_ptr(ctxt, ctxt.tokens[end]);
+                        return error(ctxt,
+                            "cannot deduce next variant value for this type",
+                            "only integers can use implicit value progression");
+                    };
+                // invalid
+                } else {
+                    move_ptr(ctxt, ctxt.tokens[end]);
+                    const arg = strtoken(tk.val);
+                    defer free(arg);
+                    return error(ctxt,
+                        "expected %bvariant value assignment%r, %bcomma%r or %bend of variants%r but got %y{}", arg);
+                };
+                end += 1;
+                tk = next_tk(ctxt, end,
+                    "expected %bnext enumerator variant%r or %bend of variant list%r, but got %y{}")?;
+            };
+            if(len(variants) == 0){
+                move_ptr(ctxt, ctxt.tokens[end]);
+                return error(ctxt, "enumerator has %yzero variants");
+            };
+            // pop variant list openning curly braces
+            end = pop_assert(ctxt, end, symbol::RGT_CURLY,
+                "expected %bend of variants list%r, but got %y{}")?;
+            const enu = enum_t {
+                name = named,
+                base = tpe,
+                origin = ctxt.file,
+                variants = variants,
+            };
+            const out = lichen_t {
+                partial = partial,
+                base = alloc(enu)!, // TODO: save this for cleanup
+            };
+            return (out, end);
         case keyword::FN =>
             end = pop_assert(ctxt, end, symbol::LFT_PAR,
-                "expected function type %bparameter list%r, but gpt %y{}")?;
+                "expected function type %bparameter list%r, but got %y{}")?;
 
             tk = next_tk(ctxt, end,
                 "expected %bparameter type%r or %bend of parameter list%r, but got %y{}")?;

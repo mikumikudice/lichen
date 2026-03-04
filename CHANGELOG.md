@@ -1,19 +1,17 @@
 new features
-- none
+- enumerators
 
 bugfixes
-- none
+- order of reporting for type mismatch of constants
 
 correct behavior assert
 - none
 
 others
-- improvements in the assertion messaging and test block message bubbling systems
-- fixed mistaken test case "inherit_errmsg" where test block was not propagating the error
-- updated all allocation error reporting messages to be "allocation failed" instead of "assertion failed"
+- small typos in error messages fixed
 
 breaking changes
 - none
 
 standard library changes
-- none
+- updated fs module for the use of enums for flags
