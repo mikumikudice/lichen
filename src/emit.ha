@@ -433,7 +433,7 @@ fn gen_qbe_ir(ctxt: *context) memio::stream = {
             for(let variant .. enu.variants){
                 fmt::fprintfln(&ir, "section \".rodata\"")!;
                 fmt::fprintfln(&ir,
-                    "data {}.{} = align 8 {{ {} {} }}", name,
+                    "export data {}.{} = align 8 {{ {} {} }}", name,
                     variant.0.name, qbe_t(ctxt, enu.base),
                     emit_constant(ctxt, variant.1, enu.base))!;
             };

@@ -20,10 +20,10 @@ fs_read efx;
 // opens a file and returns a file handle
 // returns error any error occurs and sets errno to the
 // failure reason exit code
-pub fn open(filename str, flags u32) !u32 = rt & fs_read {
+pub fn open(filename str, f flags) !u32 = rt & fs_read {
     new local | #filename + 16 {
         let mut dup = new ? filename @ local;
-        let handle = rt::open(dup cstr, flags, 0o7000);
+        let handle = rt::open(dup cstr, f u32, 0o7000);
         test ? handle > 0, "failed to open file";
         return handle u32;
     }?;

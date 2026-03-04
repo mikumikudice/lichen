@@ -11,4 +11,5 @@ pub fn main() void = fs & io {
     defer fs::close(file)!;
     // write to it
     io::fprintln(file, "mornin' sailor!")!;
+    io::println("test ok")!;
 };

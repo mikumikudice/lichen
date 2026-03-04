@@ -2,9 +2,12 @@
 
 os mod = use "std/os.lim";
 
-// FFI for printing C strings
-fn puts(mut data cstr) u32 = C use "puts";
+C efx;
+ctext efx = mut cstr;
 
-fn main() void = C & os {
+// FFI for printing C strings
+fn puts(mut data cstr) u32 = C & ctext use "puts";
+
+fn main() void = C & ctext & os {
     puts(os::args(1)? or ("none" cstr));
 };

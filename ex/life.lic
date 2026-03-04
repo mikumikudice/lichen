@@ -3,6 +3,9 @@
 
 io mod = use "std/io.lim";
 
+C efx;
+loop efx = while;
+
 // c::std::rand
 fn rand() u32 = C use "rand";
 // c::std::srand
@@ -12,7 +15,7 @@ fn sleep(t u32) u32 = C use "usleep";
 // c::time::time
 fn time(dummy u64) u32 = C use "time";
 
-pub fn main() void = C & io & conv {
+pub fn main() void = C & io & loop {
     let empty = [16; 0...] u8;
     let zeroed = [16; empty...];
     let mut grid = [16; empty...];

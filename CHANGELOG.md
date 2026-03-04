@@ -2,13 +2,14 @@ new features
 - none
 
 bugfixes
-- fixed validation of enums subtyping and casting
+- fixed missing updates in fs module where fs::flags was expected
 
 correct behavior assert
-- none
+- make public enum variants emitted in the IR public at executable level (exported)
 
 others
 - updated tests accordingly
+- fixed broken and outdated code examples
 
 breaking changes
 - none
