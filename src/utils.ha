@@ -159,8 +159,7 @@ fn error_hint(
     ctxt: *context,
     hint: str, 
     fmt: str,
-    args:
-    fmt::field...
+    args: fmt::field...
 ) ERROR = {
     const buff = memio::dynamic();
     fmt::fprintf(&buff, "%R{}:%r ", gen_pos(ctxt))!;

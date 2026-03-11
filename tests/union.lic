@@ -1,0 +1,18 @@
+// parser and compiler test for tagged
+// union types and its behaviour
+
+type iora = union {
+    as_str str;
+    as_int i64;
+};
+
+fn main() void = {
+    let mut x iora = 4;
+    x.as_int = 5;
+    test x.as_int! == 5;
+
+    x.as_str = "hi!";
+    test x.as_str! == "hi!";
+
+    test (x.as_int? or 1) == 1;
+};

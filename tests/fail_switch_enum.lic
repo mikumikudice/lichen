@@ -1,0 +1,15 @@
+// parser test for already exhausted
+// switch case on enum type
+
+type foo = enum u32 {
+    a, b, c, d
+};
+
+fn main() void = {
+    switch x = foo.a; x;
+    | foo.a do unreachable;
+    | foo.b do unreachable;
+    | foo.c do unreachable;
+    | foo.d do unreachable;
+    | else  do unreachable;
+};

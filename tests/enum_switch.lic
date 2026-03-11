@@ -1,0 +1,16 @@
+// parser test for interactions between
+// the switch statement and enum types
+
+io mod = use "std/io.lim";
+
+type foo = enum u32 {
+    a, b, c, d
+};
+
+fn main() void = io {
+    switch x = foo.a; x;
+    | foo.a do io::println("test ok")!;
+    | foo.b do io::println("test fail")!;
+    | foo.c do io::println("test fail")!;
+    | foo.d do io::println("test fail")!;
+};

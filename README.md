@@ -94,6 +94,7 @@ roadmap:
             - [undone] for functions
             - [undone] for record fields
         - [done] record field assignment exhaustiveness
+        - [done] enumerators
     - [partial] literals
         - [done] strings and runes
         - [done] integer numbers
@@ -109,8 +110,8 @@ roadmap:
             - [done] spreading
         - [partial] record literals
             - [undone] autofill
-    - [partial] declarations
-        - [partial] functions
+    - [done] declarations
+        - [done] functions
             - [done] declaration
             - [done] effect tags
             - [done] effect tag matching assertion
@@ -135,6 +136,12 @@ roadmap:
             - [partial] declaration
             - [undone] creation
             - [undone] unpacking
+        - [done] tagged unions
+            - [done] declaration
+            - [done] variant assignment
+        - [done] enums
+            - [done] declaration
+            - [done] variant access
     - [done] expressions
         - [done] arithmetic operators
         - [done] boolean operators
@@ -163,10 +170,12 @@ roadmap:
             - [done] constant range
             - [done] else case
             - [done] exhaustiveness
+            - [done] compatibility with enums
         - [done] for-loop
             - [done] base functionality
             - [done] local variables
             - [done] optional index
+            - [done] for-enum-variants
         - [done] while-loop
             - [done] base functionality
             - [done] local variables
@@ -199,7 +208,7 @@ roadmap:
     - [partial] io
     - [partial] os
         - [undone] exec
-    - [partial] vect
+    - [undone] vec
     - [partial] str
         - [done] mkr
         - [partial] conv

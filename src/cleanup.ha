@@ -46,6 +46,10 @@ fn free_nodes() void = {
             free(meta);
         case let meta: *field_meta =>
             free(meta);
+        case let meta: *union_read =>
+            free(meta);
+        case let meta: *union_write =>
+            free(meta);
         case let meta: *decl_meta =>
             free(meta);
         case let meta: *assign_meta =>
@@ -94,9 +98,12 @@ fn free_nodes() void = {
         case let meta: *switch_meta =>
             free(meta);
         case let meta: *type_meta =>
-            if(meta.self.base is *record){
-                const rec = meta.self.base as *record;
+            match(meta.self.base){
+            case let rec: *record =>
                 free(rec.export_name);
+            case let uni: *union_t =>
+                free(uni.export_name);
+            case => void;
             };
             free(meta);
         case let meta: *defer_meta =>

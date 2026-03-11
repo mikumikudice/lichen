@@ -55,7 +55,9 @@ const prim_value = [
 
 static assert(len(prim_value) == primitive::ANY + 1);
 
-type base_type = (primitive | *enum_t | *record | *tuple | *array | *fun_ptr); 
+type base_type = (primitive | *enum_t | *union_t | *record |
+    *tuple | *array | *fun_ptr);
+
 type lichen_t = struct {
     partial: bool,
     base: base_type,
@@ -66,6 +68,12 @@ type enum_t = struct {
     base: lichen_t,
     origin: str,
     variants: [](namespace, *const_meta),
+};
+
+type union_t = struct {
+    name: (namespace | void),
+    export_name: str,
+    variants: [](namespace, lichen_t),
 };
 
 type record = struct {
@@ -149,8 +157,8 @@ type symbol = enum u8 {
 static assert(len(sym_value) == symbol::SYMB_END + 1);
 
 type eof = void;
-type tk_val =
-    (size | f64 | str | namespace | keyword | primitive | operator | symbol | eof);
+type tk_val = (size | f64 | str | namespace | keyword |
+    primitive | operator | symbol | eof);
 
 type token = struct {
     pos: size,
@@ -188,22 +196,24 @@ type scope = struct {
     upper: nullable *scope,
 };
 
-type chain_exp_t = (*field_meta | *indexing_meta | *slicing_meta | *funcall_meta);
+type chain_exp_t =
+    (*field_meta | *indexing_meta | *slicing_meta |
+    *union_read | *union_write | *funcall_meta);
 
 type member_t = (*const_meta | *array_lit_meta | *record_lit_meta |
-    *field_meta | *indexing_meta | *slicing_meta | *var_meta | *funcall_meta |
-    *fn_ptr_meta | *alloc_meta | *concat_meta);
+    *field_meta | *indexing_meta | *slicing_meta | *var_meta | *union_read |
+    *union_write | *funcall_meta | *fn_ptr_meta | *alloc_meta | *concat_meta);
 
 type hand_t = (*hand_meta | *member_meta | *ternary_meta | *expr_meta);
 
 type path_meta = (*hand_meta | *member_meta | *ternary_meta | *expr_meta |
     *const_meta | *array_lit_meta | *record_lit_meta | *field_meta |
-    *indexing_meta | *slicing_meta | *var_meta | *funcall_meta | *fn_ptr_meta |
-    *alloc_meta | *concat_meta | *decl_meta | *assign_meta | *arena_meta |
-    *fun_meta | *scope_meta | *expr_meta | *branch_meta | *return_meta |
-    *test_meta | *for_meta | *while_meta | *switch_meta | *type_meta |
-    *module_meta | * effect_t | loop_break | loop_next | *defer_meta |
-    unreachable);
+    *indexing_meta | *slicing_meta | *var_meta | *union_read | *union_write |
+    *funcall_meta | *fn_ptr_meta | *alloc_meta | *concat_meta | *decl_meta |
+    *assign_meta | *arena_meta | *fun_meta | *scope_meta | *expr_meta |
+    *branch_meta | *return_meta | *test_meta | *for_meta | *while_meta |
+    *switch_meta | *type_meta | *module_meta | * effect_t | loop_break |
+    loop_next | *defer_meta | unreachable);
 
 type const_meta = struct {
     pre: (void | operator),
@@ -213,16 +223,16 @@ type const_meta = struct {
 type array_lit_meta = struct {
     pos: size,
     tpe: lichen_t,
-    items: []*expr_meta,
+    items: [](*const_meta | *expr_meta),
     length: (void | *expr_meta),
     spreads_at: (void | size),
     has_allocs: bool,
 };
 
 type indexing_meta = struct {
+    base: nullable *member_meta,
     before: (void | chain_exp_t),
     index: (*const_meta | *expr_meta),
-    base: nullable *member_meta,
     pos: size,
     tpe: lichen_t,
     prop: (void | propagation),
@@ -230,10 +240,10 @@ type indexing_meta = struct {
 };
 
 type slicing_meta = struct {
+    base: nullable *member_meta,
     before: (void | chain_exp_t),
     begin: (*const_meta | *expr_meta),
     end: (*const_meta | *expr_meta),
-    base: nullable *member_meta,
     pos: size,
     tpe: lichen_t,
     safe: bool,
@@ -247,13 +257,33 @@ type record_lit_meta = struct {
 };
 
 type field_meta = struct {
+    base: nullable *member_meta,
     before: (void | chain_exp_t),
     field: *decl_meta,
-    base: nullable *member_meta,
     mut: bool,
     pos: size,
     tpe: lichen_t,
     prop: (void | propagation),
+    from_tpe: lichen_t,
+};
+
+type union_read = struct {
+    base: nullable *member_meta,
+    before: (void | chain_exp_t),
+    tpe: lichen_t,
+    variant: size,
+    pos: size,
+    prop: (void | propagation),
+    from_tpe: lichen_t,
+};
+
+type union_write = struct {
+    base: nullable *member_meta,
+    before: (void | chain_exp_t),
+    tpe: lichen_t,
+    variant: size,
+    pos: size,
+    val: *expr_meta,
     from_tpe: lichen_t,
 };
 
@@ -344,7 +374,8 @@ type scope_meta = struct {
     rets: bool,
 };
 
-type propagation = (operator, (void | path_meta), (size | void), *memio::stream);
+type propagation =
+    (operator, (void | path_meta), (size | void), *memio::stream);
 
 type expr_meta = struct {
     pos: size,
@@ -436,7 +467,8 @@ type defer_meta = struct {
     pos: size,
 };
 
-type switch_case = (([]*const_meta | void), (operator | void), path_meta);
+type switch_case =
+    (([]*const_meta | void), (operator | void), path_meta, size);
 
 type switch_meta = struct {
     pos: size,

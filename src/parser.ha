@@ -111,13 +111,19 @@ type strtype_mode = enum { NORMAL, SKIP, DEF };
 fn strtype(tpe: lichen_t, mode: strtype_mode = strtype_mode::NORMAL) str = {
     match(tpe.base){
     case let prim: primitive =>
-        if(tpe.partial){
+        if(prim == primitive::STR && mode == strtype_mode::DEF){
+            if(tpe.partial){
+                return strings::dup(":str.t.opt")!;
+            } else {
+                return strings::dup(":str.t")!;
+            };
+        } else if(tpe.partial){
             const temp = strtoken(prim, mode != strtype_mode::NORMAL);
             defer free(temp);
             if(mode == strtype_mode::DEF){
                 return fmt::asprintf(":{}.opt", temp)!;
             } else {
-                return fmt::asprintf("partial !{}", temp)!;
+                return fmt::asprintf("partial {}", temp)!;
             };
         } else {
             return strtoken(prim, mode != strtype_mode::NORMAL);
@@ -130,16 +136,43 @@ fn strtype(tpe: lichen_t, mode: strtype_mode = strtype_mode::NORMAL) str = {
                 yield "{unamed enumerator}";
             };
         if(tpe.partial){
-            return fmt::asprintf("partial enumerator !{}", name)!;
+            return fmt::asprintf("partial enumerator {}", name)!;
         } else {
             return fmt::asprintf("enumerator {}", name)!;
+        };
+    case let uni: *union_t =>
+        const name =
+            if(uni.name is namespace){
+                yield (uni.name as namespace).name;
+            } else {
+                yield "{unamed union}";
+            };
+        const buff = &memio::dynamic();
+        defer io::close(buff)!;
+        let begin = true;
+        for(let variant .. uni.variants){
+            const tpe = strtype(variant.1, strtype_mode::SKIP);
+            defer free(tpe);
+            if(begin){
+                fmt::fprint(buff, tpe)!;
+                begin = false;
+            } else {
+                fmt::fprintf(buff, " | {}", tpe)!;
+            };
+        };
+        const variants = memio::string(buff)!;
+        if(tpe.partial){
+            return fmt::asprintf("partial union {} {{ {} }}",
+                name, variants)!;
+        } else {
+            return fmt::asprintf("union {} {{ {} }}", name, variants)!;
         };
     case let rec: *record =>
         if(tpe.partial){
             if(mode == strtype_mode::DEF){
                 return fmt::asprintf(":{}.opt", rec.name.name)!;
             } else {
-                return fmt::asprintf("partial record type !{}", rec.name.name)!;
+                return fmt::asprintf("partial record type {}", rec.name.name)!;
             };
         } else if(mode == strtype_mode::DEF){
             return fmt::asprintf("{}", rec.name.name)!;
@@ -366,7 +399,7 @@ fn get_def(
     ctxt: *context,
     nm: namespace,
     scp: *scope,
-) ((*fun_meta | *decl_meta | *type_meta| *module_meta | *effect_t) | void) = {
+) ((*fun_meta | *decl_meta | *type_meta | *module_meta | *effect_t) | void) = {
     for(let d = len(scp.defs); d > 0; d -= 1){
         const meta = scp.defs[d - 1];
         match(meta){
@@ -442,7 +475,10 @@ fn compile(filename: str,
             filename, fs::strerror(e));
     };
     defer io::close(file)!;
-
+    // check if given file is valid
+    if(!fs::isfile(os::fstat(file)!.mode)){
+        return fail("given file is invalid");
+    };
     const src: []u8 = [];
     // load every line until EOF
     for(true) match(bufio::read_line(file)!){
@@ -971,7 +1007,9 @@ fn compile(filename: str,
             match(main){
             case let decl: *decl_meta => yield decl.var.pos;
             case let module: *module_meta => yield module.pos;
-            case => fmt::fatal("unreachable");
+            case =>
+                assert(false, "unreachable");
+                fmt::fatal("");
             };
         move_ptr(ctxt, ctxt.tokens[pos]);
         return error(ctxt,
@@ -1220,6 +1258,19 @@ fn eval_constant(
             "expected %bconstant value%r, but got %y{}")?;
         end += 1;
         meta.val = val.val;
+    // check if value is an enum variant
+    } else if(val.val is namespace){
+        match(get_def(ctxt, val.val as namespace, ctxt.scp)){
+        case let tpe: *type_meta =>
+            if(tpe.self.base is *enum_t){
+                free(meta);
+                const enu = tpe.self.base as *enum_t;
+                const (var, _end) = eval_enum_var(ctxt, end - 1, enu)?;
+                assert_hint(ctxt, val, tpe.self, hint)?;
+                return (var, _end);
+            };
+        case => void;
+        };
     };
     // assert if it's valid
     validate_const(ctxt, val, hint)?;
@@ -2243,7 +2294,11 @@ fn fetch_ret_state(
         } else {
             last_tpe = exp.tpe;
         };
-    case let asg: *assign_meta =>
+    case *assign_meta =>
+        last_tpe = quick_t(primitive::UNIT);
+    case let uni: *union_read =>
+        last_tpe = uni.tpe;
+    case *union_write =>
         last_tpe = quick_t(primitive::UNIT);
     case let branch: *branch_meta =>
         if(branch.rets){
@@ -2939,8 +2994,42 @@ fn eval_var_def(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
         };
     };
     end = _end;
-    var.nm.tpe = val.tpe;
     var.nm.mut = mut;
+    // only update var type if none was given
+    if(untyped(var.nm.tpe)){
+        var.nm.tpe = val.tpe;
+    // union variant assignment
+    } else if(var.nm.tpe.base is *union_t){
+        const uni = var.nm.tpe.base as *union_t;
+        const matches = 0z;
+        for(let variant .. uni.variants){
+            // a match for the untyped value
+            if(untyped(val.tpe) && is_subtype(val.tpe, variant.1)){
+                val.tpe = variant.1;
+                matches += 1;
+            } else if(comp_type(val.tpe, variant.1)){
+                matches = 1;
+                // break once we do not expect more matches
+                break;
+            };
+        };
+        move_ptr(ctxt, ctxt.tokens[val.pos]);
+        if(matches > 1){
+            const tpe = strtype(var.nm.tpe);
+            defer free(tpe);
+            return error(ctxt,
+                "untyped value %bmatches multiple variants%r of the union %y{}",
+                tpe);
+        } else if(matches == 0){
+            const tpe1 = strtype(var.nm.tpe);
+            defer free(tpe1);
+            const tpe2 = strtype(val.tpe);
+            defer free(tpe2);
+            return error(ctxt,
+                "the type %y{}%r has no variants compatible with the value of type %y{}",
+                tpe1, tpe2);
+        };
+    };
     // assert for typing
     if(untyped(var.nm.tpe)){
         move_ptr(ctxt, ctxt.tokens[eq]);
@@ -3490,7 +3579,8 @@ fn process_iter(
                 case let slc: *slicing_meta =>
                     yield slc.base as *member_meta;
                 case void =>
-                    fmt::fatal("unreachable");
+                    assert(false, "unreachable");
+                    fmt::fatal("");
                 };
             } else {
                 yield index.base as *member_meta;
@@ -3523,7 +3613,8 @@ fn process_iter(
                 case let slc: *slicing_meta =>
                     yield slc.base as *member_meta;
                 case void =>
-                    fmt::fatal("unreachable");
+                    assert(false, "unreachable");
+                    fmt::fatal("");
                 };
             } else {
                 yield slice.base as *member_meta;
@@ -3556,7 +3647,8 @@ fn process_iter(
                 case let slc: *slicing_meta =>
                     yield slc.base as *member_meta;
                 case void =>
-                    fmt::fatal("unreachable");
+                    assert(false, "unreachable");
+                    fmt::fatal("");
                 };
             } else {
                 yield field.base as *member_meta;
@@ -3602,6 +3694,7 @@ fn eval_switch(ctxt: *context, at: size) ((*switch_meta, size) | ERROR) = {
     let end = at + 1;
     let tk = next_tk(ctxt, end,
         "expected %bswitch item%r or %blocal variable%r, but got %y{}")?;
+    // pop mut tag for local variable
     const mut =
         if(comp_tk(tk.val, keyword::MUT)){
             end += 1;
@@ -3645,6 +3738,7 @@ fn eval_switch(ctxt: *context, at: size) ((*switch_meta, size) | ERROR) = {
     // TODO: assert for duplicate cases within ranges
     for(comp_tk(tk.val, operator::BOR)){
         end += 1;
+        const start = end;
         const consts: []*const_meta = [];
         let op: (operator | void) = void;
         tk = next_tk(ctxt, end,
@@ -3681,7 +3775,7 @@ fn eval_switch(ctxt: *context, at: size) ((*switch_meta, size) | ERROR) = {
                     rets = true;
                 };
                 end = _end;
-                append(cases, (void, void, stt): switch_case)!;
+                append(cases, (void, void, stt, start): switch_case)!;
             // scope
             } else if(comp_tk(tk.val, symbol::LFT_CURLY)){
                 const (body, _end) = eval_scope(ctxt, end)?;
@@ -3694,7 +3788,7 @@ fn eval_switch(ctxt: *context, at: size) ((*switch_meta, size) | ERROR) = {
                     tpe = body.tpe;
                     rets = true;
                 };
-                append(cases, (void, void, body): switch_case)!;
+                append(cases, (void, void, body, start): switch_case)!;
             } else {
                 move_ptr(ctxt, tk);
                 const arg = strtoken(tk.val);
@@ -3731,8 +3825,12 @@ fn eval_switch(ctxt: *context, at: size) ((*switch_meta, size) | ERROR) = {
             if(!is_subtype(check.tpe, primitive::I64) &&
                 !is_subtype(check.tpe, primitive::U64)){
                 move_ptr(ctxt, tk);
+                const hint =
+                    if(check.tpe.base is *enum_t){
+                        yield "try casting the enum value to an integer type";
+                    };
                 return error(ctxt,
-                    "cannot apply range intervals to non-integer values");
+                    "cannot apply range intervals to non-integer values", hint);
             };
             op = tk.val as operator;
             const (c_end, _end) = eval_constant(ctxt, end + 1, check.tpe)?;
@@ -3838,7 +3936,7 @@ fn eval_switch(ctxt: *context, at: size) ((*switch_meta, size) | ERROR) = {
                 rets = true;
             };
             end = _end;
-            append(cases, (consts, op, stt): switch_case)!;
+            append(cases, (consts, op, stt, start): switch_case)!;
         // scope
         } else if(comp_tk(tk.val, symbol::LFT_CURLY)){
             const (body, _end) = eval_scope(ctxt, end)?;
@@ -3851,7 +3949,7 @@ fn eval_switch(ctxt: *context, at: size) ((*switch_meta, size) | ERROR) = {
                 tpe = body.tpe;
                 rets = false;
             };
-            append(cases, (consts, op, body): switch_case)!;
+            append(cases, (consts, op, body, start): switch_case)!;
         } else {
             move_ptr(ctxt, tk);
             const arg = strtoken(tk.val);
@@ -3861,6 +3959,17 @@ fn eval_switch(ctxt: *context, at: size) ((*switch_meta, size) | ERROR) = {
         };
         tk = next_tk(ctxt, end,
             "expected %bnext switch branch%r, but got %y{}")?;
+    };
+    // mark as exhaustive if all enum variants are covered
+    if(check.tpe.base is *enum_t){
+        const enu = check.tpe.base as *enum_t;
+        if(else_case is void && len(cases) == len(enu.variants)){
+            exhaustive = true;
+        // uneeded else case
+        } else if(else_case is size && len(cases) - 1 == len(enu.variants)){
+            move_ptr(ctxt, ctxt.tokens[cases[else_case as size].3]);
+            return error(ctxt, "uneeded else case for exhausted switch");
+        };
     };
     if(len(cases) == 0 || !exhaustive){
         move_ptr(ctxt, ctxt.tokens[at]);
@@ -3911,7 +4020,7 @@ fn eval_asg_or_exp(
     hint: lichen_t,
     allow_asg: bool = false,
     ternary: bool = false,
-) (((*expr_meta | *assign_meta), size) | ERROR) = {
+) (((*expr_meta | *assign_meta | *union_write), size) | ERROR) = {
     let end = at;
     let members: [](hand_t | operator) = [];
     // eval first member
@@ -3977,8 +4086,33 @@ fn eval_asg_or_exp(
                     "unexpected %yassignment%r found here");
             };
         };
+        // fix type for mismtatch reporting error message
+        if(dest.val is *union_read){
+            dest.tpe.partial = false;
+        };
         const (val, finish) = eval_expression(ctxt, _end + 1, dest.tpe)?;
         end = finish;
+        // convert a union field read to a write
+        if(dest.val is *union_read){
+            const src = dest.val as *union_read;
+            // cannot assert on assignment
+            if(src.prop is propagation){
+                move_ptr(ctxt, ctxt.tokens[_end - 1]);
+                return error(ctxt, "cannot %ypropagate%r union variant %yon assignment");
+            };
+            const new_meta = union_write {
+                base = src.base,
+                before = src.before,
+                tpe = src.tpe,
+                variant = src.variant,
+                pos = src.pos,
+                val = val,
+                from_tpe = src.from_tpe,
+            };
+            new_meta.tpe.partial = false;
+            dest.val = alloc(new_meta)!;
+            append(allocd_nodes, dest.val as *union_write)!;
+        };
         const obj = dest.val: chain_exp_t;
         let root = extract_base_from_chain(ctxt, obj, true)?;
         const base =
@@ -3989,6 +4123,12 @@ fn eval_asg_or_exp(
                 yield fld.base as *member_meta;
             case let slc: *slicing_meta =>
                 yield slc.base as *member_meta;
+            case let uni: *union_read =>
+                yield uni.base as *member_meta;
+            case let uni: *union_write =>
+                yield uni.base as *member_meta;
+            case let cll: *funcall_meta =>
+                yield cll.base as *member_meta;
             };
         if(base.val is *var_meta){
             const var = base.val as *var_meta;
@@ -4038,7 +4178,8 @@ fn eval_asg_or_exp(
                         return error(ctxt, "invalid assignment");
                     };
                 case void =>
-                    fmt::fatal("unreachable");
+                    assert(false, "unreachable");
+                    fmt::fatal("");
                 };
             } else {
                 const memb = field.base as *member_meta;
@@ -4118,7 +4259,8 @@ fn eval_asg_or_exp(
                         };
                         yield memb.val as *var_meta;
                     case void =>
-                        fmt::fatal("unreachable");
+                        assert(false, "unreachable");
+                        fmt::fatal("");
                     };
                 } else {
                     const memb = index.base as *member_meta;
@@ -4172,6 +4314,77 @@ fn eval_asg_or_exp(
             })!;
             append(allocd_nodes, asg)!;
             return (asg, end);
+        case let uni: *union_write =>
+            const pass =
+                if(uni.base is null) {
+                    yield match(uni.before){
+                    case let fld: *field_meta =>
+                        yield fld.field.var;
+                    case let idx: *indexing_meta =>
+                        const memb = extract_previous_base(idx);
+                        if(!(memb.val is *var_meta)){
+                            return error(ctxt, "invalid assignment");
+                        };
+                        yield memb.val as *var_meta;
+                    case let slc: *slicing_meta =>
+                        const memb = extract_previous_base(slc);
+                        if(!(memb.val is *var_meta)){
+                            return error(ctxt, "invalid assignment");
+                        };
+                        yield memb.val as *var_meta;
+                    case void =>
+                        assert(false, "unreachable");
+                        fmt::fatal("");
+                    };
+                } else {
+                    const memb = uni.base as *member_meta;
+                    if(!(memb.val is *var_meta)){
+                        return error(ctxt, "invalid assignment");
+                    };
+                    yield memb.val as *var_meta;
+                };
+            if(!pass.nm.mut){
+                return error(ctxt,
+                    "cannot reassign %yimmutable union {}",
+                    pass.nm.name);
+            };
+            assert_mutability(ctxt, ctxt.tokens[begin],
+                pass.nm.name, pass.nm.mut, val)?;
+            // assert underliving data
+            if(val.val is *member_meta){
+                const memb = val.val as *member_meta;
+                const lifetime = match(memb.val){
+                    case let var: *var_meta => yield var.lifetime;
+                    case let all: *alloc_meta => yield all.arena.lifetime;
+                    case let cat: *concat_meta => yield cat.arena.lifetime;
+                    case => yield void;
+                    };
+                if(lifetime is size){
+                    if(!(pass.lifetime is size)){
+                        const hint =
+                            fmt::asprintf("\n%gthe variable %y{}%g was not"
+                            " dynamically allocated, it may outlive its"
+                            " allocated value", pass.nm.name)!;
+                        defer free(hint);
+                        return error_hint(ctxt, hint,
+                            "cannot assign %ballocated value%r to array with %yno lifetime");
+                    } else if(lifetime as size > pass.lifetime as size){
+                        return error(ctxt,
+                            "assigned value underlives variable %b{}%r's lifetime",
+                            pass.nm.name);
+                    };
+                    if(pass.nm.kind == nm_kind::PARAM){
+                        return error_hint(ctxt,
+                            "the receiver is a parameter with no fixed lifetime",
+                            "cannot assign %ballocated value%r to array with %yundefined lifetime");
+                    };
+                };
+            };
+            uni.val = val;
+            return (uni, end);
+        case =>
+            assert(false, "unreachable");
+            fmt::fatal("");
         };
     };
     // ternary operator
@@ -4403,7 +4616,7 @@ fn eval_member(
                 "cannot use %b{}%r as an %yunary operator%r on the middle of an expression",
                 arg);
         };
-        const (res, _end, inv) = eval_member(ctxt, at + 1, hint, hint, false)?;
+        const (res, _end, inv) = eval_member(ctxt, at + 1, hint, hint)?;
         match(res){
         case let m: *member_meta =>
             assert_unary(ctxt, at, oper, m.tpe)?;
@@ -4488,7 +4701,7 @@ fn eval_member(
                 if(!fun_def.used) ctxt.re_emit = true;
                 fun_def.used = true;
                 end += 1;
-                const fnptr = alloc(fun_ptr {  // TODO: store this for cleanup
+                const fnptr = alloc(fun_ptr { // TODO: store this for cleanup
                     params = [],
                     returns = fun_def.fun.tpe,
                     efxtags = fun_def.efxtags,
@@ -4546,7 +4759,7 @@ fn eval_member(
                 defer free(tpe);
                 const hint = fmt::asprintf("\n%g{}'s type is %y{}", decl.var.nm.name, tpe)!;
                 defer free(hint);
-                return error(ctxt, "attempt to call on non-function namespace %b{}",
+                return error_hint(ctxt, "attempt to call on non-function namespace %b{}",
                     decl.var.nm.name, hint);
             // it's callable
             } else if(comp_tk(tk.val, symbol::LFT_PAR)){
@@ -4565,9 +4778,36 @@ fn eval_member(
                 end = _end;
                 memb.val = lit;
             case let enu: *enum_t =>
-                const (val, _end) = eval_enum_var(ctxt, end, enu)?;
-                end = _end;
-                memb.val = val;
+                tk = next_tk(ctxt, end + 1,
+                    "expected %benum variant access%r or %bend of expression%r, but got %y{}")?;
+                // variant access
+                if(comp_tk(tk.val, symbol::DOT)){
+                    const (val, _end) = eval_enum_var(ctxt, end, enu)?;
+                    end = _end;
+                    memb.val = val;
+                } else {
+                    end += 1;
+                    // create array type from enumerator variants
+                    const arr = array {
+                        length = len(enu.variants),
+                        base = enu.base,
+                    };
+                    memb.tpe = new_array_t(ctxt, arr);
+                    const lit = array_lit_meta {
+                        pos = end,
+                        tpe = memb.tpe,
+                        items = [],
+                        length = void,
+                        spreads_at = void,
+                        has_allocs = false,
+                    };
+                    // generate new array items
+                    for(let variant .. enu.variants){
+                        append(lit.items, variant.1)!;
+                    };
+                    memb.val = alloc(lit)!;
+                    append(allocd_nodes, memb.val as *array_lit_meta)!;
+                };
             case =>
                 move_ptr(ctxt, tk);
                 const arg = strtype(tpe.self);
@@ -4619,7 +4859,7 @@ fn eval_member(
                         } else {
                             end += 1;
                             fun_def.used = true;
-                            const fnptr = alloc(fun_ptr {  // TODO: store this for cleanup
+                            const fnptr = alloc(fun_ptr { // TODO: store this for cleanup
                                 params = [],
                                 returns = fun_def.fun.tpe,
                                 efxtags = fun_def.efxtags,
@@ -4648,9 +4888,8 @@ fn eval_member(
                                 module.name, decl.var.nm.name);
                         };
                         memb.tpe = decl.var.nm.tpe;
-                        const dup = alloc(*decl.var)!;
-                        memb.val = dup;
-                        append(allocd_nodes, dup)!;
+                        memb.val = alloc(*decl.var)!;
+                        append(allocd_nodes, memb.val as *var_meta)!;
                         found = true;
                         tk = next_tk(ctxt, end,
                             "expected %bexpression continuation%r or %bend of line%r, but got %y{}")?;
@@ -4662,7 +4901,7 @@ fn eval_member(
                             const hint = fmt::asprintf("\n%g{}'s type is %y{}", decl.var.nm.name, tpe)!;
                             defer free(hint);
                             return error(ctxt, "attempt to call on non-function namespace %b{}",
-                                decl.var.nm.name, hint);
+                                hint, decl.var.nm.name);
                         // it's callable
                         } else if(comp_tk(tk.val, symbol::LFT_PAR)){
                             const fun_wrap = fun_meta_from(ctxt, decl.var)?;
@@ -4688,9 +4927,35 @@ fn eval_member(
                             end = _end;
                             memb.val = lit;
                         case let enu: *enum_t =>
-                            const (val, _end) = eval_enum_var(ctxt, end - 1, enu)?;
-                            end = _end;
-                            memb.val = val;
+                            tk = next_tk(ctxt, end,
+                                "expected %benum variant access%r or %bend of expression%r, but got %y{}")?;
+                            // variant access
+                            if(comp_tk(tk.val, symbol::DOT)){
+                                const (val, _end) = eval_enum_var(ctxt, end - 1, enu)?;
+                                end = _end;
+                                memb.val = val;
+                            } else {
+                                end += 1;
+                                // create array type from enumerator variants
+                                const arr = array {
+                                    length = len(enu.variants),
+                                    base = enu.base,
+                                };
+                                memb.tpe = new_array_t(ctxt, arr);
+                                const lit = array_lit_meta {
+                                    pos = end,
+                                    tpe = memb.tpe,
+                                    items = [],
+                                    length = void,
+                                    spreads_at = void,
+                                    has_allocs = false,
+                                };
+                                // generate new array items
+                                for(let variant .. enu.variants){
+                                    append(lit.items, variant.1)!;
+                                };
+                                memb.val = alloc(lit)!;
+                            };
                         case =>
                             move_ptr(ctxt, tk);
                             const arg = strtype(tpe.self);
@@ -4801,6 +5066,31 @@ fn extract_base_from_chain(
             } else {
                 yield slc.before as chain_exp_t;
             };
+        case let uni: *union_read =>
+            yield if(uni.before is void){
+                yield uni;
+            } else if(uni.before is chain_exp_t){
+                yield uni.before as chain_exp_t;
+            } else {
+                yield uni;
+            };
+        case let uni: *union_write =>
+            yield if(uni.before is void){
+                yield uni;
+            } else if(uni.before is chain_exp_t){
+                yield uni.before as chain_exp_t;
+            } else {
+                yield uni;
+            };
+        case let cll: *funcall_meta =>
+            if(assignment){
+                return error(ctxt, "cannot assign to %yfunction call");
+            };
+            yield if(cll.before is void){
+                yield cll;
+            } else {
+                yield cll.before as chain_exp_t;
+            };
         };
     for(true){
         match(root){
@@ -4813,6 +5103,16 @@ fn extract_base_from_chain(
         case let slc: *slicing_meta =>
             if(slc.before is void) break;
             root = slc.before as chain_exp_t;
+        case let uni: *union_read =>
+            if(uni.before is void) break;
+            root = uni.before as chain_exp_t;
+        case let uni: *union_write =>
+            if(uni.before is void) break;
+            root = uni.before as chain_exp_t;
+        case let cll: *funcall_meta =>
+            if(cll.before is void) break;
+            root = cll.before as chain_exp_t;
+        case => assert(false, "unreachable");
         };
     };
     return root;
@@ -4888,9 +5188,11 @@ fn eval_sufixes(
         comp_tk(tk.val, symbol::LFT_PAR)){
         tk = next_tk(ctxt, end,
             "expected %bfield access%r or %bexpression continuation%r, but got %y{}")!;
+        // access of record field, array indexing or call
         if(!memb.tpe.partial &&
             (memb.tpe.base is *record ||
             memb.tpe.base is *array ||
+            memb.tpe.base is *union_t ||
             memb.tpe.base is *fun_ptr)){
             let before: (void | chain_exp_t) = void;
             let access: (void | chain_exp_t) = void;
@@ -4900,19 +5202,36 @@ fn eval_sufixes(
                 comp_tk(tk.val, symbol::LFT_SQUARE) ||
                 comp_tk(tk.val, symbol::LFT_PAR)){
                 if(comp_tk(tk.val, symbol::DOT)){
-                    const (meta, _end) =
-                        eval_record_field(ctxt, end, last_tpe, before)?;
-                    end = _end;
-                    memb.pos = end;
-                    last_tpe = meta.tpe;
-                    last_prop = meta.prop;
-                    // assign base of chain
-                    if(before is void){
-                        const dup = alloc(*memb)!;
-                        meta.base = dup;
-                        append(allocd_nodes, dup)!;
+                    if(memb.tpe.base is *union_t){
+                        const (meta, _end) =
+                            eval_union_read(ctxt, end,
+                            last_tpe, memb, before)?;
+                        end = _end;
+                        memb.pos = end;
+                        last_tpe = meta.tpe;
+                        last_prop = meta.prop;
+                        // assign base of chain
+                        if(before is void){
+                            const dup = alloc(*memb)!;
+                            meta.base = dup;
+                            append(allocd_nodes, dup)!;
+                        };
+                        access = meta;
+                    } else {
+                        const (meta, _end) =
+                            eval_record_field(ctxt, end, last_tpe, before)?;
+                        end = _end;
+                        memb.pos = end;
+                        last_tpe = meta.tpe;
+                        last_prop = meta.prop;
+                        // assign base of chain
+                        if(before is void){
+                            const dup = alloc(*memb)!;
+                            meta.base = dup;
+                            append(allocd_nodes, dup)!;
+                        };
+                        access = meta;
                     };
-                    access = meta;
                 } else if(comp_tk(tk.val, symbol::LFT_SQUARE)){
                     const (meta, _end) =
                             eval_indexing(ctxt, end, last_tpe, before)?;
@@ -4971,6 +5290,7 @@ fn eval_sufixes(
             memb.tpe = last_tpe;
             memb.val = final;
             memb.prop = void;
+        // invalid access of array field
         } else if(memb.tpe.partial && memb.tpe.base is *record){
             move_ptr(ctxt, tk);
             const name = strtype(memb.tpe);
@@ -4978,6 +5298,7 @@ fn eval_sufixes(
             return error_hint(ctxt,
                 "\n%gtry bubbling the error with %d?%g or asserting it with %d!",
                 "cannot access field of %b{}%r", name);
+        // invalid array indexing
          } else if(memb.tpe.partial && memb.tpe.base is *array){
             move_ptr(ctxt, tk);
             const name = strtype(memb.tpe);
@@ -4985,11 +5306,22 @@ fn eval_sufixes(
             return error_hint(ctxt,
                 "\n%gtry bubbling the error with %d?%g or asserting it with %d!",
                 "cannot index an array of %b{}%r", name);
+        // type has no fields nor is callable
         } else {
             move_ptr(ctxt, tk);
             const name = strtype(memb.tpe);
             defer free(name);
-            return error(ctxt, "object of %b{}%r has %yno fields nor is callable", name);
+            switch(tk.val as symbol){
+            case symbol::DOT =>
+                return error(ctxt, "object of %b{}%r has %yno fields", name);
+            case symbol::LFT_SQUARE =>
+                return error(ctxt, "object of %b{}%r cannot be indexed or sliced", name);
+            case symbol::LFT_PAR =>
+                return error(ctxt, "object of %b{}%r is not callable", name);
+            case =>
+                assert(false, "unreachable");
+                fmt::fatal("");
+            };
         };
     };
     return end;
@@ -5380,7 +5712,7 @@ fn eval_array_lit(
 
     let length: (void | *expr_meta) = void;
     let has_allocs = false;
-    const items: []*expr_meta = [];
+    const items: [](*const_meta | *expr_meta) = [];
     const as_arr = tpe.base as *array;
     // iterate until end of array
     for(!comp_tk(tk.val, symbol::RGT_SQUARE)){
@@ -5547,7 +5879,7 @@ fn eval_enum_var(
     ctxt: *context,
     at: size,
     self: *enum_t,
-) ((member_t, size) | ERROR) = {
+) ((*const_meta, size) | ERROR) = {
     let end = pop_assert(ctxt, at + 1, symbol::DOT,
         "expected %benumerator variant access%r, but got %y{}")?;
     let tk = next_tk(ctxt, end,
@@ -5577,6 +5909,55 @@ fn eval_enum_var(
         return error(ctxt,
             "expected %benum variant name%r, but got %y{}", arg);
     };
+};
+
+fn eval_union_read(
+    ctxt: *context,
+    at: size,
+    tpe: lichen_t,
+    memb: *member_meta,
+    base: (void | chain_exp_t),
+) ((*union_read, size) | ERROR) = {
+    let end = pop_assert(ctxt, at, symbol::DOT,
+        "expected %bunion variant access%r, but got %y{}")?;
+    let tk = next_tk(ctxt, end,
+        "expected %bunion variant name%r, but got %y{}")?;
+    if(!(tk.val is namespace)){
+        move_ptr(ctxt, ctxt.tokens[end]);
+        const arg = strtoken(tk.val);
+        defer free(arg);
+        return error(ctxt,
+            "expected %bunion variant name%r, but got %y{}", arg);
+    };
+    const var = tk.val as namespace;
+    const uni = tpe.base as *union_t;
+    for(let v = 0z; v < len(uni.variants); v += 1){
+        const variant = uni.variants[v];
+        if(var.name == variant.0.name){
+            end += 1;
+            const meta = union_read {
+                base = null,
+                before = base,
+                variant = v,
+                tpe = variant.1,
+                pos = at,
+                prop = void,
+                from_tpe = tpe,
+            };
+            meta.tpe.partial = true;
+            const (tpe, prop, _end) = eval_cast(ctxt, meta.tpe, end)?;
+            meta.tpe = tpe;
+            meta.prop = prop;
+
+            const out = alloc(meta)!;
+            append(allocd_nodes, out)!;
+            return (out, _end);
+        };
+    };
+    move_ptr(ctxt, ctxt.tokens[end]);
+    const arg = strtype(tpe);
+    defer free(arg);
+    return error(ctxt, "the %b{}%r has no variant named %y{}", arg, var.name);
 };
 
 // evaluates an array indexing or slicing expression
@@ -5633,9 +6014,9 @@ fn eval_indexing(
                 unwrap_array(base_tpe, !known), end)?;
             end = _end;
             const out = alloc(indexing_meta {
+                base = null,
                 before = base,
                 index = index,
-                base = null,
                 pos = at,
                 tpe = tpe,
                 prop = prop,
@@ -5672,7 +6053,7 @@ fn eval_indexing(
                 };
             };
             const slice_t = base_tpe;
-            slice_t.base = alloc(*(slice_t.base as *array))!; // TODO: save this for cleanup
+            slice_t.base = alloc(*(slice_t.base as *array))!;
             (slice_t.base as *array).length = void;
 
             if(!known || !up_known){
@@ -5682,10 +6063,10 @@ fn eval_indexing(
             const (tpe, prop, _end) = eval_cast(ctxt, slice_t, end)?;
             end = _end;
             const out = alloc(slicing_meta {
+                base = null,
                 before = base,
                 begin = index,
                 end = end_idx,
-                base = null,
                 pos = at,
                 tpe = tpe,
                 safe = known && up_known,
@@ -5860,9 +6241,9 @@ fn eval_record_field(
                     field.1.var.nm.tpe, end)?;
                 end = _end;
                 const out = alloc(field_meta {
+                    base = null,
                     before = base,
                     field = field.1,
-                    base = null,
                     mut = if(field.0 is bool) field.0 as bool else true, 
                     pos = at,
                     tpe = tpe,
@@ -6037,8 +6418,8 @@ fn eval_funcall(
         "expected %bclosing parenthesis%r, but got %y{}")?;
 
     const out = alloc(funcall_meta {
-        before = void,
         base = null,
+        before = void,
         fun = fun,
         tpe = fun.fun.tpe,
         pos = at,
@@ -6464,7 +6845,7 @@ fn wrap_array(
     const tpe = wrap_primitive(_tpe);
     match(tpe.base){
     case let arr: *array =>
-        tpe.base = alloc(*(tpe.base as *array))!; // TODO: save this for cleanup
+        tpe.base = alloc(*(tpe.base as *array))!;
         return (tpe, arr.base);
     case =>
         if(tpe.base is primitive &&
@@ -6722,8 +7103,8 @@ fn eval_type(
             const rec_name = named as namespace;
             rec_name.glob = true;
             rec_name.kind = nm_kind::TYPE;
-            const dummy = memio::fixed([]);
-            const fix_name = fix_nm(ctxt, &dummy, rec_name);
+            const dummy = &memio::fixed([]);
+            const fix_name = fix_nm(ctxt, dummy, rec_name);
             const rec = record {
                 name = rec_name,
                 export_name = fix_name,
@@ -6751,7 +7132,7 @@ fn eval_type(
             const tpe = wrap_primitive(tk.val as primitive);
             // pop variant list openning curly braces
             end = pop_assert(ctxt, end + 1, symbol::LFT_CURLY,
-                "expected %benumerator variants%r, but got %y{}")?;
+                "expected %benumerator list of variants%r, but got %y{}")?;
             // enumerator variants list
             let variants: [](namespace, *const_meta) = [];
             tk = next_tk(ctxt, end,
@@ -6767,8 +7148,15 @@ fn eval_type(
                 };
                 end += 1;
                 const var_name = tk.val as namespace;
+                // assert for collisions
+                for(let variant .. variants){
+                    if(var_name.name == variant.0.name){
+                        move_ptr(ctxt, tk);
+                        return error(ctxt, "duplicated %yenum variant");
+                    };
+                };
                 tk = next_tk(ctxt, end,
-                    "expected %bvariant value assignment%r, %bcomma%r or %bend of variants%r but got %y{}")?;
+                    "expected %bvariant value assignment%r, %bcomma%r or %bend of list of variants%r but got %y{}")?;
                 // direct assignment
                 if(comp_tk(tk.val, operator::ASG)){
                     const (val, _end) = eval_constant(ctxt, end + 1, tpe)?;
@@ -6784,10 +7172,12 @@ fn eval_type(
                                 pre = void,
                                 val = 0: size,
                             })!;
+                            append(allocd_nodes, val)!;
                             append(variants, (var_name, val))!;
                         } else {
                             const last = variants[len(variants) - 1].1;
                             const new = alloc(*last)!;
+                            append(allocd_nodes, new)!;
                             if(last.pre is void ||
                                 (last.pre as operator) == operator::PLS){
                                 new.val = new.val as size + 1;
@@ -6822,9 +7212,12 @@ fn eval_type(
                     return error(ctxt,
                         "expected %bvariant value assignment%r, %bcomma%r or %bend of variants%r but got %y{}", arg);
                 };
-                end += 1;
-                tk = next_tk(ctxt, end,
-                    "expected %bnext enumerator variant%r or %bend of variant list%r, but got %y{}")?;
+                // keep on going if list is not finished
+                if(!comp_tk(tk.val, symbol::RGT_CURLY)){
+                    end += 1;
+                    tk = next_tk(ctxt, end,
+                        "expected %bnext enumerator variant%r or %bend of variant list%r, but got %y{}")?;
+                };
             };
             if(len(variants) == 0){
                 move_ptr(ctxt, ctxt.tokens[end]);
@@ -6842,6 +7235,78 @@ fn eval_type(
             const out = lichen_t {
                 partial = partial,
                 base = alloc(enu)!, // TODO: save this for cleanup
+            };
+            return (out, end);
+        case keyword::UNION =>
+            // pop variant list openning curly braces
+            end = pop_assert(ctxt, end, symbol::LFT_CURLY,
+                "expected %bunion list of variants%r, but got %y{}")?;
+            // enumerator variants list
+            let variants: [](namespace, lichen_t) = [];
+            tk = next_tk(ctxt, end,
+                "expected %bnext union variant%r, but got %y{}")?;
+            // grab all variants
+            for(!comp_tk(tk.val, symbol::RGT_CURLY)){
+                if(!(tk.val is namespace)){
+                    move_ptr(ctxt, ctxt.tokens[end]);
+                    const arg = strtoken(tk.val);
+                    defer free(arg);
+                    return error(ctxt,
+                        "expected %bnext union variant%r, but got %y{}", arg);
+                };
+                const var_name = tk.val as namespace;
+                // assert for collisions
+                for(let variant .. variants){
+                    if(var_name.name == variant.0.name){
+                        move_ptr(ctxt, tk);
+                        return error(ctxt, "duplicated %yunion variant");
+                    };
+                };
+                const (tpe, _end) = eval_type(ctxt, end + 1)?;
+                // assert for collisions
+                for(let variant .. variants){
+                    if(comp_type(tpe, variant.1)){
+                        move_ptr(ctxt, tk);
+                        return error(ctxt, "union variant with duplicated type");
+                    };
+                };
+                append(variants, (var_name, tpe))!;
+                // pop end of line
+                end = pop_assert(ctxt, _end, symbol::EOL,
+                    "expected %bend of line%r, but got %y{}")?;
+                // keep on going if list is not finished
+                tk = next_tk(ctxt, end,
+                    "expected %bnext union variant%r or %bend of variant list%r, but got %y{}")?;
+            };
+            if(len(variants) == 0){
+                move_ptr(ctxt, ctxt.tokens[end]);
+                return error(ctxt, "union has %yzero variants");
+            };
+            // pop variant list openning curly braces
+            end = pop_assert(ctxt, end, symbol::RGT_CURLY,
+                "expected %bend of variants list%r, but got %y{}")?;
+            static let unamed_count: size = 0;
+            const name =
+                if(named is void){
+                    const mod = strings::rcut(
+                        strings::rcut(ctxt.file, "/").1, ".").0;
+                    defer unamed_count += 1;
+                    yield fmt::asprintf(":{}.unamed_union.{}",
+                        mod, unamed_count)!;
+                } else {
+                    const dummy = &memio::fixed([]);
+                    const fixed = fix_nm(ctxt, dummy, named as namespace);
+                    defer free(fixed);
+                    yield fmt::asprintf(":{}", strings::sub(fixed, 1))!;
+                };
+            const uni = union_t {
+                name = named,
+                export_name = name,
+                variants = variants,
+            };
+            const out = lichen_t {
+                partial = partial,
+                base = alloc(uni)!, // TODO: save this for cleanup
             };
             return (out, end);
         case keyword::FN =>
@@ -7061,11 +7526,15 @@ fn comp_type(
 ) bool = {
     const this = wrap_primitive(_this);
     const that = wrap_primitive(_that);
+    // partiality mismatch
     if(this.partial != that.partial) return false;
+    // primitives
     if(this.base is primitive && that.base is primitive){
         return this.base as primitive == that.base as primitive;
+    // records
     } else if(this.base is *record && that.base is *record){
         return this.base as *record == that.base as *record;
+    // arrays
     } else if(this.base is *array && that.base is *array){
         const this_arr = this.base as *array;
         const that_arr = that.base as *array;
@@ -7074,8 +7543,13 @@ fn comp_type(
             (this_arr.length as size == that_arr.length as size));
         return comp_type(this_arr.base,
             that_arr.base) && size_ok;
+    // enumerators
     } else if(this.base is *enum_t && that.base is *enum_t){
         return this.base as *enum_t == that.base as *enum_t;
+    // unions
+    } else if(this.base is *union_t && that.base is *union_t){
+        return this.base as *union_t == that.base as *union_t;
+    // function pointer
     } else if(this.base is *fun_ptr && that.base is *fun_ptr){
             return is_subtype(this, that);
     } else {
@@ -7152,6 +7626,24 @@ fn _is_subtype(_this: lichen_t, _that: lichen_t) bool = {
         const this = _this.base as *record;
         const that = _that.base as *record;
         return this == that;
+    // union subtyping
+    } else if(_that.base is *union_t){
+        if(_this.base is *union_t)
+            return _this.base as *union_t == _that.base as *union_t;
+        const uni = _that.base as *union_t;
+        let matches = 0z;
+        for(let variant .. uni.variants){
+            if(untyped(_this)){
+                if(is_subtype(_this, variant.1)) matches += 1;
+            } else {
+                if(comp_type(_this, variant.1)){
+                    matches = 1;
+                    // only one variant of each type
+                    break;
+                };
+            };
+        };
+        return matches == 1;
     // function comparison
     } else if(_this.base is *fun_ptr && _that.base is *fun_ptr){
         const this = _this.base as *fun_ptr;
@@ -7259,6 +7751,8 @@ fn _castable(_this: lichen_t, _that: lichen_t) bool = {
     // enum casting
     } else if(_this.base is *enum_t && !(_that.base is *enum_t)){
         return is_subtype((_this.base as *enum_t).base, _that);
+    } else if(_this.base is *union_t || _that.base is *union_t){
+        return comp_type(_this, _that);
     // TODO: record subtyping
     // anything else
     } else {
@@ -7391,7 +7885,8 @@ fn is_aggregated(tpe: lichen_t) bool = {
     return tpe.partial || is_subtype(tpe, primitive::STR) ||
         is_subtype(tpe, primitive::CSTR) ||
         is_subtype(tpe, quick_t(primitive::MEM)) ||
-        tpe.base is *record || tpe.base is *array;
+        tpe.base is *record || tpe.base is *array ||
+        tpe.base is *union_t;
 };
 
 // checks if type memory size is known at compile time
@@ -7443,8 +7938,12 @@ fn assert_cast(
         defer free(arg1);
         const arg2 = strtype(rgt);
         defer free(arg2);
-        return error(ctxt,
+        if(rgt.base is *union_t && untyped(lft)){
+            return error_hint(ctxt, "\n%gcannot cast values to union types",
             "invalid cast of %b{}%r to %b{}%r", arg1, arg2);
+        } else {
+            return error(ctxt, "invalid cast of %b{}%r to %b{}%r", arg1, arg2);
+        };
     };
 };
 

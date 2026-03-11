@@ -98,6 +98,7 @@ local tests = {
     { src = "fail_defer_2", code = 1, nocomp = true },
     { src = "fail_defer_3", code = 1, nocomp = true },
     { src = "fail_defer_4", code = 1, nocomp = true },
+    { src = "fail_switch_enum", code = 1, nocomp = true },
     -- issue fixing --
     { src = "fail_outlive_1", code = 1, nocomp = true },
     { src = "fail_outlive_2", code = 1, nocomp = true },
@@ -196,6 +197,9 @@ local tests = {
     { src = "var_call", code = 0 },
     { src = "enum", code = 0 },
     { src = "enum_str", code = 0 },
+    { src = "enum_switch", output = "test ok\n", code = 0 },
+    { src = "enum_for", code = 0 },
+    { src = "union", code = 0 },
     -- io --
     { src = "hello", output = "mornin' sailor!\n", code = 0 },
     -- mem --
