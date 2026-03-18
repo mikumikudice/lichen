@@ -73,6 +73,7 @@ type enum_t = struct {
 type union_t = struct {
     name: (namespace | void),
     export_name: str,
+    origin: str,
     variants: [](namespace, lichen_t),
 };
 
@@ -223,7 +224,7 @@ type const_meta = struct {
 type array_lit_meta = struct {
     pos: size,
     tpe: lichen_t,
-    items: [](*const_meta | *expr_meta),
+    items: [](lichen_t, (*const_meta | *expr_meta)),
     length: (void | *expr_meta),
     spreads_at: (void | size),
     has_allocs: bool,
@@ -332,6 +333,7 @@ type concat_meta = struct {
 type var_meta = struct {
     nm: namespace,
     lifetime: (void | size),
+    scp_ownr: *scope,
     allocated: bool,
     pos: size,
 };

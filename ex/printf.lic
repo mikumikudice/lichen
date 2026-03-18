@@ -1,0 +1,5 @@
+io  mod = use "std/io.lim";
+
+pub fn main() void = io {
+    io::printfln("%u + %u = %u", [2, 4, 6])!;
+};

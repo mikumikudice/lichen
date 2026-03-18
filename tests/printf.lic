@@ -1,0 +1,65 @@
+// parser and compiler test for real
+// world usage of tagged unions
+
+io   mod = use "std/io.lim";
+conv mod = use "str/conv.lim";
+
+type fmt_t = union {
+    as_int i64;
+    as_str str;
+    as_bool bool;
+};
+
+fn main() void = do {
+    printf("%d\n", 4);
+    printf("%s\n", "foo");
+    printf("%b\n", true);
+};
+
+
+fn printf(fmt str, val fmt_t) unit = io & conv {
+    for mut in = false; c, i .. fmt {
+        switch c;
+        | '%' {
+            if in {
+                io::print("%")!;
+                in = false;
+            } else {
+                in = true;
+            };
+        };
+        | 'd' {
+            if in {
+                let v = val.as_int!;
+                let abs = v u64 if v >= 0 else (-v) u64;
+                new tmp | 512 {
+                    io::print(conv::from_i64(v, tmp)!)!;
+                }!;
+                in = false;
+            } else {
+                io::print("d")!;
+            };
+        };
+        | 's' {
+            if in {
+                io::print(val.as_str!)!;
+                in = false;
+            } else {
+                io::print("s")!;
+            };
+        };
+        | 'b' {
+            if in {
+                let v = val.as_bool!;
+                io::print("true" if v else "false")!;
+                in = false;
+            } else {
+                io::print("b")!;
+            };
+        };
+        | else {
+            test !in, "invalid format";
+            io::print(((fmt []u8)[i..i + 1]!) str)!;
+        };
+    };
+};

@@ -16,10 +16,15 @@ fn qbe_t(ctxt: *context, tpe: lichen_t, md: mode = mode::REAL) str = {
     if(tpe.base is primitive){
         assert(tpe.base as primitive != primitive::ANY);
         if(tpe.partial){
-            if(md == mode::RETURN && tpe.base as primitive == primitive::STR){
-                return ":str.t.opt";
-            } else if(md == mode::RETURN){
-                return ":opt.t";
+            if(md == mode::RETURN){
+                switch(tpe.base as primitive){
+                case primitive::MEM =>
+                    return ":mem.t.opt";
+                case primitive::STR =>
+                    return ":str.t.opt";
+                case =>
+                    return ":opt.t";
+                };
             };
             return "l";
         };
@@ -170,8 +175,13 @@ fn type_size(tpe: lichen_t, ignore_err: bool = false) size = {
 
 fn type_alignment(tpe: lichen_t) size = {
     match(tpe.base){
-    case primitive =>
-        return type_size(tpe);
+    case let prim: primitive =>
+        switch(prim){
+        case primitive::MEM, primitive::STR =>
+            return 8;
+        case =>
+            return type_size(tpe);
+        };
     case let enu: *enum_t =>
         return type_alignment(enu.base);
     case let rec: *record =>
@@ -207,23 +217,18 @@ fn type_alignment(tpe: lichen_t) size = {
 fn field_offset(rec: *record, field_name: str) size = {
     let acc = 0z;
     let found = false;
-    let last_tpe = rec.fields[0].1.var.nm.tpe;
+    let last_offset = 0z;
     for(let field .. rec.fields){
         if(field.1.var.nm.name == field_name){
             found = true;
             break;
         };
-        const real = type_size(field.1.var.nm.tpe);
-        const prev_alignment = type_alignment(last_tpe);
-        const curr_alignment = type_alignment(field.1.var.nm.tpe);
-        const offst =
-            if(acc > 0 && curr_alignment % prev_alignment > 0){
-                yield curr_alignment - curr_alignment % prev_alignment;
-            } else {
-                yield 0z;
-            };
-        acc += real + offst;
-        last_tpe = field.1.var.nm.tpe;
+        acc += type_size(field.1.var.nm.tpe);
+        const falign = type_alignment(field.1.var.nm.tpe);
+        if(last_offset > 0 && falign % last_offset > 0){
+            acc += falign % last_offset;
+        };
+        last_offset = falign;
     };
     assert(found);
     return acc;
@@ -428,15 +433,13 @@ fn gen_qbe_ir(ctxt: *context) memio::stream = {
             emit_type_lit(ctxt, &ir, t.self);
             fmt::fprintln(&ir, "}")!;
             // emit partial version
-            fmt::fprintf(&ir, "type {}.opt = align {} {{ l, ",
-                rec.export_name, alignment)!;
+            fmt::fprintf(&ir, "type {}.opt = {{ l, ", rec.export_name)!;
             emit_type_lit(ctxt, &ir, t.self);
             fmt::fprintln(&ir, "}")!;
             // emit zeroed value
             fmt::fprintfln(&ir, "section \".rodata\"")!;
-            fmt::fprintfln(&ir, "data ${}.zero = align {} {{ z {} }}",
-                strings::sub(rec.export_name, 1), alignment,
-                type_size(t.self))!;
+            fmt::fprintfln(&ir, "data ${}.zero = {{ z {} }}",
+                strings::sub(rec.export_name, 1), type_size(t.self))!;
         case *array =>
             fmt::fprintf(&ir, "type {} = align {} {{ ",
                 t.name.name, type_alignment(t.self))!;
@@ -461,21 +464,23 @@ fn gen_qbe_ir(ctxt: *context) memio::stream = {
             for(let variant .. enu.variants){
                 fmt::fprintfln(&ir, "section \".rodata\"")!;
                 fmt::fprintfln(&ir,
-                    "export data {}.{} = align {} {{ {} {} }}",
-                    name, variant.0.name, type_alignment(t.self),
-                    qbe_t(ctxt, enu.base),
+                    "export data {}.{} = {{ {} {} }}",
+                    name, variant.0.name, qbe_t(ctxt, enu.base),
                     emit_constant(ctxt, variant.1, enu.base))!;
             };
         case let uni: *union_t =>
+            const mod = strings::rcut(
+                strings::rcut(uni.origin, "/").1, ".").0;
             // emit type
-            fmt::fprintf(&ir, "type {}.raw = {{ ", uni.export_name)!;
+            fmt::fprintf(&ir, "type :{}.{}.raw = {{ ", mod, uni.export_name)!;
             emit_type_lit(ctxt, &ir, t.self);
             fmt::fprintln(&ir, "}")!;
-            fmt::fprintfln(&ir, "type {0} = {{ l, {0}.raw }}", uni.export_name)!;
+            fmt::fprintfln(&ir, "type :{0}.{1} = {{ l, :{0}.{1}.raw }}",
+                mod, uni.export_name)!;
             // emit zeroed value
             fmt::fprintfln(&ir, "section \".rodata\"")!;
-            fmt::fprintfln(&ir, "data ${}.zero = {{ z {} }}",
-                strings::sub(uni.export_name, 1), type_size(t.self))!;
+            fmt::fprintfln(&ir, "data ${}.{}.zero = {{ z {} }}",
+                mod, uni.export_name, type_size(t.self))!;
         };
     };
     gen_module(ctxt, &ir);
@@ -495,12 +500,12 @@ fn gen_qbe_ir(ctxt: *context) memio::stream = {
 };
 
 fn emit_type_lit(ctxt: *context, buff: *memio::stream, tpe: lichen_t) void = {
-    if(tpe.partial){
+    if(tpe.partial && !(tpe.base is primitive) && !(tpe.base is *union_t)){
         fmt::fprint(buff, "l, ")!;
     };
     match(tpe.base){
     case let prim: primitive =>
-        fmt::fprintf(buff, "{}, ", qbe_t(ctxt, tpe))!;
+        fmt::fprintf(buff, "{}, ", qbe_t(ctxt, tpe, mode::RETURN))!;
     case let rec: *record =>
         for(let field .. rec.fields){
             const this = field.1.var.nm.tpe;
@@ -724,6 +729,7 @@ fn gen_stt(
         };
         fmt::fprintfln(buff, "@fail.{}", lbl)!;
         if(test.props){
+            // gen free chain
             if(len(ctxt.free_on_ret) > 0){
                 for(let f .. ctxt.free_on_ret){
                     fmt::fprintln(buff, f)!;
@@ -985,7 +991,7 @@ fn gen_stt(
             };
             fmt::fprintfln(buff, "@switch.case.{0}.{1}.ok", lbl, b)!;
             if(body is *scope_meta){
-                (ctxt, buff, body as *scope_meta,);
+                gen_scope(ctxt, buff, body as *scope_meta, defer_id);
                 if(!(body as *scope_meta).rets &&
                     !is_terminal((body as *scope_meta).tpe)){
                     fmt::fprintfln(buff, "\tjmp @switch.end.{0}", lbl)!;
@@ -1228,7 +1234,7 @@ fn gen_stt(
         fmt::fprintfln(buff, "\tstorel {0}.chunk, {0}.ptr", dummy)!;
         fmt::fprintfln(buff, "\t{} =l copy {}", name, dummy)!;
         // gen arena scope
-        fmt::fprintfln(buff, "@{}.body", strings::sub(name, 1))!;
+        fmt::fprintfln(buff, "@{}.body.{}", strings::sub(name, 1), lbl)!;
         gen_scope(ctxt, buff, arena.body, defer_id);
         // free arena memory
         if(!arena.body.rets){
@@ -1254,6 +1260,7 @@ fn gen_stt(
                     fmt::fprintfln(buff, "\tjmp @skip.{}", lbl)!;
                 };
                 fmt::fprintfln(buff, "@fail.{}", lbl)!;
+                // gen free chain
                 if(len(ctxt.free_on_ret) > 0){
                     for(let f .. ctxt.free_on_ret){
                         fmt::fprintln(buff, f)!;
@@ -1316,6 +1323,7 @@ fn gen_stt(
         move_ptr(ctxt, ctxt.tokens[ret.pos]);
         const (l, c) = get_pos(ctxt);
         fmt::fprintfln(buff, "\tdbgloc {}, {}", l, c)!;
+        // gen free chain
         if(len(ctxt.free_on_ret) > 0){
             for(let f .. ctxt.free_on_ret){
                 fmt::fprintln(buff, f)!;
@@ -1592,8 +1600,8 @@ fn gen_exp(
                     return fmt::asprintf("{}.len", dest)!;
                 };
             case =>
-                fmt::println(oper_value[memb.pre as operator])!;
-                fmt::fatal("emit_constant: unreachable");
+                fmt::fatalf("emit_constant: unreachable ({})",
+                    oper_value[memb.pre as operator]);
             };
         } else {
             return wrap;
@@ -1936,7 +1944,12 @@ fn assign_memb(
         case let access: *field_meta =>
             yield unwrap_sufixes(ctxt, buff, access, defer_id);
         case let var: *var_meta =>
-            yield (fix_nm(ctxt, buff, var.nm), var.nm.tpe, false);
+            yield if(memb.pre is operator &&
+                memb.pre as operator == operator::LENGTH){
+                yield (fix_nm(ctxt, buff, var.nm), memb.tpe, false);
+            } else {
+                yield (fix_nm(ctxt, buff, var.nm), var.nm.tpe, false);
+            };
         case let access: *union_read =>
             yield unwrap_sufixes(ctxt, buff, access, defer_id);
         case let access: *union_write =>
@@ -2501,12 +2514,62 @@ fn gen_arr_lit(
         // emit known items
         if(i < spread){
             const val =
-                match(arr_lit.items[i]){
-                case let exp: *expr_meta =>
-                    yield gen_exp(ctxt, buff, wrap,
-                        as_arr.base, exp, defer_id);
-                case let lit: *const_meta =>
-                    yield emit_constant(ctxt, lit, as_arr.base);
+                // array item should be wrapped in a union
+                if(!(arr_lit.items[i].0.base is *union_t)
+                    && as_arr.base.base is *union_t){
+                        let val_t = arr_lit.items[i].0;
+                        const uni = as_arr.base.base as *union_t;
+                        // find tag
+                        let v = 0z;
+                        for(let variant .. uni.variants){
+                            v += 1;
+                            if(untyped(val_t) && is_subtype(val_t, variant.1)){
+                                val_t = variant.1;
+                            };
+                            if(comp_type(val_t, variant.1)) break;
+                        };
+                        const data_wrap = fmt::asprintf("{}.data", wrap)!;
+                        defer free(data_wrap);
+                        // gen item actual value
+                        const val =
+                            match(arr_lit.items[i].1){
+                            case let exp: *expr_meta =>
+                                yield gen_exp(ctxt, buff, data_wrap,
+                                    val_t, exp, defer_id);
+                            case let lit: *const_meta =>
+                                yield emit_constant(ctxt, lit, as_arr.base);
+                            };
+                        const src =
+                            if(val != ""){
+                                yield val;
+                            } else {
+                                yield data_wrap;
+                            };
+                        // allocate union
+                        fmt::fprintfln(buff, "\t{} =l alloc8 {}",
+                            wrap, type_size(as_arr.base))!;
+                        // store tag
+                        fmt::fprintfln(buff, "\tstorel {}, {}", v, wrap)!;
+                        // store data
+                        fmt::fprintfln(buff, "\t{0}.ptr =l add {0}, 8", wrap)!;
+                        const val_tpe_sz = type_size(val_t);
+                        if(val_tpe_sz <= 8){
+                            fmt::fprintfln(buff, "\tstore{} {}, {}.ptr",
+                                qbe_t(ctxt, val_t), src, wrap)!;
+                        } else {
+                            fmt::fprintfln(buff, "\tblit {}, {}.ptr, {}",
+                                src, wrap, val_tpe_sz)!;
+                        };
+                        yield strings::dup(wrap)!;
+                // just emit array item
+                } else {
+                    yield match(arr_lit.items[i].1){
+                    case let exp: *expr_meta =>
+                        yield gen_exp(ctxt, buff, wrap,
+                            as_arr.base, exp, defer_id);
+                    case let lit: *const_meta =>
+                        yield emit_constant(ctxt, lit, as_arr.base);
+                    };
                 };
             const asg_val =
                 if(val != ""){
@@ -2535,7 +2598,7 @@ fn gen_arr_lit(
                 "@assign.static.{0}\n\tjnz %times.left.{0}, "
                 "@arr.next.{0}, @arr.end.{0}\n@arr.next.{0}", lbl)!;
             const spread =
-                match(arr_lit.items[i]){
+                match(arr_lit.items[i].1){
                 case let exp: *expr_meta =>
                     yield gen_exp(ctxt, buff, wrap,
                         as_arr.base, exp, defer_id);
@@ -2566,7 +2629,7 @@ fn gen_arr_lit(
                     lbl, dest, len(arr_lit.items) - 1)!;
             };
             const spread =
-                match(arr_lit.items[i]){
+                match(arr_lit.items[i].1){
                 case let exp: *expr_meta =>
                     yield gen_exp(ctxt, buff, wrap,
                         as_arr.base, exp, defer_id);
@@ -2911,7 +2974,7 @@ fn gen_index(
             };
             return wrap;
         };
-    } else if(return_ptr){
+    } else if(return_ptr || this.tpe.base is *union_t){
         return fmt::asprintf("{}.ptr", base)!;
     } else {
         fmt::fprintfln(buff, "\t{} ={} load{} {}.ptr",
@@ -3013,6 +3076,7 @@ fn gen_slice(
     };
     fmt::fprintfln(buff, "\t{0}.ptr =l add {0}, 8", slice)!;
     fmt::fprintfln(buff, "\tstorel {}.ptr, {}.ptr", base, slice)!;
+    fmt::fprintfln(buff, "\tcall $rt.debug(l {}.ptr, l {}.ptr)", base, slice)!;
     if(!this.safe){
         fmt::fprintfln(buff, "\t{0} =l sub {0}, 8\n\tjmp @slice.finish.{1}",
             slice, lbl)!;
@@ -3217,14 +3281,16 @@ fn gen_prop(
     // no assertion expression
     if(prop.1 is void){
         if(prop.0 == operator::BUBBLE){
-            fmt::fprintfln(buff, "\tjnz %assert.fail, @bubble.{0}, @ok.{0}",
-                lbl)!;
+            fmt::fprintfln(buff,
+                "\tjnz %assert.fail, @bubble.{0}, @ok.{0}", lbl)!;
+            fmt::fprintfln(buff, "@bubble.{0}", lbl)!;
+            // gen free chain
             if(len(ctxt.free_on_ret) > 0){
                 for(let f .. ctxt.free_on_ret){
                     fmt::fprintln(buff, f)!;
                 };
             };
-            fmt::fprintfln(buff, "@bubble.{0}\n\tret {1}\n@ok.{0}", lbl, val)!;
+            fmt::fprintfln(buff, "\tret {}\n@ok.{}", val, lbl)!;
         } else {
             fmt::fprintfln(buff, "\tjnz %assert.fail, @fail, @ok.{0}\n@ok.{0}",
                 lbl)!;
@@ -3269,8 +3335,7 @@ fn gen_prop(
                     dest, qbe_t(ctxt, exp_t, mode::ASSIGN),
                     qbe_t(ctxt, exp_t, mode::LOAD), val)!;
             } else {
-                fmt::fprintfln(buff,
-                    "\t{} =l add {}, 8", dest, val)!;
+                fmt::fprintfln(buff, "\t{} =l add {}, 8", dest, val)!;
             };
         } else {
             const stt = prop.1 as path_meta;
@@ -3305,7 +3370,7 @@ fn gen_funcall(
 
     const base_name = strings::replace(call.fun.fun.name, "'", ".q")!;
     defer free(base_name);
-    const name =
+    const fun_name =
         if(call.fun.fun.ffi is str){
             const ffi = call.fun.fun.ffi as str;
             yield if(strings::hasprefix(ffi, "$") ||
@@ -3324,34 +3389,58 @@ fn gen_funcall(
         } else {
             yield fmt::asprintf("${}", base_name)!;
         };
-    defer free(name);
+    defer free(fun_name);
     const defs: []*var_meta = [];
     for(let exp .. call.args){
-        const wrap = fmt::asprintf("%exp.{}", exp.pos)!;
-        const memb = gen_exp(ctxt, buff, wrap, exp.tpe, exp, defer_id);
-        const name =
-            if(memb != ""){
-                free(wrap);
-                yield memb;
-            } else {
-                yield wrap;
-            };
+        const param_t = call.fun.params[len(defs)].var.nm.tpe;
         const root = extract_root(exp);
         const arg =
             // assert for slices
             if(root is *array_lit_meta){
                 const lit = root as *array_lit_meta;
+                // array lit is being sliced
                 yield if(!comp_type(lit.tpe, exp.tpe)){
+                    const wrap = fmt::asprintf("%exp.{}", exp.pos)!;
+                    const memb = gen_exp(ctxt, buff, wrap, exp.tpe, exp, defer_id);
+                    const name =
+                        if(memb != ""){
+                            free(wrap);
+                            yield memb;
+                        } else {
+                            yield wrap;
+                        };
                     defer free(name);
                     const cast = fmt::asprintf("{}.cast", name)!;
                     gen_cast(ctxt, buff, name, lit.tpe,
                         cast, exp.tpe);
                     yield cast;
                 } else {
-                    yield name;
+                    const wrap = fmt::asprintf("%exp.{}", exp.pos)!;
+                    const memb = gen_exp(ctxt, buff, wrap, exp.tpe, exp, defer_id);
+                    yield if(memb != ""){
+                        free(wrap);
+                        yield memb;
+                    } else {
+                        yield wrap;
+                    };
                 };
+            // assert for union implicit castings
+            } else if(param_t.base is *union_t && !(exp.tpe.base is *union_t)){
+                const wrap = fmt::asprintf("%exp.{}", exp.pos)!;
+                fmt::fprintfln(buff,
+                    "\t{} =l alloc8 {}", wrap, type_size(param_t))!;
+                gen_union_write(ctxt, buff, wrap, param_t,
+                    exp.pos, exp, defer_id);
+                yield wrap;
             } else {
-                yield name;
+                const wrap = fmt::asprintf("%exp.{}", exp.pos)!;
+                const memb = gen_exp(ctxt, buff, wrap, exp.tpe, exp, defer_id);
+                yield if(memb != ""){
+                    free(wrap);
+                    yield memb;
+                } else {
+                    yield wrap;
+                };
             };
         const temp = var_meta {
             nm = namespace {
@@ -3363,6 +3452,7 @@ fn gen_funcall(
             },
             pos = exp.pos,
             lifetime = void,
+            scp_ownr = ctxt.scp,
             allocated = false,
         };
         append(defs, alloc(temp)!)!;
@@ -3382,13 +3472,13 @@ fn gen_funcall(
         if(call.fun.fun.tpe.partial &&
             call.fun.fun.tpe.base is *record){
             fmt::fprintf(buff, "\t{} ={}.opt call {}", dest,
-                qbe_t(ctxt, call.fun.fun.tpe, mode::RETURN), name)!;
+                qbe_t(ctxt, call.fun.fun.tpe, mode::RETURN), fun_name)!;
         } else {
             fmt::fprintf(buff, "\t{} ={} call {}", dest,
-                qbe_t(ctxt, call.fun.fun.tpe, mode::RETURN), name)!;
+                qbe_t(ctxt, call.fun.fun.tpe, mode::RETURN), fun_name)!;
         };
     } else if(!call.tailcall){
-        fmt::fprintf(buff, "\tcall {}", name)!;
+        fmt::fprintf(buff, "\tcall {}", fun_name)!;
     };
     if(!call.tailcall || keep_result){
         gen_list(ctxt, buff, defs, call.fun.fun.ffi is str);
@@ -3467,6 +3557,7 @@ fn gen_cast(
                 return;
             };
         } else if(!comp_type(src_t, dest_t) && size_mismatch(src_t, dest_t)){
+            assert(!comp_type(src_t, primitive::MEM));
             // cast between integers
             if((is_subtype(src_t, primitive::NUMBER) ||
                 is_subtype(src_t, primitive::BOOL)) &&

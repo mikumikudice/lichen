@@ -12,6 +12,8 @@ fn digit_count(x u64, c u64) u64 = {
     };
 };
 
+// requires a to be at least twice the length of the number
+// plus 32
 pub fn from_u64(src u64, mut a mem) !str @ a = alloc {
     // quick results
     switch src;
@@ -36,6 +38,8 @@ pub fn from_u64(src u64, mut a mem) !str @ a = alloc {
     return buff' str;
 };
 
+// requires a to be at least twice the length of the number
+// plus 32
 pub fn from_i64(src i64, mut a mem) !str @ a = alloc {
     let mut neg = src < 0;
     let val = -src if neg else src;
@@ -47,6 +51,8 @@ pub fn from_i64(src i64, mut a mem) !str @ a = alloc {
     };
 };
 
+// requires a to be at least twice the length of the number
+// plus 32
 pub fn from_f64(src f64, ratio bool, mut a mem) !str @ a = alloc {
     return error;
 };

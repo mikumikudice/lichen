@@ -1,66 +1,83 @@
-type formattable = union {
+conv mod = use "str/conv.lim";
+mkr  mod = use "str/mkr.lim";
+
+pub type formattable = union {
     as_str str;
-    as_u64 u64;
-    as_i64 i64;
-    as_f64 f64;
+    as_int i64;
+    //as_f64 f64;
     as_bool bool;
 };
 
-fn count_digit(x u64) u64 = ...
+fn count_digit(x u64, c u64) u64 = {
+    if x == 0 {
+        return c;
+    } else {
+        return count_digit(x / 10, c + 1);
+    };
+};
+
+alloc efx = mut mem;
 
 pub fn format(
     fmt str,
     args []formattable,
-    here mem,
-) !maker = mkr {
-    let mut out = mkr::dynamic(#fmt, here)?;
+    mut here mem,
+) !mkr::maker = conv & mkr & alloc {
+    let mut out = mkr::dynamic(#here - 16, here)?;
     let mut toggle = false;
     let mut argcnt = 0 u64;
-    for char .. fmt {
-        if char == '%' do toggle = !toggle;
+    for char, idx .. fmt {
         switch char;
-        | '%' do
-            if !toggle do mkr::append(out, char)?;
-        | 's', 'u', 'i', 'f', 'r', 'b' {
-            if !toggle do mkr::append(out, char)?;
-            else do switch char;
-            | 's' {
-                let val = args[argcnt]?.as_str?;
-                mkr::write(out, val)?;
-                argcnt = argcnt + 1;
-            };
-            | 'u' {
-                let val = args[argcnt]?.as_u64?;
-                new temp | count_digit(val) {
-                    mkr::write(out, conv::from_u64(val, temp)?)?;
-                }?;
-                argcnt = argcnt + 1;
-            };
-            | 'i' {
-                let val = args[argcnt]?.as_i64?;
-                new temp | count_digit(val) {
-                    mkr::write(out, conv::from_i64(val, temp)?)?;
-                }?;
-                argcnt = argcnt + 1;
-            };
-            | 'f' {
-                let val = args[argcnt]?.as_f64?;
-                // allocate the integer digit count plus
-                // a sign, the dot and 6 decimal places
-                new temp | count_digit(val u64) {
-                    mkr::write(out,
-                        conv::from_f64(val, false, 6, temp)?)?;
-                }?;
-                argcnt = argcnt + 1;
-            };
-            | 'b' {
-                let val = args[argcnt]?.as_bool?;
-                mkr::write(out, "true" if val else "false")?;
-                argcnt = argcnt + 1;
-            };
+        | '%' {
+            toggle = !toggle;
+            if !toggle { mkr::append(out, char)?; };
         };
-        else if toggle do return error
-        else do mkr::append(out, char)?;
+        | 's' {
+            let val = args[argcnt]?.as_str?;
+            mkr::write(out, val)?;
+            argcnt = argcnt + 1;
+            toggle = false;
+        };
+        | 'u' {
+            let val = args[argcnt]?.as_int?;
+            let val' = val u64 if val >= 0 else (-val) u64;
+            new temp | (count_digit(val', 0) + 16) * 2 {
+                mkr::write(out, conv::from_u64(val', temp)?)?;
+            }?;
+            argcnt = argcnt + 1;
+            toggle = false;
+        };
+        | 'i' {
+            let val = args[argcnt]?.as_int?;
+            let abs = val u64 if val >= 0 else (-val) u64;
+            new temp | (count_digit(abs, 0) + 16) * 2 {
+                mkr::write(out, conv::from_i64(val, temp)?)?;
+            }?;
+            argcnt = argcnt + 1;
+            toggle = false;
+        };
+        | 'f' {
+            test false, "todo floating formatting";
+            // let val = args[argcnt]?.as_f64?;
+            // // allocate the integer digit count plus
+            // // a sign, the dot and 6 decimal places
+            // new temp | count_digit(val u64) {
+            //     mkr::write(out,
+            //         conv::from_f64(val, false, 6, temp)?)?;
+            // }?;
+            // argcnt = argcnt + 1;
+            // toggle = false;
+        };
+        | 'b' {
+            let val = args[argcnt]?.as_bool?;
+            mkr::write(out, "true" if val else "false")?;
+            argcnt = argcnt + 1;
+            toggle = false;
+        };
+        | else {
+            test !toggle, "invalid escape sequence";
+            mkr::append(out, char)?;
+        };
     };
     return out;
 };

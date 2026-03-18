@@ -1,0 +1,32 @@
+// compiler test for checking if issue
+// with string slices not being handled
+// properly
+
+pub type maker = record {
+    placed !mem;
+    mut buffer []u8;
+    mut bufptr u64;
+    mut length u64;
+};
+
+alloc efx = mut mem;
+
+pub fn dynamic(ini u64, mut a mem) !maker @ a = alloc {
+    return maker {
+        placed = a,
+        buffer = new ? [ini; 0...] @ a,
+        bufptr = 0,
+        length = ini,
+    };
+};
+
+pub fn format(mut here mem) !unit = alloc {
+    let mut out = dynamic(#here - 16, here)?;
+    test out.bufptr == 0;
+};
+
+fn main() void = do {
+    new arena | 256 {
+        format(arena)!;
+    }!;
+};

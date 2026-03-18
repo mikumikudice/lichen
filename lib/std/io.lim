@@ -1,7 +1,7 @@
 // the io module implements functions for writing to and
 // reading from file handlers and streams
 
-conv mod = use "str/conv.lim";
+fmt  mod = use "str/fmt.lim";
 mkr  mod = use "str/mkr.lim";
 rt   mod = use "std/rt.lim";
 
@@ -47,6 +47,40 @@ pub fn report(data str) !unit = rt & io_write {
 // returns `error` if any error occurs during printing
 pub fn reportln(data str) !unit = rt & io_write {
     fprintln(stderr, data)?;
+};
+
+pub fn printf(
+    sfmt str,
+    args []fmt::formattable,
+) !unit = rt & io_write & fmt & mkr {
+    fprintf(stdout, sfmt, args)?;
+};
+
+pub fn printfln(
+    sfmt str,
+    args []fmt::formattable,
+) !unit = rt & io_write & fmt & mkr {
+    fprintfln(stdout, sfmt, args)?;
+};
+
+pub fn fprintfln(
+    handle u32,
+    sfmt str,
+    args []fmt::formattable,
+) !unit = rt & io_write & fmt & mkr {
+    fprintf(handle, sfmt, args)?;
+    fprint(handle, "\n")?;
+};
+
+pub fn fprintf(
+    handle u32,
+    sfmt str,
+    args []fmt::formattable,
+) !unit = rt & io_write & fmt & mkr {
+    new local | #sfmt * #sfmt {
+        let out = fmt::format(sfmt, args, local)?;
+        fprint(handle, mkr::as_str(out))?;
+    }?;
 };
 
 // prints `data` followed by a line feed to the given file

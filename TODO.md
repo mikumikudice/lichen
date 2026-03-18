@@ -1,5 +1,6 @@
+- solve compiler crash on `test x = 4` cases
+- add to runtime error messaging system reporting info when returning `error`
 - assert for multiple bindings to the same module
-- unions
 - optimize single return functions to be inlined
 - optimize arenas to reset rather deallocate when created within loops
 - optimize concatenation for in-place data appending and contiguous data override

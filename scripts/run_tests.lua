@@ -106,11 +106,12 @@ local tests = {
     { src = "issue_mut_loop", code = 0 },
     { src = "issue_for_slice", code = 0 },
     { src = "issue_lit_arr", code = 0 },
+    { src = "issue_str_slice", code = 0 },
     -- fail assertion --
     { src = "fail_io_bad_handle",
         output =
             "../tests/fail_io_bad_handle.lic:7:33: assertion failed\n" ..
-            "/home/minhasmin/.local/lib/lcc/std/io.lim:69:14: could not write to this handle\n",
+            os.getenv( "HOME" ) .. "/.local/lib/lcc/std/io.lim:103:14: could not write to this handle\n",
         code = 1 },
     { src = "fail_io_from_result",
         output = "../tests/fail_io_from_result.lic:14:19: assertion failed\n",
@@ -200,6 +201,7 @@ local tests = {
     { src = "enum_switch", output = "test ok\n", code = 0 },
     { src = "enum_for", code = 0 },
     { src = "union", code = 0 },
+    { src = "printf", output = "4\nfoo\ntrue\n", code = 0 },
     -- io --
     { src = "hello", output = "mornin' sailor!\n", code = 0 },
     -- mem --

@@ -1,0 +1,19 @@
+// compiler test for wrapping values
+// onto union literals when creating
+// arrays of union-casted data
+
+type uni = union {
+    foo u32;
+    bar str;
+};
+
+fn main() void = {
+    let _ = egg([4, 2, "bar"]);
+};
+
+fn egg(l [3]uni) u32 = {
+    test l[0].foo! == 4;
+    test l[1].foo! == 2;
+    test l[2].bar! == "bar";
+    return 0;
+};

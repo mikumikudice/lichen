@@ -129,6 +129,7 @@ fn strtype(tpe: lichen_t, mode: strtype_mode = strtype_mode::NORMAL) str = {
             return strtoken(prim, mode != strtype_mode::NORMAL);
         };
     case let enu: *enum_t =>
+        if(mode == strtype_mode::DEF) return strtype(enu.base);
         const name =
             if(enu.name is namespace){
                 yield (enu.name as namespace).name;
@@ -143,8 +144,15 @@ fn strtype(tpe: lichen_t, mode: strtype_mode = strtype_mode::NORMAL) str = {
     case let uni: *union_t =>
         const name =
             if(uni.name is namespace){
+                if(mode == strtype_mode::DEF)
+                    return strings::dup((uni.name as namespace).name)!;
                 yield (uni.name as namespace).name;
             } else {
+                static let unamed_count = 0z;
+                if(mode == strtype_mode::DEF){
+                    defer unamed_count += 1;
+                    return fmt::asprintf("union.unamed.{}", unamed_count)!;
+                };
                 yield "{unamed union}";
             };
         const buff = &memio::dynamic();
@@ -460,7 +468,8 @@ fn dummy_nm(ctxt: *context, val: str) namespace = namespace {
 
 // compiles down a given source file to a compilation unit context
 // returns an error in case of a compilation error
-fn compile(filename: str,
+fn compile(
+    filename: str,
     stdlib_path: str,
     has_main: bool,
     mod_emit: bool,
@@ -1224,6 +1233,7 @@ fn eval_const_def(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
             nm = name,
             pos = at,
             lifetime = void,
+            scp_ownr = ctxt.scp,
             allocated = false,
         })!,
         val = out_val,
@@ -1548,6 +1558,13 @@ fn eval_type_def(ctxt: *context, at: size) ((*type_meta, size) | ERROR) = {
     append(allocd_nodes, out)!;
     out.name.kind = nm_kind::TYPE;
     push_def(ctxt, ctxt.tokens[at], name, out)?;
+    // TODO: optimize this path
+    for(let tpe_def .. ctxt.types){
+        if(comp_type(tpe_def.self, tpe)){
+            free(out);
+            return (tpe_def, _end);
+        };
+    };
     append(ctxt.types, out)!;
     return (out, _end);
 };
@@ -2114,6 +2131,7 @@ fn eval_scope(
                     var = alloc(var_meta {
                         nm = dummy_nm(ctxt, "unamed"),
                         lifetime = void,
+                        scp_ownr = ctxt.scp,
                         allocated = false,
                         pos = 0,
                     })!,
@@ -2680,9 +2698,9 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
                     const pass = root as *var_meta;
                     const rec = val.tpe.base as *record;
                     if(!rec.copiable && var_def.var.nm.mut != pass.nm.mut){
+                        move_ptr(ctxt, ctxt.tokens[eq]);
                         const tpe_name = strtype(val.tpe);
                         defer free(tpe_name);
-                        move_ptr(ctxt, ctxt.tokens[eq]);
                         const hint = fmt::asprintf(
                             "\n%bsome fields of {} have unknown size"
                             " at compile time and cannot be copied to the stack"
@@ -2691,9 +2709,32 @@ fn eval_statement(ctxt: *context, at: size) ((path_meta, size) | ERROR) = {
                         if(var_def.var.nm.mut && !rec.safe_mut){
                             return error_hint(ctxt, hint,
                                 "cannot copy this %bimmutable aggregated value%r to %ymutable variable");
-                        } else if(!var_def.var.nm.mut){
+                        } else {
+                            assert(!var_def.var.nm.mut);
                             return error_hint(ctxt, hint,
                                 "source value is immutable, but destination variable is not");
+                        };
+                    } else if(!rec.copiable && val.val is *member_meta){
+                        let lifetime =
+                            match((val.val as *member_meta).val){
+                            case let all: *alloc_meta =>
+                                yield all.arena.lifetime;
+                            case let cat: *concat_meta =>
+                                yield cat.arena.lifetime;
+                            case let var: *var_meta =>
+                                yield var.lifetime;
+                            };
+                        if(lifetime is size){
+                            move_ptr(ctxt, ctxt.tokens[eq]);
+                            const tpe_name = strtype(val.tpe);
+                            defer free(tpe_name);
+                            const hint = fmt::asprintf(
+                                "\n%bsome fields of {} were dynamically allocated"
+                                " and receiver may outlive their lifetimes",
+                                tpe_name)!;
+                            defer free(hint);
+                            return error_hint(ctxt, hint,
+                                "source value is dynamically allocated, but destination variable is not");
                         };
                     };
                 };
@@ -2887,6 +2928,7 @@ fn eval_arena(ctxt: *context, at: size) ((*arena_meta, size) | ERROR) = {
             nm = name,
             pos = at + 1,
             lifetime = ctxt.lifetime,
+            scp_ownr = ctxt.scp,
             allocated = false,
         })!,
         val = void,
@@ -2959,6 +3001,7 @@ fn eval_var_def(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
         nm = name,
         pos = pos,
         lifetime = void,
+        scp_ownr = ctxt.scp,
         allocated = allocated,
     })!;
     append(allocd_nodes, var)!;
@@ -2975,7 +3018,7 @@ fn eval_var_def(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
     }  else if(root is *var_meta && val.tpe.base is *record){
         const pass = root as *var_meta;
         const rec = val.tpe.base as *record;
-        if(!rec.copiable && mut != pass.nm.mut){
+        if(!rec.copiable){
             const tpe_name = strtype(val.tpe);
             defer free(tpe_name);
             move_ptr(ctxt, ctxt.tokens[eq]);
@@ -2990,6 +3033,28 @@ fn eval_var_def(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
             } else if(!mut){
                 return error_hint(ctxt, hint,
                     "source value is immutable, but destination variable is not");
+            } else if(!rec.copiable && val.val is *member_meta){
+                let lifetime =
+                    match((val.val as *member_meta).val){
+                    case let all: *alloc_meta =>
+                        yield all.arena.lifetime;
+                    case let cat: *concat_meta =>
+                        yield cat.arena.lifetime;
+                    case let var: *var_meta =>
+                        yield var.lifetime;
+                    };
+                if(lifetime is size){
+                    move_ptr(ctxt, ctxt.tokens[eq]);
+                    const tpe_name = strtype(val.tpe);
+                    defer free(tpe_name);
+                    const hint = fmt::asprintf(
+                        "\n%bsome fields of {} were dynamically allocated"
+                        " and receiver may outlive their lifetimes",
+                        tpe_name)!;
+                    defer free(hint);
+                    return error_hint(ctxt, hint,
+                        "source value is dynamically allocated, but destination variable is not");
+                };
             };
         };
     };
@@ -3134,7 +3199,7 @@ fn eval_ifelse(ctxt: *context, at: size) ((*branch_meta, size) | ERROR) = {
     ctxt.branching = true;
 
     let tpe = quick_t(primitive::ANY);
-    let rets = false;
+    let ret_count = 0z;
     let conds: []*expr_meta = [];
     let bodies: []((*decl_meta | void), *scope_meta) = [];
     let locals: []*decl_meta = [];
@@ -3170,13 +3235,7 @@ fn eval_ifelse(ctxt: *context, at: size) ((*branch_meta, size) | ERROR) = {
             append(bodies, (void, body))!;
         };
         // check if all branches return
-        if(!body.rets){
-            if(!is_terminal(body.tpe)) rets = false;
-        } else {
-            assert_hint(ctxt, ctxt.tokens[body.pos], tpe, body.tpe)?;
-            tpe = body.tpe;
-            rets = true;
-        };
+        if(body.rets || is_terminal(body.tpe)) ret_count += 1;
         tk = next_tk(ctxt, end,
             "expected %belse block%r or %bend of line%r, but got %y{}")!;
         if(comp_tk(tk.val, symbol::EOL)) break;
@@ -3213,13 +3272,7 @@ fn eval_ifelse(ctxt: *context, at: size) ((*branch_meta, size) | ERROR) = {
                 append(bodies, (void, else_body))!;
             };
             // check if all branches return
-            if(!body.rets){
-                if(!is_terminal(body.tpe)) rets = false;
-            } else {
-                assert_hint(ctxt, ctxt.tokens[body.pos], tpe, body.tpe)?;
-                tpe = body.tpe;
-                rets = true;
-            };
+            if(else_body.rets || is_terminal(else_body.tpe)) ret_count += 1;
         } else {
             move_ptr(ctxt, tk);
             const arg = strtoken(tk.val);
@@ -3246,7 +3299,7 @@ fn eval_ifelse(ctxt: *context, at: size) ((*branch_meta, size) | ERROR) = {
     const out = alloc(branch_meta {
         pos = at,
         tpe = tpe,
-        rets = rets && exhaustive,
+        rets = ret_count == len(bodies) && exhaustive,
         nested = ctxt.branching,
         conds = conds,
         bodies = bodies,
@@ -3320,6 +3373,7 @@ fn eval_for_loop(ctxt: *context, at: size) ((*for_meta, size) | ERROR) = {
             nm = tk.val as namespace,
             pos = end,
             lifetime = void,
+            scp_ownr = ctxt.scp,
             allocated = false,
         })!,
         val = void,
@@ -3351,6 +3405,7 @@ fn eval_for_loop(ctxt: *context, at: size) ((*for_meta, size) | ERROR) = {
                 nm = tk.val as namespace,
                 pos = end,
                 lifetime = void,
+                scp_ownr = ctxt.scp,
                 allocated = false,
             })!,
             val = void,
@@ -4206,7 +4261,7 @@ fn eval_asg_or_exp(
                     case => yield void;
                     };
                 if(lifetime is size){
-                    if(!(pass.lifetime is size)){
+                    if(!(pass.lifetime is size) && pass.scp_ownr != ctxt.scp){
                         const hint =
                             fmt::asprintf("\n%gthe variable %y{}%g was not"
                             " dynamically allocated, it may outlive its"
@@ -4214,7 +4269,7 @@ fn eval_asg_or_exp(
                         defer free(hint);
                         return error_hint(ctxt, hint,
                             "cannot assign %ballocated value%r to field of variable with %yno lifetime");
-                    } else if(lifetime as size > pass.lifetime as size){
+                    } else if(pass.lifetime is size && lifetime as size > pass.lifetime as size){
                         return error(ctxt,
                             "assigned value underlives variable %b{}%r's lifetime",
                             pass.nm.name);
@@ -4286,6 +4341,7 @@ fn eval_asg_or_exp(
                     case => yield void;
                     };
                 if(lifetime is size){
+                    // receiver has no life time and object does not share receiver's scope
                     if(!(pass.lifetime is size)){
                         const hint =
                             fmt::asprintf("\n%gthe variable %y{}%g was not"
@@ -4360,6 +4416,7 @@ fn eval_asg_or_exp(
                     case => yield void;
                     };
                 if(lifetime is size){
+                    // receiver has no life time and object does not share receiver's scope
                     if(!(pass.lifetime is size)){
                         const hint =
                             fmt::asprintf("\n%gthe variable %y{}%g was not"
@@ -4803,7 +4860,7 @@ fn eval_member(
                     };
                     // generate new array items
                     for(let variant .. enu.variants){
-                        append(lit.items, variant.1)!;
+                        append(lit.items, (enu.base, variant.1))!;
                     };
                     memb.val = alloc(lit)!;
                     append(allocd_nodes, memb.val as *array_lit_meta)!;
@@ -4952,7 +5009,7 @@ fn eval_member(
                                 };
                                 // generate new array items
                                 for(let variant .. enu.variants){
-                                    append(lit.items, variant.1)!;
+                                    append(lit.items, (enu.base, variant.1))!;
                                 };
                                 memb.val = alloc(lit)!;
                             };
@@ -5044,16 +5101,16 @@ fn extract_base_from_chain(
     obj: chain_exp_t,
     assignment: bool = false,
 ) (chain_exp_t | ERROR) = {
-    let root: chain_exp_t = match(obj){
+    let root = match(obj){
         case let fld: *field_meta =>
             yield if(fld.before is void){
-                yield fld;
+                yield fld: chain_exp_t;
             } else {
                 yield fld.before as chain_exp_t;
             };
         case let idx: *indexing_meta =>
             yield if(idx.before is void){
-                yield idx;
+                yield idx: chain_exp_t;
             } else {
                 yield idx.before as chain_exp_t;
             };
@@ -5062,32 +5119,28 @@ fn extract_base_from_chain(
                 return error(ctxt, "cannot assign to %yslicing literal");
             };
             yield if(slc.before is void){
-                yield slc;
+                yield slc: chain_exp_t;
             } else {
                 yield slc.before as chain_exp_t;
             };
         case let uni: *union_read =>
             yield if(uni.before is void){
-                yield uni;
-            } else if(uni.before is chain_exp_t){
+                yield uni: chain_exp_t;
+            } else{
                 yield uni.before as chain_exp_t;
-            } else {
-                yield uni;
             };
         case let uni: *union_write =>
             yield if(uni.before is void){
-                yield uni;
-            } else if(uni.before is chain_exp_t){
-                yield uni.before as chain_exp_t;
+                yield uni: chain_exp_t;
             } else {
-                yield uni;
+                yield uni.before as chain_exp_t;
             };
         case let cll: *funcall_meta =>
             if(assignment){
                 return error(ctxt, "cannot assign to %yfunction call");
             };
             yield if(cll.before is void){
-                yield cll;
+                yield cll: chain_exp_t;
             } else {
                 yield cll.before as chain_exp_t;
             };
@@ -5202,7 +5255,7 @@ fn eval_sufixes(
                 comp_tk(tk.val, symbol::LFT_SQUARE) ||
                 comp_tk(tk.val, symbol::LFT_PAR)){
                 if(comp_tk(tk.val, symbol::DOT)){
-                    if(memb.tpe.base is *union_t){
+                    if(memb.tpe.base is *union_t || last_tpe.base is *union_t){
                         const (meta, _end) =
                             eval_union_read(ctxt, end,
                             last_tpe, memb, before)?;
@@ -5417,6 +5470,7 @@ fn type_to_fun_meta(
                     tpe = param.1,
                 },
                 lifetime = void,
+                scp_ownr = ctxt.scp,
                 allocated = false,
                 pos = 0,
             })!,
@@ -5712,7 +5766,7 @@ fn eval_array_lit(
 
     let length: (void | *expr_meta) = void;
     let has_allocs = false;
-    const items: [](*const_meta | *expr_meta) = [];
+    const items: [](lichen_t, (*const_meta | *expr_meta)) = [];
     const as_arr = tpe.base as *array;
     // iterate until end of array
     for(!comp_tk(tk.val, symbol::RGT_SQUARE)){
@@ -5789,13 +5843,13 @@ fn eval_array_lit(
                 assert_hint(ctxt, ctxt.tokens[begin], itm.tpe, itm_tpe)?;
                 if(untyped(itm_tpe)) itm_tpe = itm.tpe;
                 spreads_at = len(items);
-                append(items, itm)!;
+                append(items, (itm.tpe, itm))!;
             } else {
                 assert(length is *expr_meta);
                 assert_hint(ctxt, ctxt.tokens[begin], itm.tpe, itm_tpe)?;
                 if(untyped(itm_tpe)) itm_tpe = itm.tpe;
                 spreads_at = len(items);
-                append(items, itm)!;
+                append(items, (itm.tpe, itm))!;
             };
             end += 1;
             tk = next_tk(ctxt, end,
@@ -5809,7 +5863,7 @@ fn eval_array_lit(
                 return error(ctxt, "too many items in array of %blength {}",
                     as_arr.length as size);
             };
-            append(items, itm)!;
+            append(items, (itm.tpe, itm))!;
         };
 
         if(comp_tk(tk.val, symbol::RGT_SQUARE)) break;
@@ -6256,17 +6310,27 @@ fn eval_record_field(
         };
     };
     move_ptr(ctxt, tk);
-    if(base is void){
+    match(base){
+    case void =>
         const name = strtype(base_tpe);
         defer free(name);
-        return error(ctxt, "object of %b{}%r has %yno field named \"{}\"",
-            name, field_name.name);
-    } else {
-        const bf = base as *field_meta;
-        const name = strtype(bf.tpe);
+        return error(ctxt, "this type (%b{}%r) has %yno fields", name);
+    case let fld: *field_meta =>
+        const name = strtype(fld.tpe);
         defer free(name);
         return error(ctxt, "field %b{}%r of %b{}%r has %yno field named \"{}\"",
-            bf.field.var.nm.name, name, field_name.name);
+            fld.field.var.nm.name, name, field_name.name);
+    case let idx: *indexing_meta =>
+        const name = strtype(idx.tpe);
+        defer free(name);
+        return error(ctxt, "array item of %b{}%r has no fields", name);
+    case let slc: *slicing_meta =>
+        const name = strtype(slc.tpe);
+        defer free(name);
+        return error(ctxt, "slice of %b{}%r has no fields", name);
+    case =>
+        assert(false, "unreachable");
+        fmt::fatal("");
     };
 };
 
@@ -6351,7 +6415,20 @@ fn eval_funcall(
                 };
             };
         };
-        arg.tpe = fun.params[arg_count].var.nm.tpe;
+        // do not overide union literal value's type
+        if(fun.params[arg_count].var.nm.tpe.base is *union_t){
+            const uni = fun.params[arg_count].var.nm.tpe.base as *union_t;
+            if(untyped(arg.tpe)){
+                for(let variant .. uni.variants){
+                    if(is_subtype(arg.tpe, variant.1)){
+                        arg.tpe = variant.1;
+                        break;
+                    };
+                };
+            };
+        } else {
+            arg.tpe = fun.params[arg_count].var.nm.tpe;
+        };
         // borrow argument lifetime
         if(borrows && arg_count == index){
             const obj = extract_root(arg);
@@ -6513,7 +6590,8 @@ fn validate_efx(
                 "\n%gtry declaring using the same tags of the called function on the caller declaration",
                 "the called function %b{}%r is %yimpure%r, but the caller function {} has no %ydeclared effects",
                 called.fun.name, host.fun.name);
-        } else if((called.effects as *effect_t).polymorphic){
+        } else if(called.effects is do_effect ||
+            (called.effects as *effect_t).polymorphic){
             return;
         };
         const cefx = called.effects as *effect_t;
@@ -6762,6 +6840,7 @@ fn eval_declaration(ctxt: *context, at: size) ((*decl_meta, size) | ERROR) = {
         nm = name,
         pos = at,
         lifetime = void,
+        scp_ownr = ctxt.scp,
         allocated = false,
     };
     const out = alloc(decl_meta {
@@ -6789,9 +6868,11 @@ const any_arr = array {
         base = primitive::ANY,
     },
 };
+
 // creates a new anonymous array type
 // doesn't instantiate a new type if a similar one was already created
 fn new_array_t(ctxt: *context, arr: array, partial: bool = false) lichen_t = {
+    static let defs: []*type_meta = [];
     if(comp_type(arr.base, primitive::ANY)){
         any_arr.length = arr.length;
         return lichen_t {
@@ -6811,20 +6892,17 @@ fn new_array_t(ctxt: *context, arr: array, partial: bool = false) lichen_t = {
         name = dummy_nm(ctxt, tpe_name),
         self = dummy,
     })!;
-    for(let d ..& ctxt.global.defs){
-        if(d is *type_meta){
-            const def_t = d as *type_meta;
-            if(comp_type(def_t.self, tpe.self) ||
-                def_t.name.name == tpe.name.name){
-                free(tpe_name);
-                free(tpe);
-                return def_t.self;
-            };
+    for(let d ..& defs){
+        if(comp_type(d.self, dummy)){
+            free(tpe_name);
+            free(tpe);
+            return d.self;
         };
     };
     append(allocd_nodes, tpe)!;
     append(tpe_names, tpe_name)!;
     append(ctxt.global.defs, tpe)!;
+    append(defs, tpe)!;
     append(ctxt.types, tpe)!;
     return tpe.self;
 };
@@ -7030,7 +7108,9 @@ fn eval_type(
                             "the type %b{}::{}%r exists, but it's %ynot public",
                             module.name, tpe.name.name);
                     };
-                    return (tpe.self, end);
+                    const out = tpe.self;
+                    out.partial = partial;
+                    return (out, end);
                 };
             };
             return error(ctxt,
@@ -7291,17 +7371,18 @@ fn eval_type(
                     const mod = strings::rcut(
                         strings::rcut(ctxt.file, "/").1, ".").0;
                     defer unamed_count += 1;
-                    yield fmt::asprintf(":{}.unamed_union.{}",
+                    yield fmt::asprintf("{}.unamed_union.{}",
                         mod, unamed_count)!;
                 } else {
                     const dummy = &memio::fixed([]);
                     const fixed = fix_nm(ctxt, dummy, named as namespace);
                     defer free(fixed);
-                    yield fmt::asprintf(":{}", strings::sub(fixed, 1))!;
+                    yield fmt::asprintf("{}", strings::sub(fixed, 1))!;
                 };
             const uni = union_t {
                 name = named,
                 export_name = name,
+                origin = ctxt.file,
                 variants = variants,
             };
             const out = lichen_t {
@@ -7569,6 +7650,17 @@ fn is_subtype(
     return _is_subtype(this, that);
 };
 
+@test fn type_matching() void = {
+    assert(is_subtype(primitive::NUMBER, primitive::U64));
+    assert(is_subtype(primitive::NUMBER, primitive::I64));
+    assert(is_subtype(primitive::RATIO, primitive::F32));
+    assert(is_subtype(primitive::RATIO, primitive::F64));
+    assert(!is_subtype(primitive::RATIO, primitive::U64));
+    assert(!is_subtype(primitive::RATIO, primitive::I64));
+    assert(is_subtype(primitive::RATIO, primitive::NUMBER));
+    assert(is_subtype(primitive::NUMBER, primitive::RATIO));
+};
+
 // actual implementation of is_subtype
 fn _is_subtype(_this: lichen_t, _that: lichen_t) bool = {
     // any is a subtype of anything
@@ -7596,10 +7688,10 @@ fn _is_subtype(_this: lichen_t, _that: lichen_t) bool = {
             return (this <= that && this >= primitive::F32) ||
                 this == primitive::RATIO || this == primitive::NUMBER;
         case primitive::NUMBER =>
-            return this == primitive::NUMBER || is_subtype(that, this);
+            return this == primitive::NUMBER || _is_subtype(_that, _this);
         case primitive::RATIO =>
             return this == primitive::RATIO || this == primitive::NUMBER ||
-                is_subtype(that, this);
+                _is_subtype(_that, _this);
         case primitive::VOID =>
             return this == primitive::UNIT || this == primitive::VOID;
         case =>
@@ -7917,6 +8009,24 @@ fn assert_hint(
         defer free(arg1);
         const arg2 = strtype(rgt);
         defer free(arg2);
+        if(rgt.base is *union_t){
+            if(untyped(lft)){
+                const hint = fmt::asprintf(
+                    "\n%guntyped value (%y{}%g) matches more than one variant of %y{}",
+                    arg1, arg2)!;
+                defer free(hint);
+                return error_hint(ctxt, hint,
+                "type mismatch between value type (%b{}%r) and expected type (%b{}%r)",
+                arg1, arg2);
+            };
+            const hint = fmt::asprintf(
+                "\n%gvalue of type %y{}%g is not a valid variant of the type %y{}",
+                arg1, arg2)!;
+            defer free(hint);
+            return error_hint(ctxt, hint,
+                "type mismatch between value type (%b{}%r) and expected type (%b{}%r)",
+                arg1, arg2);
+        };
         return error(ctxt,
             "type mismatch between value type (%b{}%r) and expected type (%b{}%r)",
             arg1, arg2);

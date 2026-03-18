@@ -4,7 +4,7 @@
 // string maker type
 // it creates a buffered stream for long string printings
 //in an uniform approach. can be static or dynamic
-type maker = record {
+pub type maker = record {
     placed !mem;
     mut buffer []u8;
     mut bufptr u64;
@@ -109,6 +109,7 @@ pub fn append(mut self maker, data u8) !unit = maker_write {
     } else {
         let mut where = self.placed?;
         self.buffer = cat self.buffer ..? ([data, 0])[0..2] @ where;
+        self.bufptr = self.bufptr + 1;
     };
 };
 
