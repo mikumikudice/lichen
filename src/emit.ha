@@ -103,6 +103,7 @@ fn type_size(tpe: lichen_t, ignore_err: bool = false) size = {
     if(tpe.base is primitive){
         if(tpe.partial && !ignore_err){
             if((tpe.base as primitive) == primitive::MEM) return 32;
+            if((tpe.base as primitive) == primitive::STR) return 24;
             return 16;
         };
         switch(tpe.base as primitive){
@@ -673,7 +674,8 @@ fn gen_scope(
             gen_stt(ctxt, buff, scope.defer_stack[d - 1], defer_id);
         };
     };
-    if(!scope.rets && has_fail){
+    if(!scope.rets && has_fail && !(len(scope.stt) > 0 &&
+        scope.stt[len(scope.stt) - 1] is unreachable)){
         if(comp_type(scope.tpe, primitive::VOID)){
             fmt::fprintfln(buff, "\tcall $rt.exit(w 0)\n\thlt")!;
         } else if(comp_type(scope.tpe, quick_t(primitive::VOID, true))){
@@ -1196,7 +1198,9 @@ fn gen_stt(
         // validate allocation if needed
         if(arena.prop is propagation){
             const prop = arena.prop as propagation;
-            fmt::fprintfln(buff, "\tblit $str.{}, $rt.errmsg, 16", prop.2 as size)!;
+            fmt::fprintfln(buff, "\tstorew 1, $rt.errmsgset")!;
+            fmt::fprintfln(buff,
+                "\tblit $str.{}, $rt.errmsg, 16", prop.2 as size)!;
             if(prop.1 is void && prop.0 == operator::BANG){
                 fmt::fprintfln(buff,
                     "\tjnz {0}.chunk, @arena.ok.{1}, @fail",
@@ -1953,8 +1957,7 @@ fn assign_memb(
         case let access: *union_read =>
             yield unwrap_sufixes(ctxt, buff, access, defer_id);
         case let access: *union_write =>
-            assert(false, "unreachable");
-            fmt::fatal("");
+            abort("unreachable");
         case let call: *funcall_meta =>
             const temp = fmt::asprintf("%tmp.{}", memb.pos)!;
             defer free(temp);
@@ -2048,7 +2051,12 @@ fn gen_alloc(
     // allocation data temporary
     const data = fmt::asprintf("%arena.src.{}", all.pos)!;
     defer free(data);
-
+    // generate error message
+    if(all.prop is short_prop){
+        const prop = all.prop as short_prop;
+        fmt::fprintfln(buff, "\tstorew 1, $rt.errmsgset")!;
+        fmt::fprintfln(buff, "\tblit $str.{}, $rt.errmsg, 16", prop.1)!;
+    };
     // size known at compile time
     if(size_known(all.tpe)){
         // emit source data
@@ -2108,19 +2116,12 @@ fn gen_alloc(
             // assertion jump
             if(all.prop is void ||
                 (all.prop as short_prop).0 == operator::BUBBLE){
-                if(all.prop is short_prop){
-                    const prop = all.prop as short_prop;
-                    fmt::fprintfln(buff,
-                        "\tblit $str.{}, $rt.errmsg, 16", prop.1)!;
-                };
                 fmt::fprintfln(buff,
                     "\tjnz %data.length.ok, @length.ok.{0}, "
                     "@arena.fail.{0}\n@length.ok.{0}",
                     lbl)!;
             } else {
                 const prop = all.prop as short_prop;
-                fmt::fprintfln(buff,
-                    "\tblit $str.{}, $rt.errmsg, 16", prop.1)!;
                 fmt::fprintfln(buff,
                     "\tjnz %data.length.ok, @length.ok.{}, "
                     "@fail\n@length.ok.{0}", lbl)!;
@@ -2148,16 +2149,11 @@ fn gen_alloc(
     fmt::fprintfln(buff,
         "\t%arena.enough =l culel {0}.after, {0}.length", arena)!;
     if(all.prop is void || (all.prop as short_prop).0 == operator::BUBBLE){ 
-        if(all.prop is short_prop){
-            const prop = all.prop as short_prop;
-            fmt::fprintfln(buff, "\tblit $str.{}, $rt.errmsg, 16", prop.1)!;
-        };
         fmt::fprintfln(buff,
             "\tjnz %arena.enough, @arena.alloc.{0}, @arena.fail.{0}",
             lbl)!;
     } else {
         const prop = all.prop as short_prop;
-        fmt::fprintfln(buff, "\tblit $str.{}, $rt.errmsg, 16", prop.1)!;
         fmt::fprintfln(buff,
             "\tjnz %arena.enough, @arena.alloc.{}, @fail", lbl)!;
     };
@@ -2328,6 +2324,7 @@ fn gen_concat(
     if(cat.prop is void || (cat.prop as short_prop).0 == operator::BUBBLE){
         if(cat.prop is short_prop){
             const prop = cat.prop as short_prop;
+            fmt::fprintfln(buff, "\tstorew 1, $rt.errmsgset")!;
             fmt::fprintfln(buff, "\tblit $str.{}, $rt.errmsg, 16", prop.1)!;
         };
         fmt::fprintfln(buff,
@@ -2524,7 +2521,10 @@ fn gen_arr_lit(
                         for(let variant .. uni.variants){
                             v += 1;
                             if(untyped(val_t) && is_subtype(val_t, variant.1)){
-                                val_t = variant.1;
+                                const this = val_t.base as primitive;
+                                // in this context, numbers are not a subtype of ratios
+                                if(!(this == primitive::NUMBER &&
+                                    is_ratio(variant.1))) val_t = variant.1;
                             };
                             if(comp_type(val_t, variant.1)) break;
                         };
@@ -2717,8 +2717,7 @@ fn unwrap_sufixes(
         case let cll: *funcall_meta =>
             yield fmt::asprintf("%cll.{}", cll.pos)!;
         case let uni: *union_write =>
-            assert(false, "unreachable");
-            fmt::fatal("");
+            abort("unreachable");
         };
     assign_memb(ctxt, buff, last, base.tpe, base, defer_id);
 
@@ -3076,7 +3075,6 @@ fn gen_slice(
     };
     fmt::fprintfln(buff, "\t{0}.ptr =l add {0}, 8", slice)!;
     fmt::fprintfln(buff, "\tstorel {}.ptr, {}.ptr", base, slice)!;
-    fmt::fprintfln(buff, "\tcall $rt.debug(l {}.ptr, l {}.ptr)", base, slice)!;
     if(!this.safe){
         fmt::fprintfln(buff, "\t{0} =l sub {0}, 8\n\tjmp @slice.finish.{1}",
             slice, lbl)!;
@@ -3148,9 +3146,11 @@ fn gen_union_read(
     const dummy = this.tpe;
     dummy.partial = true;
     const dest_t = as_uni.variants[this.variant].1;
-    // gen propagation
+    // wrap result
     const prop = this.prop as propagation;
-    const out = fmt::asprintf("{}.read", base)!;
+    const out = fmt::asprintf("{}.{}", base,
+        as_uni.variants[this.variant].0.name)!;
+    // gen propagation
     gen_prop(ctxt, buff, prop, dest_t,
         dummy, this.pos, out, uni, defer_id);
     if(prop.1 is path_meta){
@@ -3274,8 +3274,9 @@ fn gen_prop(
     // check for error code
     fmt::fprintfln(buff, "\t%fail.code =l loadl {}", val)!;
     // only panic assertions have messages
-    if(prop.0 == operator::BANG){
-        fmt::fprintfln(buff, "\tblit $str.{}, $rt.errmsg, 16", prop.2 as size)!;
+    if(prop.2 is size){
+        fmt::fprintfln(buff,
+            "\tblit $str.{}, $rt.errmsg, 16", prop.2 as size)!;
     };
     fmt::fprintln(buff, "\t%assert.fail =l csltl %fail.code, 1")!;
     // no assertion expression
@@ -3687,6 +3688,8 @@ fn fix_nm(ctxt: *context, buff: *memio::stream, nm: namespace) str = {
             const mod = strings::rcut(
             strings::rcut(nm.owner.file, "/").1, ".").0;
             yield fmt::asprintf("{}.{}", mod, base)!;
+        } else if(nm.kind == nm_kind::VAR && !(nm.tpe.base is *fun_ptr)){
+            yield fmt::asprintf("{}.{}", base, qbe_t(ctxt, nm.tpe))!;
         } else {
             yield strings::dup(base)!;
         };

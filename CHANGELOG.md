@@ -2,23 +2,24 @@ new features
 - none
 
 bugfixes
-- fixed bug with switch case scopes not being emitted
-- fixed module types not being parsed correctly when marked as partial
-- fixed issue with terminal statlement determination with else cases
-- fixed issue with code emitting for some edge cases on arena free list on error bubbling
-- fixed funcall codegen shadowing bug
-- fixed typechecking on do effects
+- fixed bug with segfault on io::printf/str::format using too short formatting strings
+- fixed compilation failure with void functions' scopes ending in `unreachable`
+- fixed conv::from_i64 and conv::from_u64
 
 correct behavior assert
-- added more safety checks regarding lifetimes of records and its fields when assigning to other variables
-- fixed record type alignment and field type emitting issues
+- prohibit modulo operator on floating point types
+- lots of fixes regarding edge cases with polymorphic effects
+- added assertion for symbol collision/overwrite during linking
+- added simple borrow checker to prohibit reassignment of arrays with currently active slices
 
 others
-- improved union mismatch error reporting
-- implemented data wrap for arrays of unions that are literals
+- small improvements on the compiler code
+- added error reporting on union tag mismatches
+- removed debug IR leftovers
 
 breaking changes
-- none
+- numeric literals are no longer considered a subtype of floating point types in the matter of union variants
+- removed %u variant from fmt::format
 
 standard library changes
-- added printf family
+- implemented floating point printing to io::printf family

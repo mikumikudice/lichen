@@ -22,6 +22,8 @@ local tests = {
     { src = "fail_ffi_efx", code = 1, nocomp = true },
     { src = "fail_map_1", code = 1, nocomp = true },
     { src = "fail_map_2", code = 1, nocomp = true },
+    { src = "fail_map_3", code = 1, nocomp = true },
+    { src = "fail_map_4", code = 1, nocomp = true },
     { src = "fail_while", code = 1, nocomp = true },
     { src = "fail_tailcall_1", code = 1, nocomp = true },
     { src = "fail_tailcall_2", code = 1, nocomp = true },
@@ -86,6 +88,11 @@ local tests = {
     { src = "fail_no_lifetime_2", code = 1, nocomp = true },
     { src = "fail_iterator_1", code = 1, nocomp = true },
     { src = "fail_iterator_2", code = 1, nocomp = true },
+    { src = "fail_borrow_arr_1", code = 1, nocomp = true },
+    { src = "fail_borrow_arr_2", code = 1, nocomp = true },
+    { src = "fail_borrow_arr_3", code = 1, nocomp = true },
+    { src = "fail_borrow_arr_4", code = 1, nocomp = true },
+    { src = "fail_borrow_arr_5", code = 1, nocomp = true },
     -- statement behavior --
     { src = "fail_switch_1", code = 1, nocomp = true },
     { src = "fail_switch_2", code = 1, nocomp = true },
@@ -111,7 +118,7 @@ local tests = {
     { src = "fail_io_bad_handle",
         output =
             "../tests/fail_io_bad_handle.lic:7:33: assertion failed\n" ..
-            os.getenv( "HOME" ) .. "/.local/lib/lcc/std/io.lim:103:14: could not write to this handle\n",
+            os.getenv( "HOME" ) .. "/.local/lib/lcc/std/io.lim:118:14: could not write to this handle\n",
         code = 1 },
     { src = "fail_io_from_result",
         output = "../tests/fail_io_from_result.lic:14:19: assertion failed\n",
@@ -127,6 +134,7 @@ local tests = {
     -- others --
     { src = "fail_empty", code = 1, nocomp = true },
     { src = "fail_empty_assign", code = 1, nocomp = true },
+    { src = "unreachable", output = "Illegal instruction (core dumped)\n", code = 1 },
 
     -- parser --
     { src = "vars", code = 0 },
@@ -202,6 +210,8 @@ local tests = {
     { src = "enum_for", code = 0 },
     { src = "union", code = 0 },
     { src = "printf", output = "4\nfoo\ntrue\n", code = 0 },
+    { src = "fmt_mismatch", output = "../tests/fmt_mismatch.lic:5:37: assertion failed\n" ..
+        os.getenv( "HOME" ) .. "/.local/lib/lcc/str/fmt.lim:56:43: union tag mismatch\n", code = 1 },
     -- io --
     { src = "hello", output = "mornin' sailor!\n", code = 0 },
     -- mem --
@@ -223,6 +233,7 @@ local tests = {
     { src = "cat_4", code = 0 },
     { src = "cat_5", output = "mia\nleo\nlue\nkim\n", code = 0 },
     { src = "cat_6", output = "a\nb\nc\n", code = 0 },
+    { src = "borrow_arr", code = 0 },
     -- complex structuring --
     { src = "stream", output = "mornin' sailor!\n", code = 0 },
 }

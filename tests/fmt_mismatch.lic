@@ -1,0 +1,7 @@
+fmt mod = use "str/fmt.lim";
+
+fn main() void = fmt {
+    new here | 1024 {
+	    fmt::format("%s", [true], here)!;
+    }!;
+};

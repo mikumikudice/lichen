@@ -49,6 +49,9 @@ pub fn reportln(data str) !unit = rt & io_write {
     fprintln(stderr, data)?;
 };
 
+// prints a formatted string to stdout constructed from the
+// format `sfmt` using `args` as its formatting parameters
+// address for str::format for formatting documentation
 pub fn printf(
     sfmt str,
     args []fmt::formattable,
@@ -56,6 +59,10 @@ pub fn printf(
     fprintf(stdout, sfmt, args)?;
 };
 
+// prints a formatted string to stdout constructed from the
+// format `sfmt`, followed by a line feed, using `args` as
+// its formatting parameters
+// address for str::format for formatting documentation
 pub fn printfln(
     sfmt str,
     args []fmt::formattable,
@@ -63,6 +70,10 @@ pub fn printfln(
     fprintfln(stdout, sfmt, args)?;
 };
 
+// prints a formatted string to the given file handle
+// constructed from the format `sfmt`, followed by a line
+// feed, using `args` as its formatting parameters
+// address for str::format for formatting documentation
 pub fn fprintfln(
     handle u32,
     sfmt str,
@@ -72,12 +83,16 @@ pub fn fprintfln(
     fprint(handle, "\n")?;
 };
 
+// prints a formatted string to the given file handle
+// constructed from the format `sfmt` using `args` as its
+// formatting parameters
+// address for str::format for formatting documentation
 pub fn fprintf(
     handle u32,
     sfmt str,
     args []fmt::formattable,
 ) !unit = rt & io_write & fmt & mkr {
-    new local | #sfmt * #sfmt {
+    new local | #sfmt * #sfmt * (#args + 1) + 16 {
         let out = fmt::format(sfmt, args, local)?;
         fprint(handle, mkr::as_str(out))?;
     }?;

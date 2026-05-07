@@ -1,0 +1,13 @@
+// parser test for the fmt::formattable
+// function' handling of floating point
+// numbers
+
+fmt mod = use "str/fmt.lim";
+io  mod = use "std/io.lim";
+mkr mod = use "str/mkr.lim";
+
+fn main() void = fmt & io & mkr {
+    new here | 1024 {
+        test mkr::dump(fmt::format("%f %f", [1.23, 0.03], here)!) == "1.230 0.030";
+    }!;
+};

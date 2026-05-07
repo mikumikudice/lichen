@@ -14,5 +14,5 @@ fn pre(src str) str = io {
 };
 
 pub fn main() void = io {
-    map(["mia", "leo", "lue"], pre);
+    let _ = map(["mia", "leo", "lue"], pre);
 };

@@ -1,0 +1,11 @@
+// parser test for checking against
+// false positives of reassignment of
+// arrays with active slicing
+
+fn main() void = {
+    let mut foo = [ 1, 2, 3, 4 ] u32;
+    if true {
+        let mut bar = foo[0..1];
+    };
+    foo = [];
+};

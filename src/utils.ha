@@ -147,12 +147,14 @@ fn fail(fmt: str, args: fmt::field...) ERROR = {
 
 // formats and returns a parsing error
 fn error(ctxt: *context, fmt: str, args: fmt::field...) ERROR = {
-    const buff = memio::dynamic();
-    fmt::fprintf(&buff, "%R{}:%r ", gen_pos(ctxt))!;
-    fmt::fprintf(&buff, fmt, args...)!;
-    fmt::fprint(&buff, "%d\n")!;
-    error_line(ctxt, &buff);
-    return alloc(buff)!;
+    const buff = alloc(memio::dynamic())!;
+    const pos = gen_pos(ctxt);
+    defer free(pos);
+    fmt::fprintf(buff, "%R{}:%r ", pos)!;
+    fmt::fprintf(buff, fmt, args...)!;
+    fmt::fprint(buff, "%d\n")!;
+    error_line(ctxt, buff);
+    return buff;
 };
 
 fn error_hint(

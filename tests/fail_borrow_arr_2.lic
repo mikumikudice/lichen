@@ -1,0 +1,13 @@
+// parser test for asserting against
+// reassignments of arrays that hold
+// active slicings
+
+type foo = record {
+    bar [3]u32;
+};
+
+fn main() void = {
+    let mut f = foo { bar = [ 1, 2, 3 ] };
+    let mut slc = f.bar[0 .. 1];
+    f.bar = [];
+};

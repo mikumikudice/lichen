@@ -1,0 +1,26 @@
+rt efx;
+
+fn malloc(length u64) opaque = rt use "malloc";
+fn memcpy(dest opaque, src opaque, size u64) unit = rt use "memset";
+
+fn alloc(data opaque; length) !opaque = rt {
+    let m = malloc(length);
+    test ? m != 0;
+    memset(m, data, length);
+    return m;
+};
+
+fn free(data opaque) = rt use "free";
+
+type region = linear { alloc(a), free(a) };
+
+type example = record {
+    foo u32, bar u32;
+};
+
+fn main() void = {
+    new region {
+        let foo = alloc([4; 0...])!;
+        let bar = alloc(example { foo = 4, bar = 4 })!;
+    };
+};

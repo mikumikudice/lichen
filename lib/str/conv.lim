@@ -3,18 +3,20 @@
 // printing
 
 alloc efx = mut mem;
+loop efx = while;
 
 fn digit_count(x u64, c u64) u64 = {
     if x == 0 {
         return c;
+    } else if x < 10 {
+        return c + 1;
     } else {
         return digit_count(x / 10, c + 1);
     };
 };
 
-// requires a to be at least twice the length of the number
-// plus 32
-pub fn from_u64(src u64, mut a mem) !str @ a = alloc {
+// requires a to be the length of the number plus 16
+pub fn from_u64(src u64, mut a mem) !str @ a = alloc & loop {
     // quick results
     switch src;
     | 0 do return "0";
@@ -30,17 +32,20 @@ pub fn from_u64(src u64, mut a mem) !str @ a = alloc {
         digit = (acc % 10 + '0') u8;
         acc = acc / 10;
     };
-    // reverse
-    let mut buff' = new ? [len u64; 0...] u8 @ a;
-    for mut digit, idx .. buff' {
-        digit = buff[len - idx - 1]!;
+    let half = len / 2;
+    let mut i = 0 u64;
+    while i < half {
+        let tmp = buff[i]!;
+        buff[i]! = buff[len - i - 1]!;
+        buff[len - i - 1]! = tmp;
+        i = i + 1;
     };
-    return buff' str;
+    return buff[0..len]! str;
 };
 
 // requires a to be at least twice the length of the number
 // plus 32
-pub fn from_i64(src i64, mut a mem) !str @ a = alloc {
+pub fn from_i64(src i64, mut a mem) !str @ a = alloc & loop {
     let mut neg = src < 0;
     let val = -src if neg else src;
     let val' = from_u64(val u64, a)?;
@@ -53,8 +58,39 @@ pub fn from_i64(src i64, mut a mem) !str @ a = alloc {
 
 // requires a to be at least twice the length of the number
 // plus 32
-pub fn from_f64(src f64, ratio bool, mut a mem) !str @ a = alloc {
-    return error;
+pub fn from_f64(src f64, mut a mem) !str @ a = alloc & loop {
+    // quick results
+    switch src;
+    | 0 do return "0";
+    | 1 do return "1";
+    | else {};
+
+    let maxdec = 3 u64;
+    let dgcont = digit_count(src u64, 0);
+    let maxlen = (dgcont if dgcont > 0 else 1)  + 1 + (1 if src < 0 else 0) + maxdec;
+
+    let mut buff = new ? [maxlen; 0...] u8 @ a;
+    let mut len = 0 u64;
+    new local | #a {
+        let int = from_i64(src u64, local)?;
+        for itm, idx .. int {
+            buff[idx]! = itm;
+            len = len + 1;
+        };
+        buff[len]! = '.';
+        len = len + 1;
+    }?;
+    let mut dec = src if src > 0.0 else -src;
+
+    let mut i = 0 u64;
+    while i < maxdec && len < #buff {
+        dec = dec * 10.0;
+        let digit = (dec u64) % 10;
+        buff[len]! = (digit u8 + '0');
+        len = len + 1;
+        i = i + 1;
+    };
+    return buff str;
 };
 
 pub fn to_u64(src str) !u64 = {

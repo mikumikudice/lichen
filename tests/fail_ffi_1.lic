@@ -1,0 +1,7 @@
+ffi efx;
+
+fn foo() unit = ffi use "some_fun";
+
+fn some_fun() unit = {};
+
+fn main() void = {};

@@ -172,7 +172,8 @@ rec_lit     ::= "{" (assignment ("," assignment)* ","?)? | "..." "}"
 // operator, and a sequence of one or more assignments separated by commas
 rec_edit    ::= "{" namespace "|" assignment ("," assignment)+ ","? "}"
 // a fail state comparison is a namespace, the keyword `is` and an error state
-fail_comp   ::= namespace "is" error_state;
+// or type variant in the case of unions
+fail_comp   ::= namespace "is" (error_state | type);
 // a variable definition is the `let` keyword, optionally followed by the `mut`
 // keyword, then a sequence a asingle namespace or multiple namespaces enclosed
 // by parenthesis, followed by an optional type notation and then either an

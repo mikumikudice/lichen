@@ -1,3 +1,4 @@
+- fix issue regarding slice returning causing segfaults
 - solve compiler crash on `test x = 4` cases
 - add to runtime error messaging system reporting info when returning `error`
 - assert for multiple bindings to the same module

@@ -15,6 +15,7 @@ fn free_context(ctxt: *context, main: bool = false) void = {
     free(ctxt.global);
     if(main){
         free(ctxt.literals);
+        free(ctxt.types);
         free_nodes();
         free_names();
         free(ctxt.src);
@@ -38,15 +39,43 @@ fn free_nodes() void = {
             free(meta.items);
             free(meta);
         case let meta: *indexing_meta =>
+            if(meta.prop is propagation){
+                const prop = meta.prop as propagation;
+                // if(prop.2 is size){
+                //     io::close(prop.3)!;
+                //     free(prop.3);
+                // };
+            };
             free(meta);
         case let meta: *slicing_meta =>
+            if(meta.prop is propagation){
+                const prop = meta.prop as propagation;
+                // if(prop.2 is size){
+                //     io::close(prop.3)!;
+                //     free(prop.3);
+                // };
+            };
             free(meta);
         case let meta: *record_lit_meta =>
             free(meta.values);
             free(meta);
         case let meta: *field_meta =>
+            if(meta.prop is propagation){
+                const prop = meta.prop as propagation;
+                // if(prop.2 is size){
+                //     io::close(prop.3)!;
+                //     free(prop.3);
+                // };
+            };
             free(meta);
         case let meta: *union_read =>
+            if(meta.prop is propagation){
+                const prop = meta.prop as propagation;
+                // if(prop.2 is size){
+                //     io::close(prop.3)!;
+                //     free(prop.3);
+                // };
+            };
             free(meta);
         case let meta: *union_write =>
             free(meta);
@@ -57,6 +86,18 @@ fn free_nodes() void = {
         case let meta: *arena_meta =>
             free(meta);
         case let meta: *alloc_meta =>
+            // if(meta.prop is short_prop){
+            //     const prop = meta.prop as short_prop;
+            //     io::close(prop.2)!;
+            //     free(prop.2);
+            // };
+            free(meta);
+        case let meta: *concat_meta =>
+            // if(meta.prop is short_prop){
+            //     const prop = meta.prop as short_prop;
+            //     io::close(prop.2)!;
+            //     free(prop.2);
+            // };
             free(meta);
         case let meta: *var_meta =>
             free(meta);
@@ -74,10 +115,24 @@ fn free_nodes() void = {
             free(meta.defer_stack);
             free(meta);
         case let meta: *expr_meta =>
+            if(meta.prop is propagation){
+                const prop = meta.prop as propagation;
+                // if(prop.2 is size){
+                //     io::close(prop.3)!;
+                //     free(prop.3);
+                // };
+            };
             free(meta);
         case let meta: *hand_meta =>
             free(meta);
         case let meta: *member_meta =>
+            if(meta.prop is propagation){
+                const prop = meta.prop as propagation;
+                // if(prop.2 is size){
+                //     io::close(prop.3)!;
+                //     free(prop.3);
+                // };
+            };
             free(meta);
         case let meta: *branch_meta =>
             free(meta.conds);

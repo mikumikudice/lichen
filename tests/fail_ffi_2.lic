@@ -1,0 +1,7 @@
+ffi efx;
+
+foo u32 = use "some_var";
+
+some_var u32 = 4;
+
+fn main() void = {};

@@ -1,0 +1,9 @@
+// parser test for asserting against
+// reassignments of arrays that hold
+// active slicings
+
+fn main() void = {
+    let mut arr = [ 1, 2, 3 ] u32;
+    let mut slc = arr[0 .. 1];
+    arr = [];
+};

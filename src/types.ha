@@ -183,6 +183,8 @@ type context = struct {
     literals: *[]str,
     host_fun: nullable *fun_meta,
     lifetime: (void | size),
+    borrows: [][](*var_meta, size),
+    ffi_symbols: *[](str, *context, size),
     re_emit: bool,
     global: *scope,
     types: *[]*type_meta,
@@ -309,7 +311,7 @@ type arena_meta = struct {
     length: *expr_meta,
 };
 
-type short_prop = (operator, size, *memio::stream);
+type short_prop = (operator, size);
 type alloc_meta = struct {
     pos: size,
     val: *member_meta,
@@ -377,7 +379,7 @@ type scope_meta = struct {
 };
 
 type propagation =
-    (operator, (void | path_meta), (size | void), *memio::stream);
+    (operator, (void | path_meta), (size | void));
 
 type expr_meta = struct {
     pos: size,

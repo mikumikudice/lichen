@@ -4,7 +4,7 @@ mkr  mod = use "str/mkr.lim";
 pub type formattable = union {
     as_str str;
     as_int i64;
-    //as_f64 f64;
+    as_f64 f64;
     as_bool bool;
 };
 
@@ -18,11 +18,31 @@ fn count_digit(x u64, c u64) u64 = {
 
 alloc efx = mut mem;
 
+// returns a formatted string constructed from `fmt` using
+// `args` as its parameters. the string requires a memory
+// arena to be allocated and its size must be at least 16
+// bytes. lesser space results in an `error`
+//
+// the return value is a mkr::maker record holding the
+// buffer and data for the resulting output. any error
+// encountered during the formatting results in an `error`
+//
+// the available methods for formatting matches the
+// available fmt::formattable type variants, i.e.
+//
+// `%s` prints an tring
+// `%u` prints an unsigned integer
+// `%i` prints a signed integer
+// `%f` printf a floating point number
+// `%b` prints a boolean value
+// `%%` escapes the formatting character
+//
 pub fn format(
     fmt str,
     args []formattable,
     mut here mem,
 ) !mkr::maker = conv & mkr & alloc {
+    test ? #here >= 16, "not enough space in the given arena";
     let mut out = mkr::dynamic(#here - 16, here)?;
     let mut toggle = false;
     let mut argcnt = 0 u64;
@@ -38,15 +58,6 @@ pub fn format(
             argcnt = argcnt + 1;
             toggle = false;
         };
-        | 'u' {
-            let val = args[argcnt]?.as_int?;
-            let val' = val u64 if val >= 0 else (-val) u64;
-            new temp | (count_digit(val', 0) + 16) * 2 {
-                mkr::write(out, conv::from_u64(val', temp)?)?;
-            }?;
-            argcnt = argcnt + 1;
-            toggle = false;
-        };
         | 'i' {
             let val = args[argcnt]?.as_int?;
             let abs = val u64 if val >= 0 else (-val) u64;
@@ -57,16 +68,14 @@ pub fn format(
             toggle = false;
         };
         | 'f' {
-            test false, "todo floating formatting";
-            // let val = args[argcnt]?.as_f64?;
-            // // allocate the integer digit count plus
-            // // a sign, the dot and 6 decimal places
-            // new temp | count_digit(val u64) {
-            //     mkr::write(out,
-            //         conv::from_f64(val, false, 6, temp)?)?;
-            // }?;
-            // argcnt = argcnt + 1;
-            // toggle = false;
+            let val = args[argcnt]?.as_f64?;
+            // allocate the integer digit count plus
+            // a sign, the dot and 6 decimal places
+            new temp | (count_digit(val u64, 0) + 32) * 8 {
+                mkr::write(out, conv::from_f64(val, temp)?)?;
+            }?;
+            argcnt = argcnt + 1;
+            toggle = false;
         };
         | 'b' {
             let val = args[argcnt]?.as_bool?;
